@@ -1,0 +1,6 @@
+{
+  "name": "Balanço Eólico & Data Centers NE 2035",
+  "description": "Plataforma analítica e orientadora para modelagem preditiva, mapeamento de bases oficiais (ONS, ANEEL, EPE, MME, IBAMA) e simulação de Monte Carlo do impacto de data centers no subsistema elétrico Nordeste até 2035.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,3 @@
+variavel_analisada,fator_agrupador,estatistica_f,p_valor,significativo_alpha_01,interpretacao
+CF Eólico (cf_eolica),Mês do Ano (Sazonalidade),4401.259,0.0,True,Sazonalidade do vento nordestino estatisticamente muito forte (safra Ago-Nov vs calmaria Mar-Mai)
+Carga Base (l_base_mw),Dia da Semana (Útil vs Fim de Semana),1345.022,0.0,True,Diferença altamente significativa entre dias úteis comerciais e fins de semana

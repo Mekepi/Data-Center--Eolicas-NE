@@ -1,0 +1,10 @@
+subestacao_conexao,estado,tensao_conexao_kv,n_projetos,potencia_it_total_mw,demanda_efetiva_2035_mw,participacao_pct
+SE Pecém II,CE,500,3,1850.0,1768.8000000000002,51.8
+SE Suape II,PE,230,3,720.0,713.3,20.9
+SE Camaçari,BA,230,1,250.0,256.0,7.5
+SE Caucaia,CE,230,2,250.0,248.8,7.3
+SE Extremoz II,RN,230,1,180.0,181.4,5.3
+SE Pici,CE,230,1,180.0,178.6,5.2
+SE Pici,CE,69,1,30.0,31.2,0.9
+SE Fortaleza II,CE,230,1,20.0,20.5,0.6
+SE João Pessoa,PB,69,1,15.0,15.8,0.5

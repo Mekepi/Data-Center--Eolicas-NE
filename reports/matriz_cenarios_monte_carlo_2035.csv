@@ -1,0 +1,5 @@
+cenario_nome,dc_load_mw,wind_capacity_mw,prob_exceder_intercambio_pct,importacao_p95_mw,curtailment_com_dc_twh_ano,curtailment_evitado_gwh_ano,expansao_eolica_compensatoria_gw
+Sem Data Centers (Base SIGA),0.0,29600.0,29.0,11129.1,2.79,0.0,20.65
+DC Conservador + Eólica Base,950.0,29600.0,39.6,12150.7,1.89,903.4,25.75
+DC Central + Eólica Intermediária,2200.0,36400.0,41.2,12800.2,5.69,4636.6,29.0
+DC Stress Test + Eólica Alta,4100.0,44400.0,45.0,13840.9,11.8,13847.2,34.2
