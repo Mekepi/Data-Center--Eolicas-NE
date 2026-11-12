@@ -36,15 +36,16 @@ export const ScriptsPipelineView: React.FC = () => {
         <div className="pb-6 border-b border-slate-200">
           <div className="max-w-3xl space-y-2">
             <p className="text-xs font-medium text-sky-800">
-              Próximo Passo · Arquitetura Modular de Código em Python
+              Passos 01 a 05 Concluídos · Arquitetura Modular Executada em Python (numpy, scipy, pandas)
             </p>
             <h1 id="heading-scripts" className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
-              Esteira de Scripts que Trabalharemos a Seguir
+              Esteira Completa de 7 Scripts Python do Projeto (Etapas 01 a 07)
             </h1>
             <p className="text-sm lg:text-base text-slate-600 leading-relaxed">
-              Para manter o escopo executável na disciplina PTC3567 e permitir que os membros do Grupo 6 trabalhem em
-              paralelo sem acoplamento frágil, organizamos o código em <strong>6 scripts sequenciais</strong> com
-              contratos claros em Parquet/CSV.
+              Todos os <strong>7 scripts sequenciais</strong> (incluindo o motor matemático{' '}
+              <span className="font-mono">ml_models_numpy.py</span> e a consolidação de sensibilidade do Passo 5{' '}
+              <span className="font-mono">07_sensitivity_and_final_report.py</span>) foram executados sobre a série
+              histórica oficial 2015–2025 e exportaram seus relatórios em <span className="font-mono">/reports/</span>.
             </p>
           </div>
         </div>

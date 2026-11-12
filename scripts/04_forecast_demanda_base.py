@@ -4,16 +4,20 @@ Etapa 04: Modelo A - Previsão da Carga Base Horária do Nordeste L_base(t)
 PTC3567 · Ciência dos Dados em Automação e Engenharia · Grupo 6
 
 Objetivo:
-- Modelar e projetar a carga base horária L_base(t) do subsistema Nordeste até 2035.
-- Utilizar apenas bibliotecas autorizadas (numpy, scipy, pandas).
-- Implementar algoritmo de regressão linear regularizada (Ridge/L2) e decomposição harmônica de Fourier
-  como baseline e modelo analítico interpretável sem dependências externas complexas.
-- Avaliar desempenho com métricas exigidas no relatório: MAE (MW), RMSE (MW) e MAPE (%).
-- Permitir ancoragem da tendência de longo prazo no PDE 2035 da EPE (~3.1% a.a.).
+- Treinar o Modelo A estritamente no histórico 2015–2024 (87.476 horas) e validar de forma cega
+  out-of-time em todas as 8.760 horas de 2025 (conforme protocolo aprovado).
+- Comparar modelos lineares e não-lineares implementados puramente em numpy/scipy:
+  1. Baseline Linear: Regressão Ridge L2 (solução fechada analítica).
+  2. Challenger Não-Linear 1: Rede Neural Residual MLP (ativação tanh + skip linear via L-BFGS-B).
+  3. Challenger Não-Linear 2: Histogram GBDT (Gradient Boosted Decision Trees 100% NumPy).
+- Avaliar tanto o horizonte Operativo 1h-Ahead quanto Programação Diária 24h Day-Ahead (sem lag_1h),
+  além de Backtesting Temporal em múltiplos folds paralelos (multiprocessing.Pool).
+- Ancorar a tendência estrutural de longo prazo até 2035 na taxa oficial do PDE/EPE (~3,1% a.a.).
 """
 
+import os
 import sys
-from pathlib import Path
+import multiprocessing as mp
 from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
@@ -22,159 +26,228 @@ from config import (
     PROCESSED_DATA_DIR,
     REPORTS_DIR,
 )
+from ml_models_numpy import (
+    LinearRidgeModel,
+    ResidualMLPRegressor,
+    HistogramGBDTRegressor,
+    compute_regression_metrics,
+)
 
 
-class LinearRidgeRegression:
-    """
-    Regressão Linear com regularização L2 (Ridge) implementada puramente via numpy/scipy.
-    W = (X^T X + alpha * I)^(-1) X^T y
-    Evita necessidade de instalar scikit-learn como dependência extra pesada.
-    """
-    def __init__(self, alpha: float = 1.0):
-        self.alpha = alpha
-        self.weights: Optional[np.ndarray] = None
-        self.mean_x: Optional[np.ndarray] = None
-        self.std_x: Optional[np.ndarray] = None
+FEATURES_1H_AHEAD = [
+    "year_trend",
+    "hour_sin",
+    "hour_cos",
+    "hour_sin_2",
+    "hour_cos_2",
+    "dow_sin",
+    "dow_cos",
+    "month_sin",
+    "month_cos",
+    "is_weekend",
+    "faixa_ponta",
+    "interaction_hour_month",
+    "interaction_weekend_hour",
+    "l_base_mw_lag_1h",
+    "l_base_mw_lag_24h",
+    "l_base_mw_lag_168h",
+    "l_base_mw_roll_mean_24h",
+    "l_base_mw_roll_std_24h",
+]
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
-        n_samples, n_features = X.shape
-        # Normalização padrão
-        self.mean_x = np.mean(X, axis=0)
-        self.std_x = np.std(X, axis=0)
-        self.std_x[self.std_x == 0] = 1.0
-
-        X_norm = (X - self.mean_x) / self.std_x
-        # Adicionar coluna de bias (intercepto)
-        X_bias = np.hstack([np.ones((n_samples, 1)), X_norm])
-
-        # Matriz de penalização L2 (sem penalizar o intercepto)
-        reg_matrix = self.alpha * np.eye(n_features + 1)
-        reg_matrix[0, 0] = 0.0
-
-        # Solução fechada de mínimos quadrados
-        a_mat = X_bias.T @ X_bias + reg_matrix
-        b_vec = X_bias.T @ y
-        self.weights = np.linalg.solve(a_mat, b_vec)
-        return self
-
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        if self.weights is None or self.mean_x is None or self.std_x is None:
-            raise ValueError("Modelo ainda não treinado.")
-        X_norm = (X - self.mean_x) / self.std_x
-        X_bias = np.hstack([np.ones((X.shape[0], 1)), X_norm])
-        return X_bias @ self.weights
+FEATURES_24H_DAY_AHEAD = [
+    "year_trend",
+    "hour_sin",
+    "hour_cos",
+    "hour_sin_2",
+    "hour_cos_2",
+    "dow_sin",
+    "dow_cos",
+    "month_sin",
+    "month_cos",
+    "is_weekend",
+    "faixa_ponta",
+    "interaction_hour_month",
+    "interaction_weekend_hour",
+    "l_base_mw_lag_24h",
+    "l_base_mw_lag_168h",
+    "l_base_mw_roll_mean_d1",
+    "l_base_mw_roll_std_d1",
+]
 
 
-def compute_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-    """
-    Calcula as métricas de validação exigidas no Plano Orientador (Seção 8): MAE, RMSE e MAPE.
-    """
-    errors = y_true - y_pred
-    mae = float(np.mean(np.abs(errors)))
-    rmse = float(np.sqrt(np.mean(errors ** 2)))
-    mape = float(np.mean(np.abs(errors / np.maximum(1.0, y_true))) * 100.0)
+def _eval_backtest_fold_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Dict[str, float]:
+    """Worker paralelo para validação cruzada em janela expansiva (TimeSeriesSplit) no conjunto 2015-2024."""
+    fold_idx, X_tr, y_tr, X_val, y_val = args
+
+    ridge = LinearRidgeModel(alpha=10.0).fit(X_tr, y_tr)
+    m_ridge = compute_regression_metrics(y_val, ridge.predict(X_val))
+
+    mlp = ResidualMLPRegressor(hidden_units=20, reg_l2=1e-3, max_iter=100, seed=42 + fold_idx).fit(X_tr, y_tr)
+    m_mlp = compute_regression_metrics(y_val, mlp.predict(X_val))
+
     return {
-        "mae_mw": round(mae, 2),
-        "rmse_mw": round(rmse, 2),
-        "mape_pct": round(mape, 2),
+        "fold": fold_idx,
+        "train_hours": int(len(X_tr)),
+        "val_hours": int(len(X_val)),
+        "ridge_mae_mw": round(m_ridge["mae"], 2),
+        "ridge_mape_pct": round(m_ridge["mape_pct"], 2),
+        "resmlp_mae_mw": round(m_mlp["mae"], 2),
+        "resmlp_mape_pct": round(m_mlp["mape_pct"], 2),
     }
 
 
-def time_series_backtesting(
-    df: pd.DataFrame,
+def run_expanding_window_backtest(
+    train_df: pd.DataFrame,
     feature_cols: List[str],
     target_col: str = "l_base_mw",
     n_splits: int = 4,
-    test_hours: int = 168,  # Testar em blocos de 1 semana
-) -> Tuple[List[Dict[str, float]], LinearRidgeRegression]:
-    """
-    Backtesting temporal sem vazamento futuro (respeitando a ordem cronológica estrita).
-    """
-    total_len = len(df)
-    results = []
-    final_model = LinearRidgeRegression(alpha=10.0)
+    val_hours: int = 24 * 90,  # Janelas trimestrais (2.160 h) por fold
+) -> pd.DataFrame:
+    """Executa TimeSeriesSplit estritamente dentro da base de treino (2015-2024) em paralelo."""
+    X_all = train_df[feature_cols].to_numpy(dtype=float)
+    y_all = train_df[target_col].to_numpy(dtype=float)
+    total = len(train_df)
 
+    tasks = []
     for i in range(n_splits, 0, -1):
-        test_end = total_len - (i - 1) * test_hours
-        test_start = test_end - test_hours
-        train_end = test_start
-
-        if train_end < 24 * 14:  # Mínimo de 2 semanas de treino
+        val_end = total - (i - 1) * val_hours
+        val_start = val_end - val_hours
+        if val_start < 24 * 365:
             continue
+        fold_num = n_splits - i + 1
+        tasks.append((fold_num, X_all[:val_start], y_all[:val_start], X_all[val_start:val_end], y_all[val_start:val_end]))
 
-        train_data = df.iloc[:train_end]
-        test_data = df.iloc[test_start:test_end]
+    n_workers = max(1, min(len(tasks), os.cpu_count() or 2))
+    with mp.Pool(processes=n_workers) as pool:
+        rows = pool.map(_eval_backtest_fold_worker, tasks)
+    return pd.DataFrame(rows)
 
-        X_train = train_data[feature_cols].to_numpy(dtype=float)
-        y_train = train_data[target_col].to_numpy(dtype=float)
 
-        X_test = test_data[feature_cols].to_numpy(dtype=float)
-        y_test = test_data[target_col].to_numpy(dtype=float)
+def evaluate_models_out_of_time_2025(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Treina os 3 modelos em 2015-2024 e avalia de forma cega em todas as 8.760 horas de 2025,
+    tanto em 1h-Ahead quanto em 24h Day-Ahead.
+    """
+    y_train = train_df["l_base_mw"].to_numpy(dtype=float)
+    y_test = test_df["l_base_mw"].to_numpy(dtype=float)
+    ponta_mask = test_df["faixa_ponta"].to_numpy(dtype=int) == 1
 
-        model = LinearRidgeRegression(alpha=10.0)
-        model.fit(X_train, y_train)
-        preds = model.predict(X_test)
+    benchmark_rows = []
+    preds_2025 = test_df[["ts", "month", "hour", "faixa_ponta", "l_base_mw"]].copy()
 
-        metrics = compute_regression_metrics(y_test, preds)
-        metrics["split_fold"] = n_splits - i + 1
-        metrics["train_samples"] = len(train_data)
-        metrics["test_samples"] = len(test_data)
-        results.append(metrics)
+    for horizon_name, cand_cols in [
+        ("Operativo Curto Prazo (1h-Ahead)", FEATURES_1H_AHEAD),
+        ("Programação Diária (24h Day-Ahead)", FEATURES_24H_DAY_AHEAD),
+    ]:
+        feats = [c for c in cand_cols if c in train_df.columns]
+        X_tr = train_df[feats].to_numpy(dtype=float)
+        X_te = test_df[feats].to_numpy(dtype=float)
 
-    # Treinar modelo final com todos os dados
-    final_model.fit(df[feature_cols].to_numpy(dtype=float), df[target_col].to_numpy(dtype=float))
-    return results, final_model
+        models = [
+            ("Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=10.0)),
+            (
+                "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
+                "Não-Linear (SciPy L-BFGS-B)",
+                ResidualMLPRegressor(hidden_units=24, reg_l2=1e-3, max_iter=140, seed=42),
+            ),
+            (
+                "Challenger Não-Linear · Histogram GBDT (Árvores)",
+                "Não-Linear (NumPy GBDT)",
+                HistogramGBDTRegressor(n_estimators=85, learning_rate=0.08, max_depth=4, min_samples_leaf=45),
+            ),
+        ]
+
+        for model_name, family, est in models:
+            est.fit(X_tr, y_train)
+            y_hat = est.predict(X_te)
+            m = compute_regression_metrics(y_test, y_hat)
+            ponta_mae = float(np.mean(np.abs(y_test[ponta_mask] - y_hat[ponta_mask])))
+
+            benchmark_rows.append({
+                "etapa": "Modelo A - Carga Base NE",
+                "horizonte": horizon_name,
+                "arquitetura": model_name,
+                "familia": family,
+                "mae_mw": round(m["mae"], 2),
+                "rmse_mw": round(m["rmse"], 2),
+                "mape_pct": round(m["mape_pct"], 2),
+                "r2_score": round(m["r2"], 4),
+                "mae_ponta_18h_21h_mw": round(ponta_mae, 2),
+                "treino_horas": len(train_df),
+                "teste_2025_horas": len(test_df),
+            })
+
+            if horizon_name.startswith("Operativo"):
+                if "Ridge" in model_name:
+                    preds_2025["pred_l_base_ridge_1h_mw"] = np.round(y_hat, 2)
+                elif "ResMLP" in model_name:
+                    preds_2025["pred_l_base_resmlp_1h_mw"] = np.round(y_hat, 2)
+                elif "GBDT" in model_name:
+                    preds_2025["pred_l_base_gbdt_1h_mw"] = np.round(y_hat, 2)
+            else:
+                if "Ridge" in model_name:
+                    preds_2025["pred_l_base_ridge_24h_mw"] = np.round(y_hat, 2)
+                elif "ResMLP" in model_name:
+                    preds_2025["pred_l_base_resmlp_24h_mw"] = np.round(y_hat, 2)
+                elif "GBDT" in model_name:
+                    preds_2025["pred_l_base_gbdt_24h_mw"] = np.round(y_hat, 2)
+
+    return pd.DataFrame(benchmark_rows), preds_2025
 
 
 def project_load_to_2035(
-    base_series: pd.Series,
-    target_year: int,
-    annual_epe_growth_rate: float = 0.031,  # 3.1% a.a. do PDE 2035
+    base_series_2025: pd.Series,
+    target_year: int = 2035,
+    annual_epe_growth_rate: float = 0.031,
 ) -> pd.Series:
-    """
-    Ancora a tendência estrutural da demanda no PDE 2035 da EPE (Seção 3 e 4 do Plano Orientador).
-    """
-    years_ahead = max(0, target_year - 2026)
+    """Ancora a tendência estrutural da demanda base no PDE 2035 da EPE (~3,1% a.a.)."""
+    years_ahead = max(0, target_year - 2025)
     factor = (1.0 + annual_epe_growth_rate) ** years_ahead
-    return (base_series * factor).round(1)
+    return (base_series_2025 * factor).round(1)
 
 
 def main():
-    print("=" * 70)
-    print("Script 04: Modelo A - Previsão da Carga Base Horária NE")
-    print("=" * 70)
+    print("=" * 72)
+    print("Script 04: Modelo A - Previsão da Carga Base Horária NE (Treino 2015-2024 -> Teste 2025)")
+    print("=" * 72)
 
-    matrix_file = PROCESSED_DATA_DIR / "ne_features_matrix.csv"
-    if not matrix_file.exists():
-        print(f"[ERRO] Matriz de features não encontrada: {matrix_file}")
-        print("Execute primeiro o Script 03 (python3 scripts/03_feature_engineering_anova.py).")
+    train_file = PROCESSED_DATA_DIR / "train_features_2015_2024.csv"
+    test_file = PROCESSED_DATA_DIR / "test_features_2025.csv"
+    if not train_file.exists() or not test_file.exists():
+        print("[ERRO] Arquivos de treino/teste não encontrados. Execute primeiro o Script 03.")
         sys.exit(1)
 
-    df = pd.read_csv(matrix_file)
-    target_col = "l_base_mw"
+    train_df = pd.read_csv(train_file)
+    test_df = pd.read_csv(test_file)
 
-    candidate_features = [
-        "hour_sin", "hour_cos", "month_sin", "month_cos", "is_weekend",
-        "l_base_mw_lag_1h", "l_base_mw_lag_24h", "l_base_mw_lag_168h",
-        "l_base_mw_roll_mean_24h", "l_base_mw_roll_std_24h",
-    ]
-    features = [c for c in candidate_features if c in df.columns]
-    print(f"[MODELO A] Features utilizadas ({len(features)}): {features}")
+    feats_1h = [c for c in FEATURES_1H_AHEAD if c in train_df.columns]
+    print(f"[BACKTEST] Executando TimeSeriesSplit paralelo em 2015-2024 ({len(train_df):,} h)...")
+    bt_df = run_expanding_window_backtest(train_df, feats_1h)
+    bt_df.to_csv(REPORTS_DIR / "backtest_folds_modelo_a_2015_2024.csv", index=False)
+    print(bt_df.to_string(index=False))
 
-    # Backtesting Temporal
-    metrics_list, model = time_series_backtesting(df, features, target_col=target_col)
-    metrics_df = pd.DataFrame(metrics_list)
+    print(f"\n[TESTE OUT-OF-TIME 2025] Avaliando Baseline Linear vs. Challengers Não-Lineares em {len(test_df):,} h...")
+    bench_a_df, preds_2025 = evaluate_models_out_of_time_2025(train_df, test_df)
 
     report_path = REPORTS_DIR / "metricas_modelo_a_demanda.csv"
-    metrics_df.to_csv(report_path, index=False)
+    bench_a_df.to_csv(report_path, index=False)
+    preds_2025.to_csv(PROCESSED_DATA_DIR / "predicoes_2025_modelo_a.csv", index=False)
 
-    print("\nResultados do Backtesting Temporal do Modelo A (Demanda):")
-    print(metrics_df[["split_fold", "mae_mw", "rmse_mw", "mape_pct"]].to_string(index=False))
-    print(f"\n[MÉDIA FORA DA AMOSTRA] MAE: {metrics_df['mae_mw'].mean():.1f} MW | MAPE: {metrics_df['mape_pct'].mean():.2f}%")
+    print("\nBenchmark Cego Out-of-Time em 2025 — Modelo A (Carga Base NE):")
+    print(
+        bench_a_df[["horizonte", "arquitetura", "mae_mw", "rmse_mw", "mape_pct", "r2_score", "mae_ponta_18h_21h_mw"]]
+        .to_string(index=False)
+    )
 
-    # Exemplo de Projeção para 2035 com taxa da EPE
-    proj_2035 = project_load_to_2035(df[target_col], target_year=2035)
-    print(f"\n[PROJEÇÃO PDE 2035] Carga Base Média NE atual: {df[target_col].mean():.1f} MW -> em 2035: {proj_2035.mean():.1f} MW")
+    proj_2035 = project_load_to_2035(test_df["l_base_mw"], target_year=2035)
+    print(
+        f"\n[ANCORAGEM EPE PDE 2035] Carga Base Média NE Real 2025: {test_df['l_base_mw'].mean():,.1f} MW -> "
+        f"Projeção Estrutural 2035 (sem DCs): {proj_2035.mean():,.1f} MW (Pico: {proj_2035.max():,.1f} MW)"
+    )
 
 
 if __name__ == "__main__":

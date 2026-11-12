@@ -1,0 +1,6 @@
+cenario_id,carga_dc_mw,carga_h2v_nominal_mw,carga_h2v_media_efetiva_mw,regime_operacional_h2v,prob_import_critica_pct,import_p95_mw,curtailment_restante_twh,curtailment_absorvido_total_twh,pressao_se_pecem_ii_mw,expansao_eolica_compensatoria_gw
+H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6),1596.8,0.0,0.0,Sem H2V (Isolamento de Data Centers),9.0,6611.6,20.66,3.6,1168.5,6.85
+"H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)",1596.8,1000.0,920.0,Baseload Inflexível (92% contínuo),18.61,7182.0,16.95,7.31,1918.5,11.13
+"H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)",1596.8,1000.0,802.4,Modulação Dinâmica (12% na calmaria / 100% no excedente),9.94,6686.0,15.88,8.38,1633.5,7.41
+"H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)",1596.8,2000.0,1840.0,Baseload Inflexível (92% contínuo),28.23,7752.4,13.25,11.01,2668.5,15.41
+"H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)",1596.8,2000.0,1604.9,Modulação Dinâmica (12% na calmaria / 100% no excedente),10.87,6760.4,11.1,13.16,2098.5,7.97

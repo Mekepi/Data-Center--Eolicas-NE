@@ -1,5 +1,13 @@
-cenario_nome,dc_load_mw,wind_capacity_mw,prob_exceder_intercambio_pct,importacao_p95_mw,curtailment_com_dc_twh_ano,curtailment_evitado_gwh_ano,expansao_eolica_compensatoria_gw
-Sem Data Centers (Base SIGA),0.0,29600.0,29.0,11129.1,2.79,0.0,20.65
-DC Conservador + Eólica Base,950.0,29600.0,39.6,12150.7,1.89,903.4,25.75
-DC Central + Eólica Intermediária,2200.0,36400.0,41.2,12800.2,5.69,4636.6,29.0
-DC Stress Test + Eólica Alta,4100.0,44400.0,45.0,13840.9,11.8,13847.2,34.2
+cenario_nome,cenario_dc,target_year,dc_load_mw,wind_onshore_mw,wind_offshore_mw,wind_capacity_mw,prob_exceder_intercambio_pct,lole_horas_criticas_ano,importacao_p50_mw,importacao_p90_mw,importacao_p95_mw,margem_minima_p5_mw,curtailment_sem_dc_twh_ano,curtailment_com_dc_twh_ano,curtailment_evitado_gwh_ano,reducao_curtailment_pct,expansao_eolica_compensatoria_gw
+"Sem Data Centers (Controle) × Eólica Base (29,6 GW Onshore)",none,2035,0.0,29600.0,0.0,29600.0,5.8,26.0,1960.1,5824.8,7336.3,-7336.3,5.44,5.44,0.0,0.0,1.6
+"Sem Data Centers (Controle) × Eólica Intermediária SIGA (36,4 GW)",none,2035,0.0,36400.0,0.0,36400.0,3.8,14.3,1213.6,5066.6,6612.2,-6612.2,13.11,13.11,0.0,0.0,0.0
+"Sem Data Centers (Controle) × Eólica Alta + Offshore IBAMA (48,0 GW)",none,2035,0.0,44400.0,3600.0,48000.0,1.1,4.0,0.0,3561.5,5364.6,-5364.6,37.5,37.5,0.0,0.0,0.0
+"DC Conservador (469 MW rede) × Eólica Base (29,6 GW Onshore)",conservative,2035,469.0,29600.0,0.0,29600.0,8.0,43.4,2577.0,6415.0,7924.5,-7924.5,5.78,5.16,627.0,10.8,4.4
+"DC Conservador (469 MW rede) × Eólica Intermediária SIGA (36,4 GW)",conservative,2035,469.0,36400.0,0.0,36400.0,6.0,28.7,1782.9,5593.8,7293.9,-7293.9,13.59,12.45,1145.4,8.4,1.4
+"DC Conservador (469 MW rede) × Eólica Alta + Offshore IBAMA (48,0 GW)",conservative,2035,469.0,44400.0,3600.0,48000.0,2.9,11.0,514.4,4148.5,6006.5,-6006.5,37.74,35.65,2085.6,5.5,0.0
+"DC Central Ponderado (1.597 MW rede) × Eólica Base (29,6 GW Onshore)",central,2035,1596.8,29600.0,0.0,29600.0,12.1,90.2,3692.1,7506.5,9030.1,-9030.1,5.78,3.87,1914.5,33.1,9.67
+"DC Central Ponderado (1.597 MW rede) × Eólica Intermediária SIGA (36,4 GW)",central,2035,1596.8,36400.0,0.0,36400.0,9.3,59.4,2900.8,6698.8,8439.5,-8439.5,13.59,9.99,3601.5,26.5,6.85
+"DC Central Ponderado (1.597 MW rede) × Eólica Alta + Offshore IBAMA (48,0 GW)",central,2035,1596.8,44400.0,3600.0,48000.0,5.4,26.9,1641.3,5264.6,7106.3,-7106.3,37.74,30.94,6796.1,18.0,0.5
+"DC Stress Test / IA (3.414 MW rede) × Eólica Base (29,6 GW Onshore)",high,2035,3414.4,29600.0,0.0,29600.0,24.7,228.1,5462.8,9307.7,10835.6,-10835.6,5.78,2.35,3433.7,59.4,18.26
+"DC Stress Test / IA (3.414 MW rede) × Eólica Intermediária SIGA (36,4 GW)",high,2035,3414.4,36400.0,0.0,36400.0,18.0,146.7,4708.7,8539.0,10177.2,-10177.2,13.59,6.84,6756.5,49.7,15.13
+"DC Stress Test / IA (3.414 MW rede) × Eólica Alta + Offshore IBAMA (48,0 GW)",high,2035,3414.4,44400.0,3600.0,48000.0,10.6,72.3,3377.7,7147.6,8878.3,-8878.3,37.74,24.24,13495.1,35.8,8.76

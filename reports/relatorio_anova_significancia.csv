@@ -1,3 +1,5 @@
-variavel_analisada,fator_agrupador,estatistica_f,p_valor,significativo_alpha_01,interpretacao
-CF Eólico (cf_eolica),Mês do Ano (Sazonalidade),4401.259,0.0,True,Sazonalidade do vento nordestino estatisticamente muito forte (safra Ago-Nov vs calmaria Mar-Mai)
-Carga Base (l_base_mw),Dia da Semana (Útil vs Fim de Semana),1345.022,0.0,True,Diferença altamente significativa entre dias úteis comerciais e fins de semana
+variavel_analisada,fator_agrupador,estatistica_f,p_valor,eta_squared_pct,significativo_alpha_01,conclusao_tecnica
+CF Eólico Potencial (cf_eolica),Mês do Ano (Sazonalidade 12 meses),5166.3,0.0,37.13,True,Fortíssima sazonalidade atmosférica: a Safra dos Ventos (Ago-Nov) supera em ~2x a calmaria (Mar-Abr)
+Carga Base (l_base_mw),Dia da Semana (7 dias: Seg a Dom),1345.64,0.0,7.74,True,Diferença altamente significativa entre dias úteis industriais/comerciais e domingos no Nordeste
+Intercâmbio Líquido SIN (intercambio_liquido_mw),Mês do Ano (12 meses),2059.45,0.0,19.06,True,Inversão estrutural do fluxo: NE exporta maciçamente no 2º semestre e reduz saldo na estação chuvosa
+Curtailment Eólico Real (curtailment_mw · 2023-2025),Faixa Horária do Dia (24 horas),182.0,0.0,13.74,True,Pico severo de constrained-off entre 09h e 16h pela rampa solar diurna simultânea à geração eólica

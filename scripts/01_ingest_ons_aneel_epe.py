@@ -4,29 +4,38 @@ Etapa 01: Ingestão, Download e Harmonização Temporal (ONS + ANEEL + EPE)
 PTC3567 · Ciência dos Dados em Automação e Engenharia · Grupo 6
 
 Objetivo:
-- Baixar ou carregar as séries históricas brutas de Carga, Geração por Usina/Fonte e Constrained-off do ONS.
-- Filtrar o Subsistema Nordeste (id_subsistema == 'NE') e unificar em grade temporal horária UTC-3.
-- Reconstituir a geração eólica potencial somando a geração verificada com a energia cortada (curtailment).
-- Integrar a capacidade instalada eólica histórica e trajetórias de expansão do SIGA/ANEEL.
+- Baixar ou carregar as séries históricas brutas de Carga, Geração por Fonte e Constrained-off do ONS (2015 a 2025).
+- Filtrar o Subsistema Nordeste (id_subsistema == 'NE') e unificar em grade temporal horária UTC-3 (MWmed).
+- Baixar em paralelo (multiprocessing + urllib3) os relatórios mensais reais de Constrained-Off Eólico do ONS
+  (2023 a 2025, cobrindo o regime pós-agosto/2023 no treino e o ano completo de 2025 no teste cego),
+  convertendo registros semi-horários (30 min) por conjunto eólico em energia média horária cortada (MWmed).
+- Reconstituir a geração eólica potencial somando geração verificada + energia cortada (curtailment).
+- Reconstruir a capacidade instalada eólica histórica dinâmica (5,1 GW em 2015 -> 30,7 GW em 2025).
 """
 
+import io
+import os
 import sys
+import multiprocessing as mp
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import urllib3
 import pandas as pd
 import numpy as np
 
-# Importar configurações centrais
 from config import (
     RAW_DATA_DIR,
     PROCESSED_DATA_DIR,
     SUBSYSTEM_ID,
     BASE_WIND_ONSHORE_2026_MW,
-    BASE_HYDRO_THERMAL_MW,
+    OFFICIAL_DATA_URLS,
 )
 
-http = urllib3.PoolManager()
+http = urllib3.PoolManager(
+    num_pools=8,
+    maxsize=8,
+    retries=urllib3.Retry(total=3, backoff_factor=0.5),
+)
 
 
 def download_official_file(url: str, dest_path: Path, force: bool = False) -> Path:
@@ -41,12 +50,15 @@ def download_official_file(url: str, dest_path: Path, force: bool = False) -> Pa
     print(f"[DOWNLOAD] Baixando de {url} -> {dest_path.name}...")
     try:
         response = http.request("GET", url, preload_content=False, timeout=30.0)
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(dest_path, "wb") as f:
-            for chunk in response.stream(1024 * 64):
-                f.write(chunk)
+        if response.status == 200:
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(dest_path, "wb") as f:
+                for chunk in response.stream(1024 * 64):
+                    f.write(chunk)
+            print(f"[OK] Download concluído: {dest_path.name}")
+        else:
+            print(f"[AVISO] HTTP {response.status} ao acessar {url}")
         response.release_conn()
-        print(f"[OK] Download concluído: {dest_path.name}")
     except Exception as e:
         print(f"[AVISO] Falha ao baixar de {url}: {e}. Tentando prosseguir com arquivo local se houver.")
     return dest_path
@@ -61,11 +73,9 @@ def load_ons_hourly_load(filepath: Path) -> pd.DataFrame:
         raise FileNotFoundError(f"Arquivo de carga não encontrado em: {filepath}")
 
     df = pd.read_csv(filepath, sep=";", parse_dates=["din_instante"])
-    # Filtrar subsistema Nordeste
     if "id_subsistema" in df.columns:
-        df = df[df["id_subsistema"] == SUBSYSTEM_ID]
+        df = df[df["id_subsistema"].astype(str).str.strip() == SUBSYSTEM_ID]
 
-    # Renomear colunas canônicas
     col_map = {
         "din_instante": "ts",
         "val_cargaenergiahomwmed": "l_base_mw",
@@ -86,49 +96,137 @@ def load_ons_subsystem_generation(filepath: Path) -> pd.DataFrame:
 
     df = pd.read_csv(filepath, sep=";", parse_dates=["din_instante"])
     if "id_subsistema" in df.columns:
-        df = df[df["id_subsistema"] == SUBSYSTEM_ID]
+        df = df[df["id_subsistema"].astype(str).str.strip() == SUBSYSTEM_ID]
 
     col_map = {
         "din_instante": "ts",
         "val_gereolica": "g_eolica_verificada_mw",
         "val_gersolar": "g_solar_mw",
         "val_gerhidraulica": "g_hidraulica_mw",
-        "val_gertermica": "g_termica_mw",
+        "val_gertermica": "g_gertermica_mw" if "val_gertermica" not in df.columns else "g_termica_mw",
         "val_intercambio": "intercambio_liquido_mw",
     }
     df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-    available_cols = [c for c in col_map.values() if c in df.columns]
+    available_cols = [c for c in ["ts", "g_eolica_verificada_mw", "g_solar_mw", "g_hidraulica_mw", "g_termica_mw", "intercambio_liquido_mw"] if c in df.columns]
     return df[available_cols].dropna(subset=["ts"]).sort_values("ts").drop_duplicates(subset=["ts"])
 
 
-def load_ons_constrained_off(filepath: Path) -> pd.DataFrame:
+def _fetch_and_aggregate_single_coff_month(ym: Tuple[int, int]) -> pd.DataFrame:
     """
-    Carrega o arquivo de Restrição de Operação (Constrained-off / Curtailment) de Usinas Eólicas do ONS.
-    Utiliza val_geracaonaorealizadaapurada e din_instante, agregando em média horária.
+    Worker executado em paralelo (multiprocessing.Pool):
+    Baixa um mês de RESTRICAO_COFF_EOLICA_{YYYY}_{MM}.csv do S3 do ONS em memória,
+    filtra o Subsistema Nordeste (NE), soma a potência cortada entre todos os parques
+    em cada instante semi-horário (30 min) e calcula a média horária (MWmed).
     """
-    if not filepath.exists():
-        print(f"[AVISO] Arquivo de constrained-off não localizado em {filepath}. Assumindo corte zero.")
-        return pd.DataFrame(columns=["ts", "curtailment_mw", "flag_curtailment"])
-
-    print(f"[INGEST] Processando constrained-off eólico real: {filepath.name}...")
-    # Ler apenas colunas essenciais para economizar memória
-    usecols = ["id_subsistema", "din_instante", "val_geracaonaorealizadaapurada"]
-    df = pd.read_csv(filepath, sep=";", usecols=usecols, parse_dates=["din_instante"])
-    df = df[df["id_subsistema"].str.strip() == SUBSYSTEM_ID]
-
-    # Preencher nulos com zero
-    df["curtailment_mw"] = df["val_geracaonaorealizadaapurada"].fillna(0.0)
-
-    # Agregar soma de geração cortada de todos os parques por hora no NE
-    hourly = (
-        df.groupby(pd.Grouper(key="din_instante", freq="1h"))["curtailment_mw"]
-        .sum()
-        .reset_index()
-        .rename(columns={"din_instante": "ts"})
+    year, month = ym
+    url = (
+        f"https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/"
+        f"restricao_coff_eolica_tm/RESTRICAO_COFF_EOLICA_{year}_{month:02d}.csv"
     )
-    hourly["flag_curtailment"] = (hourly["curtailment_mw"] > 50.0).astype(int)
-    print(f"[INGEST] Constrained-off processado: {len(hourly)} horas com média de corte de {hourly['curtailment_mw'].mean():.1f} MWmed.")
-    return hourly
+    worker_http = urllib3.PoolManager(retries=urllib3.Retry(total=3, backoff_factor=0.4))
+    try:
+        resp = worker_http.request("GET", url, timeout=45.0)
+        if resp.status != 200:
+            return pd.DataFrame()
+
+        usecols = [
+            "id_subsistema",
+            "din_instante",
+            "cod_razaorestricao",
+            "val_geracao",
+            "val_geracaoreferencia",
+            "val_geracaonaorealizadaapurada",
+        ]
+        df = pd.read_csv(io.BytesIO(resp.data), sep=";", usecols=usecols)
+        df = df[df["id_subsistema"].astype(str).str.strip() == SUBSYSTEM_ID].copy()
+        if df.empty:
+            return pd.DataFrame()
+
+        # Quando val_geracaonaorealizadaapurada estiver ausente em registros antigos com restrição ativa,
+        # usa (val_geracaoreferencia - val_geracao) limitado a >= 0 como fallback físico auditável.
+        razao = df["cod_razaorestricao"].astype(str).str.strip()
+        has_restriction = df["cod_razaorestricao"].notna() & (razao != "") & (razao != "nan")
+        fallback_mw = (
+            (pd.to_numeric(df["val_geracaoreferencia"], errors="coerce") - pd.to_numeric(df["val_geracao"], errors="coerce"))
+            .where(has_restriction, 0.0)
+            .fillna(0.0)
+            .clip(lower=0.0)
+        )
+        apurada_mw = pd.to_numeric(df["val_geracaonaorealizadaapurada"], errors="coerce")
+        df["curtailment_mw"] = apurada_mw.fillna(fallback_mw).clip(lower=0.0)
+
+        # Decomposição opcional por razão operativa ONS (ENE: energética, CNF: confiabilidade, REL: elétrica local)
+        df["curt_ene_mw"] = np.where(razao == "ENE", df["curtailment_mw"], 0.0)
+        df["curt_cnf_mw"] = np.where(razao == "CNF", df["curtailment_mw"], 0.0)
+        df["curt_rel_mw"] = np.where(razao == "REL", df["curtailment_mw"], 0.0)
+
+        # Passo A: Somar potência simultânea cortada de todos os conjuntos eólicos do NE em cada semi-hora (30 min)
+        semi_hourly = df.groupby("din_instante", as_index=False)[
+            ["curtailment_mw", "curt_ene_mw", "curt_cnf_mw", "curt_rel_mw"]
+        ].sum()
+
+        # Passo B: Converter potência semi-horária (30 min) em energia média horária (MWmed = média das 2 semi-horas)
+        semi_hourly["ts"] = pd.to_datetime(semi_hourly["din_instante"]).dt.floor("1h")
+        hourly = (
+            semi_hourly.groupby("ts", as_index=False)[
+                ["curtailment_mw", "curt_ene_mw", "curt_cnf_mw", "curt_rel_mw"]
+            ]
+            .mean()
+            .sort_values("ts")
+        )
+        print(
+            f"     [COFF {year}-{month:02d}] {len(hourly)} h | "
+            f"Corte médio: {hourly['curtailment_mw'].mean():6.1f} MWmed | "
+            f"Pico: {hourly['curtailment_mw'].max():7.1f} MW"
+        )
+        return hourly
+    except Exception as exc:
+        print(f"     [AVISO COFF {year}-{month:02d}] Falha no processamento: {exc}")
+        return pd.DataFrame()
+
+
+def ingest_ons_constrained_off_multi_month(
+    start_year: int = 2023,
+    end_year: int = 2025,
+    force_refresh: bool = False,
+) -> pd.DataFrame:
+    """
+    Consolida a série horária real de Constrained-Off Eólico do Nordeste (2023 a 2025)
+    usando multiprocessing.Pool e faz cache compacto em disco (~1.2 MB).
+    """
+    cache_path = RAW_DATA_DIR / f"ons_constrained_off_ne_hourly_{start_year}_{end_year}.csv"
+    if cache_path.exists() and not force_refresh:
+        print(f"[CACHE] Carregando série horária real de constrained-off: {cache_path.name}")
+        cached = pd.read_csv(cache_path, parse_dates=["ts"])
+        return cached
+
+    ym_tasks = [(y, m) for y in range(start_year, end_year + 1) for m in range(1, 13)]
+    n_workers = max(1, min(6, os.cpu_count() or 4))
+    print(
+        f"\n[COFF ONS] Baixando e agregando {len(ym_tasks)} competências mensais ({start_year}-01 a {end_year}-12) "
+        f"em {n_workers} processos paralelos..."
+    )
+
+    with mp.Pool(processes=n_workers) as pool:
+        monthly_dfs = pool.map(_fetch_and_aggregate_single_coff_month, ym_tasks)
+
+    valid_dfs = [d for d in monthly_dfs if not d.empty]
+    if not valid_dfs:
+        print("[AVISO] Nenhum arquivo mensal de constrained-off pôde ser baixado.")
+        return pd.DataFrame(columns=["ts", "curtailment_mw", "curt_ene_mw", "curt_cnf_mw", "curt_rel_mw"])
+
+    coff_all = (
+        pd.concat(valid_dfs, ignore_index=True)
+        .drop_duplicates(subset=["ts"])
+        .sort_values("ts")
+        .reset_index(drop=True)
+    )
+    coff_all.to_csv(cache_path, index=False)
+    print(
+        f"[OK] Série real de Constrained-Off NE salva em {cache_path.name} "
+        f"({len(coff_all):,} horas | média {coff_all['curtailment_mw'].mean():.1f} MWmed)"
+    )
+    return coff_all
 
 
 def load_real_ons_installed_wind_capacity(filepath: Path) -> float:
@@ -138,11 +236,13 @@ def load_real_ons_installed_wind_capacity(filepath: Path) -> float:
     if not filepath.exists():
         return BASE_WIND_ONSHORE_2026_MW
 
-    print(f"[INGEST] Lendo capacidade instalada do ONS: {filepath.name}...")
     df = pd.read_csv(filepath, sep=";")
-    ne_wind = df[(df["id_subsistema"].str.strip() == SUBSYSTEM_ID) & (df["nom_tipousina"].str.strip() == "EOLIELÉTRICA")]
+    ne_wind = df[
+        (df["id_subsistema"].astype(str).str.strip() == SUBSYSTEM_ID)
+        & (df["nom_tipousina"].astype(str).str.strip() == "EOLIELÉTRICA")
+    ]
     total_mw = float(ne_wind["val_potenciaefetiva"].sum())
-    print(f"[CAPACIDADE REAL] Capacidade eólica efetiva em operação no NE apurada no ONS: {total_mw:,.1f} MW ({len(ne_wind)} unidades geradoras).")
+    print(f"[CAPACIDADE REAL] Capacidade eólica efetiva no NE apurada no ONS: {total_mw:,.1f} MW ({len(ne_wind)} registros).")
     return total_mw
 
 
@@ -150,21 +250,19 @@ def compute_historical_wind_capacity_timeseries(raw_capacidade_path: Path, times
     """
     Reconstrói a capacidade instalada eólica exata para cada hora entre 2015 e 2025
     a partir da data de entrada em operação comercial de cada usina (ONS).
-    Resolve o desafio central: em 2015 tínhamos 5.1 GW e em 2025 chegamos a 30.7 GW.
     """
     print("[ETL] Reconstruindo série temporal de capacidade eólica instalada histórica...")
     df = pd.read_csv(raw_capacidade_path, sep=";")
-    df_wind = df[(df["id_subsistema"].str.strip() == SUBSYSTEM_ID) & (df["nom_tipousina"].str.strip() == "EOLIELÉTRICA")].copy()
+    df_wind = df[
+        (df["id_subsistema"].astype(str).str.strip() == SUBSYSTEM_ID)
+        & (df["nom_tipousina"].astype(str).str.strip() == "EOLIELÉTRICA")
+    ].copy()
     df_wind["dat_operacao"] = pd.to_datetime(df_wind["dat_entradaoperacao"], errors="coerce")
-    
-    # Usinas sem data assumem início do histórico
     df_wind["dat_operacao"] = df_wind["dat_operacao"].fillna(pd.Timestamp("2014-01-01"))
 
-    # Ordenar por data de entrada
     df_wind = df_wind.sort_values("dat_operacao")
     df_wind["cap_acumulada"] = df_wind["val_potenciaefetiva"].cumsum()
 
-    # Mapear capacidade ativa para cada timestamp da série horária
     cap_by_date = pd.merge_asof(
         pd.DataFrame({"ts": timestamps}),
         df_wind[["dat_operacao", "cap_acumulada"]].rename(columns={"dat_operacao": "ts"}),
@@ -177,23 +275,20 @@ def compute_historical_wind_capacity_timeseries(raw_capacidade_path: Path, times
 
 def ingest_multi_year_ons_data(start_year: int = 2015, end_year: int = 2025) -> pd.DataFrame:
     """
-    Baixa e consolida a carga horária e balanço de geração do ONS para a série completa 2015-2025.
+    Baixa e consolida carga horária, balanço de geração e constrained-off eólico real do ONS (2015-2025).
     Treino: 2015 a 2024 (10 anos) | Teste cego fora da amostra: 2025 (1 ano completo).
     """
     print("=" * 70)
     print(f"Ingestão Histórica Multi-Ano ONS: {start_year} a {end_year}")
     print("=" * 70)
 
-    # 1. Garantir download da capacidade instalada
     raw_capacidade = RAW_DATA_DIR / "ons_capacidade_geracao.csv"
-    from config import OFFICIAL_DATA_URLS
     download_official_file(OFFICIAL_DATA_URLS["ons_capacidade_geracao"], raw_capacidade)
 
     carga_frames = []
     balanco_frames = []
 
     for y in range(start_year, end_year + 1):
-        print(f"\n---> Processando Ano {y}...")
         url_carga = f"https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/curva-carga-ho/CURVA_CARGA_{y}.csv"
         url_bal = f"https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/balanco_energia_subsistema_ho/BALANCO_ENERGIA_SUBSISTEMA_{y}.csv"
 
@@ -208,28 +303,47 @@ def ingest_multi_year_ons_data(start_year: int = 2015, end_year: int = 2025) -> 
             df_b = load_ons_subsystem_generation(path_bal)
             carga_frames.append(df_c)
             balanco_frames.append(df_b)
-            print(f"     [OK] Ano {y}: {len(df_c)} horas de carga | {len(df_b)} horas de balanço.")
         except Exception as e:
             print(f"     [ERRO] Falha no ano {y}: {e}")
 
-    print("\n[ETL] Concatenando histórico completo...")
+    print("\n[ETL] Concatenando histórico completo de Carga e Balanço...")
     all_carga = pd.concat(carga_frames).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
     all_bal = pd.concat(balanco_frames).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
 
-    # Merge da série de 10+ anos
     merged = all_carga.merge(all_bal, on="ts", how="inner").sort_values("ts").reset_index(drop=True)
+    merged["g_solar_mw"] = merged["g_solar_mw"].fillna(0.0)
 
     # Reconstruir capacidade instalada eólica histórica dinâmica
     cap_series = compute_historical_wind_capacity_timeseries(raw_capacidade, pd.DatetimeIndex(merged["ts"]))
     merged["cap_eolica_instalada_mw"] = cap_series.values
 
-    # Preencher colunas auxiliares
-    merged["curtailment_mw"] = 0.0
-    merged["flag_curtailment"] = 0
-    merged["g_eolica_potencial_mw"] = merged["g_eolica_verificada_mw"]
+    # Integrar Constrained-Off Eólico Real do ONS (2023 a 2025)
+    coff_df = ingest_ons_constrained_off_multi_month(start_year=2023, end_year=end_year)
+    if not coff_df.empty:
+        merged = merged.merge(
+            coff_df[["ts", "curtailment_mw", "curt_ene_mw", "curt_cnf_mw", "curt_rel_mw"]],
+            on="ts",
+            how="left",
+        )
+        for c in ["curtailment_mw", "curt_ene_mw", "curt_cnf_mw", "curt_rel_mw"]:
+            merged[c] = merged[c].fillna(0.0).round(2)
+    else:
+        merged["curtailment_mw"] = 0.0
+        merged["curt_ene_mw"] = 0.0
+        merged["curt_cnf_mw"] = 0.0
+        merged["curt_rel_mw"] = 0.0
 
-    # Fator de Capacidade CF(t) = G_eolica(t) / Cap_instalada(t)
-    merged["cf_eolica"] = (merged["g_eolica_potencial_mw"] / np.maximum(100.0, merged["cap_eolica_instalada_mw"])).clip(0.0, 1.0)
+    # Flag operativa de curtailment relevante (> 50 MWmed no subsistema NE)
+    merged["flag_curtailment"] = (merged["curtailment_mw"] > 50.0).astype(int)
+
+    # Reconstituir geração eólica potencial disponível (Seção 4 do Plano Orientador):
+    # Evita ensinar o Modelo B como se o recurso eólico tivesse caído quando houve despacho de corte pelo ONS
+    merged["g_eolica_potencial_mw"] = (merged["g_eolica_verificada_mw"] + merged["curtailment_mw"]).round(2)
+
+    # Fator de Capacidade CF(t) = G_eolica_potencial(t) / Cap_instalada(t) limitado fisicamente a [0, 1]
+    merged["cf_eolica"] = (
+        merged["g_eolica_potencial_mw"] / np.maximum(100.0, merged["cap_eolica_instalada_mw"])
+    ).clip(0.0, 1.0)
 
     # Identificar split formal: Treino (2015-2024) vs Teste (2025)
     merged["ano"] = pd.to_datetime(merged["ts"]).dt.year
@@ -237,26 +351,26 @@ def ingest_multi_year_ons_data(start_year: int = 2015, end_year: int = 2025) -> 
 
     output_master = PROCESSED_DATA_DIR / "ne_hourly_master_2015_2025.csv"
     merged.to_csv(output_master, index=False)
-    # Também gravar em ne_hourly_master.csv para manter compatibilidade com scripts 02 a 06
     merged.to_csv(PROCESSED_DATA_DIR / "ne_hourly_master.csv", index=False)
+
+    curt_2024_twh = merged.loc[merged["ano"] == 2024, "curtailment_mw"].sum() / 1e6
+    curt_2025_twh = merged.loc[merged["ano"] == 2025, "curtailment_mw"].sum() / 1e6
+    pct_flag_2024 = merged.loc[merged["ano"] == 2024, "flag_curtailment"].mean() * 100
+    pct_flag_2025 = merged.loc[merged["ano"] == 2025, "flag_curtailment"].mean() * 100
 
     print(f"\n[SUCESSO] Base histórica completa 2015-2025 gerada: {len(merged):,} horas!")
     print(f"Treino (2015-2024): {(merged['split'] == 'treino_2015_2024').sum():,} horas")
     print(f"Teste (2025):       {(merged['split'] == 'teste_2025').sum():,} horas")
-    print(f"Carga NE: Média 2015 = {merged.loc[merged['ano']==2015, 'l_base_mw'].mean():.1f} MW -> Média 2025 = {merged.loc[merged['ano']==2025, 'l_base_mw'].mean():.1f} MW")
-    print(f"Capacidade Eólica: 2015 = {merged.loc[merged['ano']==2015, 'cap_eolica_instalada_mw'].mean():.1f} MW -> 2025 = {merged.loc[merged['ano']==2025, 'cap_eolica_instalada_mw'].mean():.1f} MW")
-    print(f"CF Eólico Médio Histórico Geral: {merged['cf_eolica'].mean():.1%}")
+    print(f"Curtailment Eólico Real NE 2024: {curt_2024_twh:.2f} TWh ({pct_flag_2024:.1f}% das horas > 50 MW)")
+    print(f"Curtailment Eólico Real NE 2025: {curt_2025_twh:.2f} TWh ({pct_flag_2025:.1f}% das horas > 50 MW)")
+    print(f"CF Eólico Potencial Médio Geral: {merged['cf_eolica'].mean():.2%}")
 
     return merged
 
 
 def main():
-    """Execução principal do Script 01 com série completa 2015 a 2025."""
+    """Execução principal do Script 01 com série completa 2015 a 2025 e Constrained-Off real."""
     ingest_multi_year_ons_data(start_year=2015, end_year=2025)
-
-
-if __name__ == "__main__":
-    main()
 
 
 if __name__ == "__main__":

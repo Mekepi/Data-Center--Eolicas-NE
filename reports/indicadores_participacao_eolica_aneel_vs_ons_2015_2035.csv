@@ -1,0 +1,16 @@
+ano,periodo,cap_eolica_instalada_gw,cap_total_subsistema_ne_gw,participacao_capacidade_aneel_pct,participacao_geracao_efetiva_ons_pct,cf_eolico_efetivo_ons_pct,cf_eolico_potencial_sem_corte_pct,perda_curtailment_anual_twh
+2015,Histórico Verificado (ONS/ANEEL),4.06,19.53,20.78,22.06,45.05,45.05,0.0
+2016,Histórico Verificado (ONS/ANEEL),6.61,22.08,29.95,37.18,44.77,44.77,0.0
+2017,Histórico Verificado (ONS/ANEEL),8.12,23.68,34.28,44.4,46.87,46.87,0.0
+2018,Histórico Verificado (ONS/ANEEL),9.84,25.96,37.89,51.28,45.39,45.39,0.0
+2019,Histórico Verificado (ONS/ANEEL),11.7,28.31,41.34,52.41,44.98,44.98,0.0
+2020,Histórico Verificado (ONS/ANEEL),12.51,29.39,42.58,46.46,42.16,42.16,0.0
+2021,Histórico Verificado (ONS/ANEEL),15.25,32.9,46.34,51.76,48.07,48.07,0.0
+2022,Histórico Verificado (ONS/ANEEL),18.72,37.81,49.5,56.25,44.78,44.78,0.0
+2023,Histórico Verificado (ONS/ANEEL),22.75,45.11,50.43,61.07,44.0,45.69,3.36
+2024,Histórico Verificado (ONS/ANEEL),27.52,53.73,51.22,61.54,41.07,44.96,9.39
+2025,Histórico Verificado (ONS/ANEEL),29.91,58.13,51.46,62.41,40.75,50.55,25.7
+2028,Projeção Cenário Central DC + SIGA Interm.,31.8,58.6,54.27,67.57,40.2,44.1,18.4
+2030,Projeção Cenário Central DC + SIGA Interm.,33.45,61.9,54.04,67.28,40.65,44.3,19.2
+2032,Projeção Cenário Central DC + SIGA Interm.,34.9,65.1,53.61,66.74,41.0,44.5,19.95
+2035,Projeção Cenário Central DC + SIGA Interm.,36.4,69.2,52.6,65.49,41.35,44.65,20.66

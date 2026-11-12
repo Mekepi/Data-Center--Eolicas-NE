@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { OFFICIAL_DATABASES } from './data/databasesCatalog';
 import { DatabasesExplorerView } from './components/DatabasesExplorerView';
 import { DataCentersPipelineView } from './components/DataCentersPipelineView';
+import { FeaturesAndAnovaView } from './components/FeaturesAndAnovaView';
 import { DecisionsAndPdfView, GROUP_DECISIONS } from './components/DecisionsAndPdfView';
 import { ObjectiveAndSimulatorView } from './components/ObjectiveAndSimulatorView';
 import { ScriptsPipelineView } from './components/ScriptsPipelineView';
 import { type SimulationConfig } from './utils/energyModel';
 
-type ActiveTab = 'objetivo' | 'pipeline-dc' | 'bancos' | 'scripts' | 'decisoes';
+type ActiveTab = 'objetivo' | 'pipeline-dc' | 'features-anova' | 'bancos' | 'scripts' | 'decisoes';
 
 const STORAGE_KEY_CHECKED = 'ne_grid_2035_checked_dbs_v1';
 const STORAGE_KEY_DECISIONS = 'ne_grid_2035_group_decisions_v1';
@@ -163,6 +164,17 @@ export function App() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab('features-anova')}
+              className={`py-1 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'features-anova'
+                  ? 'border-sky-700 text-slate-900'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Modelos & Monte Carlo
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('bancos')}
               className={`py-1 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'bancos'
@@ -176,23 +188,12 @@ export function App() {
               type="button"
               onClick={() => setActiveTab('scripts')}
               className={`py-1 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'scripts'
+                activeTab === 'scripts' || activeTab === 'decisoes'
                   ? 'border-sky-700 text-slate-900'
                   : 'border-transparent text-slate-600 hover:text-slate-900'
               }`}
             >
-              Pipeline de Scripts
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('decisoes')}
-              className={`py-1 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'decisoes'
-                  ? 'border-sky-700 text-slate-900'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Decisões & Plano PDF
+              Scripts & Plano PDF
             </button>
           </nav>
 
@@ -208,24 +209,26 @@ export function App() {
         </div>
       </header>
 
-      {/* Navegação responsiva para telas menores (abaixo da dobra do header, sem violar o limite de 15% sticky) */}
+      {/* Navegação responsiva para telas menores */}
       <div className="md:hidden bg-white border-b border-slate-200 px-4 py-2.5 overflow-x-auto">
         <div role="tablist" aria-label="Seções do estudo" className="flex items-center gap-2">
           {[
             { id: 'objetivo', label: 'Objetivo & Simulador' },
             { id: 'pipeline-dc', label: 'Pipeline Data Centers' },
+            { id: 'features-anova', label: 'Modelos & Monte Carlo' },
             { id: 'bancos', label: 'Bancos de Dados' },
-            { id: 'scripts', label: 'Scripts Python' },
-            { id: 'decisoes', label: 'Decisões & PDF' },
+            { id: 'scripts', label: 'Scripts & Plano PDF' },
           ].map((tab) => (
             <button
               key={tab.id}
               type="button"
               role="tab"
-              aria-selected={activeTab === tab.id}
+              aria-selected={activeTab === tab.id || (tab.id === 'scripts' && activeTab === 'decisoes')}
               onClick={() => setActiveTab(tab.id as ActiveTab)}
               className={`px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === tab.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'
+                activeTab === tab.id || (tab.id === 'scripts' && activeTab === 'decisoes')
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700'
               }`}
             >
               {tab.label}
@@ -242,10 +245,13 @@ export function App() {
             onChangeConfig={setSimConfig}
             onNavigateToDatabases={() => setActiveTab('bancos')}
             onNavigateToScripts={() => setActiveTab('scripts')}
+            onNavigateToModels={() => setActiveTab('features-anova')}
           />
         )}
 
         {activeTab === 'pipeline-dc' && <DataCentersPipelineView />}
+
+        {activeTab === 'features-anova' && <FeaturesAndAnovaView />}
 
         {activeTab === 'bancos' && (
           <DatabasesExplorerView
@@ -255,13 +261,49 @@ export function App() {
           />
         )}
 
-        {activeTab === 'scripts' && <ScriptsPipelineView />}
+        {(activeTab === 'scripts' || activeTab === 'decisoes') && (
+          <div className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-sky-800">
+                  Arquitetura de Código & Governança Metodológica
+                </p>
+                <p className="text-sm text-slate-600">
+                  Alterne entre a esteira de scripts Python (<span className="font-mono">.py</span>) executados em{' '}
+                  <span className="font-mono">multiprocessing</span> e o documento do Plano Orientador (PDF).
+                </p>
+              </div>
+              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg self-start sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('scripts')}
+                  className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                    activeTab === 'scripts' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Pipeline de Scripts (.py)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('decisoes')}
+                  className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                    activeTab === 'decisoes' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Decisões & Plano PDF
+                </button>
+              </div>
+            </div>
 
-        {activeTab === 'decisoes' && (
-          <DecisionsAndPdfView
-            selectedDecisions={selectedDecisions}
-            onSelectDecision={handleSelectDecision}
-          />
+            {activeTab === 'scripts' ? (
+              <ScriptsPipelineView />
+            ) : (
+              <DecisionsAndPdfView
+                selectedDecisions={selectedDecisions}
+                onSelectDecision={handleSelectDecision}
+              />
+            )}
+          </div>
         )}
       </main>
 

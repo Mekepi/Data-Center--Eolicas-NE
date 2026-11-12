@@ -1,9 +1,9 @@
 subestacao,estado,tensao_kv,n_projetos,carga_media_mw,carga_p50_mw,carga_p95_mw,fracao_carga_total_pct
-SE Pecém II,CE,500,3,1023.8,1035.4,1841.8,44.3
-SE Suape II,PE,230,3,484.1,484.0,777.9,21.0
-SE Camaçari,BA,230,1,204.9,251.7,297.1,8.9
-SE Caucaia,CE,230,2,217.8,246.7,280.1,9.4
-SE Pici,CE,230,2,199.9,212.3,240.7,8.7
-SE Extremoz II,RN,230,1,141.4,178.9,212.9,6.1
-SE Fortaleza II,CE,230,1,21.1,21.1,23.9,0.9
-SE João Pessoa,PB,69,1,16.3,16.3,18.5,0.7
+SE Pecém II,CE,500,3,1007.6,1043.0,1816.3,43.6
+SE Suape II,PE,230,3,493.9,501.7,780.7,21.4
+SE Camaçari,BA,230,1,207.5,256.1,296.1,9.0
+SE Caucaia,CE,230,2,222.2,251.8,280.1,9.6
+SE Pici,CE,230,2,198.6,212.6,238.7,8.6
+SE Extremoz II,RN,230,1,143.2,181.2,210.5,6.2
+SE Fortaleza II,CE,230,1,21.2,21.2,23.7,0.9
+SE João Pessoa,PB,69,1,16.4,16.4,18.4,0.7

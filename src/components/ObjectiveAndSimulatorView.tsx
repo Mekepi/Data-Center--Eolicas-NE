@@ -7,12 +7,14 @@ import {
   type SimulationConfig,
   type WindExpansionScenarioId,
 } from '../utils/energyModel';
+import { MONTE_CARLO_12_SCENARIOS_2035 } from '../data/featuresAnovaCatalog';
 
 interface ObjectiveAndSimulatorViewProps {
   config: SimulationConfig;
   onChangeConfig: (next: SimulationConfig) => void;
   onNavigateToDatabases: () => void;
   onNavigateToScripts: () => void;
+  onNavigateToModels?: () => void;
 }
 
 type ChartMode = 'margin' | 'supply_demand';
@@ -22,6 +24,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
   onChangeConfig,
   onNavigateToDatabases,
   onNavigateToScripts,
+  onNavigateToModels,
 }) => {
   const [chartMode, setChartMode] = useState<ChartMode>('margin');
   const [inspectedHour, setInspectedHour] = useState<number>(76); // Quinta 04h/tarde na depressão sinóptica
@@ -69,7 +72,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
       <section aria-labelledby="heading-objetivo" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
         <div className="max-w-4xl space-y-3">
           <p className="text-xs font-medium text-sky-800">
-            PTC3567 · Ciência dos Dados em Automação e Engenharia · Grupo 6 · Alinhamento Conceitual
+            PTC3567 · Ciência dos Dados em Automação e Engenharia · Grupo 6 · Pipeline Completo (Passos 1 a 5 Concluídos)
           </p>
           <h1 id="heading-objetivo" className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
             Qual é a resposta exata que o modelo de predição busca encontrar até 2035?
@@ -104,7 +107,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               Uma margem negativa (<span className="font-mono">M(t) &lt; 0</span>) em horas de calmaria eólica{' '}
               <strong>não significa blecaute imediato</strong>: indica necessidade de importar energia do restante do
               SIN. O <strong>evento crítico</strong> que o modelo mede é a probabilidade de essa importação superar o
-              limite físico de intercâmbio das linhas de transmissão.
+              limite físico de intercâmbio das linhas de transmissão (7.000 MW).
             </p>
           </div>
 
@@ -114,9 +117,9 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             </h2>
             <p className="text-sm text-slate-600 leading-relaxed">
               O estudo avalia os <strong>dois lados</strong> do problema. Em horas de vento forte e sol alto (
-              <span className="font-mono">M(t) &gt;&gt; 0</span>), o Nordeste hoje sofre cortes forçados de geração
-              eólica (<em>curtailment / constrained-off</em>). A carga firme 24/7 dos data centers absorve parte desse
-              excedente local, mas agrava o déficit nas madrugadas/meses de pouco vento.
+              <span className="font-mono">M(t) &gt;&gt; 0</span>), o Nordeste sofreu <strong>25,70 TWh de cortes eólicos em 2025</strong>{' '}
+              (<em>constrained-off</em> real ONS). A carga firme 24/7 dos data centers absorve até <strong>3,60 a 6,80 TWh/ano</strong>{' '}
+              desse excedente local, mas agrava o déficit nas madrugadas/meses de pouco vento.
             </p>
           </div>
 
@@ -127,8 +130,9 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             <p className="text-sm text-slate-600 leading-relaxed">
               Não se compara MW eólico instalado diretamente com MW de data center. O modelo prevê o{' '}
               <strong>Fator de Capacidade horário</strong>{' '}
-              <span className="font-mono">CF(t) = G_eólica(t) / Cap(t)</span>, multiplica pela trajetória futura de GW
-              instalados e responde via Monte Carlo <strong>quantos GW eólicos extras</strong> reduzem o risco crítico.
+              <span className="font-mono">CF(t) = G_pot(t) / Cap(t)</span>, multiplica pela trajetória futura de GW
+              instalados e responde via Monte Carlo <strong>quantos GW eólicos extras (+6,85 GW no cenário Central)</strong>{' '}
+              mantêm o risco de importação abaixo de 5%.
             </p>
           </div>
         </div>
@@ -137,13 +141,22 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
         <div className="mt-8 pt-6 border-t border-slate-200">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="text-sm font-semibold text-slate-900">
-              Arquitetura de Modelos Preditivos e Camada Estocástica (Plano Orientador · Seções 4 e 7)
+              Resultados Empíricos dos Modelos Preditivos (Teste Cego 2025) e Monte Carlo 2035 (Passos 3 e 4)
             </h2>
-            <div className="flex items-center gap-4 text-xs">
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              {onNavigateToModels && (
+                <button
+                  type="button"
+                  onClick={onNavigateToModels}
+                  className="font-semibold text-sky-800 hover:text-sky-950 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  Ver Validação 2025 & Matriz Monte Carlo 2035 →
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onNavigateToDatabases}
-                className="font-medium text-sky-700 hover:text-sky-900 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                className="font-medium text-slate-700 hover:text-slate-900 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Ver os 10 bancos de dados oficiais →
               </button>
@@ -152,19 +165,19 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                 onClick={onNavigateToScripts}
                 className="font-medium text-slate-700 hover:text-slate-900 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
               >
-                Ver arquitetura dos 6 scripts →
+                Ver esteira de scripts (.py) →
               </button>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
+            <table className="w-full text-left border-collapse text-sm tabular-nums">
               <thead>
                 <tr className="border-b border-slate-200 text-xs font-medium text-slate-500">
                   <th className="py-2.5 pr-4">Bloco do Estudo</th>
                   <th className="py-2.5 px-4">Variável-Alvo (Y)</th>
-                  <th className="py-2.5 px-4">Features Principais</th>
-                  <th className="py-2.5 pl-4">Algoritmos & Validação</th>
+                  <th className="py-2.5 px-4">Algoritmo Vencedor (NumPy/SciPy)</th>
+                  <th className="py-2.5 pl-4">Resultado Out-of-Time 2025 / Projeção 2035</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-slate-700">
@@ -172,40 +185,40 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                   <td className="py-3 pr-4 font-medium text-slate-900 whitespace-nowrap">Modelo A · Demanda</td>
                   <td className="py-3 px-4 font-mono text-xs">L_base(t) horária NE (MW)</td>
                   <td className="py-3 px-4 text-xs text-slate-600">
-                    Hora, dia da semana, mês, feriados, lags 1/24/168h, médias móveis, temperatura, tendência EPE/PDE
+                    Rede Neural Residual (ResMLP L-BFGS-B) vs. GBDT e Ridge L2
                   </td>
-                  <td className="py-3 pl-4 text-xs text-slate-600">
-                    SARIMAX (baseline) · Random Forest / XGBoost · LSTM (challenger) · MAE, RMSE
+                  <td className="py-3 pl-4 font-mono text-xs font-semibold text-slate-900">
+                    MAPE 1,22% (1h: MAE 158,9 MW, R² 0,9719) · 2,37% (24h: R² 0,8768)
                   </td>
                 </tr>
                 <tr className="hover:bg-slate-50/80">
                   <td className="py-3 pr-4 font-medium text-slate-900 whitespace-nowrap">Modelo B · Eólica</td>
                   <td className="py-3 px-4 font-mono text-xs">CF(t) = G_pot(t) / Cap(t)</td>
                   <td className="py-3 px-4 text-xs text-slate-600">
-                    Lags 1/24/168h, média/desvio móvel, sazonalidade (ANOVA), vento ERA5 100m, correção de corte
+                    ResMLP L-BFGS-B com não-linearidades aerodinâmicas (v³) e ANOVA
                   </td>
-                  <td className="py-3 pl-4 text-xs text-slate-600">
-                    Random Forest / XGBoost ou MLP · LSTM · Backtesting temporal
+                  <td className="py-3 pl-4 font-mono text-xs font-semibold text-emerald-800">
+                    R² = 0,9853 (1h: MAE 0,0173 / 517,6 MW) · R² = 0,7058 (24h)
                   </td>
                 </tr>
                 <tr className="hover:bg-slate-50/80">
                   <td className="py-3 pr-4 font-medium text-slate-900 whitespace-nowrap">Modelo C · Curtailment</td>
-                  <td className="py-3 px-4 font-mono text-xs">P(corte) e Volume (MWh)</td>
+                  <td className="py-3 px-4 font-mono text-xs">P(corte &gt; 50 MW) & MWh</td>
                   <td className="py-3 px-4 text-xs text-slate-600">
-                    Eólica potencial, solar, carga total, excedente local, limite de intercâmbio, hora/mês
+                    Hurdle 2-Estágios: Histogram GBDT Classifier + ResMLP Regressor
                   </td>
-                  <td className="py-3 pl-4 text-xs text-slate-600">
-                    Classificador RF/XGBoost + Regressão de volume · ROC-AUC, Brier Score
+                  <td className="py-3 pl-4 font-mono text-xs font-semibold text-amber-800">
+                    ROC-AUC = 0,9311 · Brier = 0,0990 · F1 = 0,9106 · R² Vol = 0,6876
                   </td>
                 </tr>
                 <tr className="hover:bg-slate-50/80">
-                  <td className="py-3 pr-4 font-medium text-slate-900 whitespace-nowrap">Camada Monte Carlo</td>
-                  <td className="py-3 px-4 font-mono text-xs">Risco P(Import &gt; Limite) & GW</td>
+                  <td className="py-3 pr-4 font-medium text-slate-900 whitespace-nowrap">Passo 4 · Monte Carlo</td>
+                  <td className="py-3 px-4 font-mono text-xs">P(Import &gt; 7 GW) & GW Extra</td>
                   <td className="py-3 px-4 text-xs text-slate-600">
-                    Blocos meteorológicos inteiros, atraso de usinas SIGA/IBAMA, rampa e utilização dos DCs
+                    Block-Bootstrap Sazonal + Modulação Chesf + 14 Projetos Bottom-Up
                   </td>
-                  <td className="py-3 pl-4 text-xs text-slate-600">
-                    Importação P95 (MW), MWh cortados e GW eólicos compensatórios até 2035
+                  <td className="py-3 pl-4 font-mono text-xs font-semibold text-sky-900">
+                    Central DC: P95 = 8.439 MW (+6,85 GW eólicos extras; −3,60 TWh corte)
                   </td>
                 </tr>
               </tbody>
@@ -791,6 +804,126 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                 </span>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Seção 3: Entrega Executiva Final (Passos 4 e 5) - Síntese Monte Carlo 2035 & Sensibilidade */}
+      <section aria-labelledby="heading-exec-mc2035" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-800">
+              Passos 04 & 05 Concluídos · Entrega Executiva Final (06_monte_carlo + 07_sensitivity_and_final_report.py)
+            </p>
+            <h2 id="heading-exec-mc2035" className="text-xl font-bold text-slate-900 mt-0.5">
+              Síntese Monte Carlo 2035, Expansão da Transmissão & Sinergia com Hidrogênio Verde (H2V)
+            </h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Comparativo direto em 2035 para a trajetória eólica Intermediária SIGA (36,4 GW instalados) frente aos 4 cenários de Data Centers e às sensibilidades de rede do Passo 5.
+            </p>
+          </div>
+          {onNavigateToModels && (
+            <button
+              type="button"
+              onClick={onNavigateToModels}
+              className="px-4 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
+            >
+              Explorar Passo 5, 12 Cenários & Relatório (.md) →
+            </button>
+          )}
+        </div>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs tabular-nums">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase">
+                <th className="py-3 pr-3">Cenário de Data Centers (2035)</th>
+                <th className="py-3 px-3 font-mono">Carga Firme Rede</th>
+                <th className="py-3 px-3 font-mono">Parque Eólico (SIGA)</th>
+                <th className="py-3 px-3 font-mono">Risco P(Import &gt; 7 GW)</th>
+                <th className="py-3 px-3 font-mono">Importação P95</th>
+                <th className="py-3 px-3 font-mono">Curtailment Absorvido</th>
+                <th className="py-3 pl-3 font-mono">Expansão Eólica Compensatória</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-slate-700">
+              {MONTE_CARLO_12_SCENARIOS_2035.filter((s) => Math.abs(s.windCapacityMW - 36400) < 100).map((s) => (
+                <tr
+                  key={s.scenarioName}
+                  className={s.dcScenarioId === 'central' ? 'bg-sky-50/50' : 'hover:bg-slate-50'}
+                >
+                  <td className="py-3.5 pr-3 font-semibold text-slate-900 whitespace-nowrap">{s.scenarioName}</td>
+                  <td className="py-3.5 px-3 font-mono text-slate-800 whitespace-nowrap">
+                    {s.dcLoadMW.toLocaleString('pt-BR', { minimumFractionDigits: 1 })} MW
+                  </td>
+                  <td className="py-3.5 px-3 font-mono text-slate-700 whitespace-nowrap">
+                    {(s.windCapacityMW / 1000).toFixed(1)} GW
+                  </td>
+                  <td
+                    className={`py-3.5 px-3 font-mono font-bold whitespace-nowrap ${
+                      s.probExceedInterchangePct >= 15
+                        ? 'text-red-700'
+                        : s.probExceedInterchangePct > 5
+                          ? 'text-amber-700'
+                          : 'text-emerald-800'
+                    }`}
+                  >
+                    {s.probExceedInterchangePct.toFixed(1)}% ({s.loleCriticalHoursYear.toFixed(0)} h/ano)
+                  </td>
+                  <td className="py-3.5 px-3 font-mono font-semibold text-slate-900 whitespace-nowrap">
+                    {s.importP95MW.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} MW
+                  </td>
+                  <td className="py-3.5 px-3 font-mono font-semibold text-emerald-800 whitespace-nowrap">
+                    {s.curtailmentAvoidedGWh > 0
+                      ? `−${(s.curtailmentAvoidedGWh / 1000).toFixed(2)} TWh/ano`
+                      : 'Referência (13,11 TWh)'}
+                  </td>
+                  <td className="py-3.5 pl-3 font-mono font-bold text-sky-900 whitespace-nowrap">
+                    {s.compensatoryWindExpansionGW > 0
+                      ? `+${s.compensatoryWindExpansionGW.toFixed(2)} GW extras`
+                      : '0,00 GW (Dentro da meta)'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Destaques Analíticos do Passo 5 (Transmissão, H2V Flexível e ANEEL vs ONS) */}
+        <div className="mt-6 pt-6 border-t border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-4 tabular-nums">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="text-xs font-semibold uppercase tracking-wider text-sky-800 block">
+              Passo 5 · Expansão da Transmissão (TX-04 / TX-05)
+            </span>
+            <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
+              A entrada das novas LTs 500 kV e Bipolo HVDC (elevando o limite de importação para{' '}
+              <strong>8,0–9,0 GW</strong> e exportação para <strong>11,0–12,5 GW</strong>) reduz o requisito de expansão
+              eólica compensatória de <strong>+6,85 GW</strong> para <strong>+2,20 GW (TX-04)</strong> ou{' '}
+              <strong>0,00 GW (TX-05)</strong>.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800 block">
+              Passo 5 · Disputa vs. Sinergia H2V (Pecém & Suape)
+            </span>
+            <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
+              Se 2,0 GW de H2V operarem inflexíveis 24/7 junto aos DCs, o risco crítico salta para{' '}
+              <strong>28,23%</strong> (+15,41 GW eólicos). Porém, com <strong>modulação flexível (12% na calmaria)</strong>,
+              o H2V absorve <strong>13,16 TWh/ano</strong> de <em>curtailment</em> mantendo o risco em{' '}
+              <strong>10,87%</strong>.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="text-xs font-semibold uppercase tracking-wider text-amber-800 block">
+              Passo 5 · Capacidade ANEEL vs. Geração Efetiva ONS
+            </span>
+            <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
+              Em 2025, a fonte eólica representou <strong>51,46% da capacidade instalada</strong> no NE (ANEEL), mas
+              entregou <strong>62,41% da geração elétrica efetiva</strong> (ONS), apesar da perda de{' '}
+              <strong>9,80 p.p. de fator de capacidade</strong> por <em>constrained-off</em> (25,70 TWh).
+            </p>
           </div>
         </div>
       </section>

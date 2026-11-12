@@ -1,0 +1,8 @@
+cenario_nome,cenario_dc,target_year,dc_load_mw,wind_onshore_mw,wind_offshore_mw,wind_capacity_mw,prob_exceder_intercambio_pct,lole_horas_criticas_ano,importacao_p50_mw,importacao_p90_mw,importacao_p95_mw,margem_minima_p5_mw,curtailment_sem_dc_twh_ano,curtailment_com_dc_twh_ano,curtailment_evitado_gwh_ano,reducao_curtailment_pct,expansao_eolica_compensatoria_gw,expansao_adicional_gw
++0.0 GW Eólicos Extras,central,2035,1596.8,29600.0,0.0,29600.0,12.1,90.2,3692.1,7506.5,9030.1,-9030.1,5.78,3.87,1914.5,33.1,9.67,0.0
++2.0 GW Eólicos Extras,central,2035,1596.8,31600.0,0.0,31600.0,11.2,80.0,3479.9,7288.2,8863.6,-8863.6,7.61,5.25,2359.1,31.0,8.87,2.0
++4.0 GW Eólicos Extras,central,2035,1596.8,33600.0,0.0,33600.0,10.2,71.7,3254.9,7021.0,8696.1,-8696.1,9.82,6.97,2848.4,29.0,8.08,4.0
++6.8 GW Eólicos Extras,central,2035,1596.8,36400.0,0.0,36400.0,9.3,59.4,2900.8,6698.8,8439.5,-8439.5,13.59,9.99,3601.5,26.5,6.85,6.8
++10.0 GW Eólicos Extras,central,2035,1596.8,39600.0,0.0,39600.0,8.1,48.9,2565.7,6351.7,8090.8,-8090.8,18.88,14.38,4507.1,23.9,5.19,10.0
++14.8 GW Eólicos Extras,central,2035,1596.8,44400.0,0.0,44400.0,7.1,39.0,2057.5,5928.1,7710.1,-7710.1,28.63,22.81,5813.2,20.3,3.38,14.8
++18.4 GW Eólicos Extras,central,2035,1596.8,44400.0,3600.0,48000.0,5.4,26.9,1641.3,5264.6,7106.3,-7106.3,37.74,30.94,6796.1,18.0,0.5,18.4

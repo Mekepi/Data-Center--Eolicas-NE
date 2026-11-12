@@ -266,10 +266,8 @@ export const DataCentersPipelineView: React.FC = () => {
                     <td className="py-3.5 pr-4 font-semibold text-slate-900 whitespace-nowrap">
                       {sub.substation}
                     </td>
-                    <td className="py-3.5 px-3 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800">
-                        {sub.state}
-                      </span>
+                    <td className="py-3.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                      {sub.state}
                     </td>
                     <td className="py-3.5 px-3 font-mono text-xs whitespace-nowrap">
                       {sub.voltageKV} kV
@@ -296,18 +294,12 @@ export const DataCentersPipelineView: React.FC = () => {
                     <td className="py-3.5 px-4 font-mono text-xs text-slate-800 whitespace-nowrap">
                       {sub.p95MonteCarloMW.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MW
                     </td>
-                    <td className="py-3.5 pl-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          isCritico
-                            ? 'bg-rose-100 text-rose-800'
-                            : isElevado
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        {sub.congestionRisk}
-                      </span>
+                    <td
+                      className={`py-3.5 pl-4 font-semibold text-xs whitespace-nowrap ${
+                        isCritico ? 'text-rose-800' : isElevado ? 'text-amber-800' : 'text-emerald-800'
+                      }`}
+                    >
+                      {sub.congestionRisk}
                     </td>
                   </tr>
                 );
@@ -356,7 +348,7 @@ export const DataCentersPipelineView: React.FC = () => {
           <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cenário Conservador</span>
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">6 Projetos</span>
+              <span className="text-xs font-semibold font-mono text-emerald-800">6 Projetos</span>
             </div>
             <div className="space-y-1">
               <span className="text-3xl font-bold text-slate-900">469,0 MW</span>
@@ -372,7 +364,7 @@ export const DataCentersPipelineView: React.FC = () => {
           <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-sky-800">Cenário Central (Ponderado)</span>
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-800">11 Projetos</span>
+              <span className="text-xs font-semibold font-mono text-sky-800">11 Projetos</span>
             </div>
             <div className="space-y-1">
               <span className="text-3xl font-bold text-sky-900">1.596,8 MW</span>
@@ -388,7 +380,7 @@ export const DataCentersPipelineView: React.FC = () => {
           <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-purple-800">Cenário Stress Test (Alto)</span>
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">14 Projetos</span>
+              <span className="text-xs font-semibold font-mono text-purple-800">14 Projetos</span>
             </div>
             <div className="space-y-1">
               <span className="text-3xl font-bold text-purple-900">3.414,4 MW</span>
@@ -584,12 +576,12 @@ export const DataCentersPipelineView: React.FC = () => {
               <tbody className="divide-y divide-slate-200 text-slate-700 text-xs">
                 {filteredProjects.map((proj) => {
                   const isExpanded = expandedProjectId === proj.id;
-                  const scenarioColor =
+                  const scenarioTextColor =
                     proj.scenario === 'conservative'
-                      ? 'bg-emerald-100 text-emerald-800'
+                      ? 'text-emerald-800'
                       : proj.scenario === 'central'
-                      ? 'bg-sky-100 text-sky-800'
-                      : 'bg-purple-100 text-purple-800';
+                        ? 'text-sky-800'
+                        : 'text-purple-800';
 
                   return (
                     <React.Fragment key={proj.id}>
@@ -627,10 +619,8 @@ export const DataCentersPipelineView: React.FC = () => {
                         <td className="py-3 px-3 font-mono whitespace-nowrap">
                           {proj.expectedStartYear} ({proj.rampMonths}m)
                         </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${scenarioColor}`}>
-                            {proj.scenario}
-                          </span>
+                        <td className={`py-3 px-3 whitespace-nowrap font-semibold uppercase text-[11px] ${scenarioTextColor}`}>
+                          {proj.scenario}
                         </td>
                         <td className="py-3 pl-3">
                           <span className="truncate max-w-[200px] block text-slate-600">
@@ -683,12 +673,12 @@ export const DataCentersPipelineView: React.FC = () => {
           /* Visualização em Cards Técnicos */
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((proj) => {
-              const scenarioColor =
+              const scenarioTextColor =
                 proj.scenario === 'conservative'
-                  ? 'bg-emerald-100 text-emerald-800'
+                  ? 'text-emerald-800'
                   : proj.scenario === 'central'
-                  ? 'bg-sky-100 text-sky-800'
-                  : 'bg-purple-100 text-purple-800';
+                    ? 'text-sky-800'
+                    : 'text-purple-800';
 
               return (
                 <div
@@ -697,14 +687,12 @@ export const DataCentersPipelineView: React.FC = () => {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-slate-900">{proj.id}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${scenarioColor}`}>
-                          {proj.scenario}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-800">
-                          {proj.state}
-                        </span>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-mono font-bold text-slate-900">{proj.id}</span>
+                        <span aria-hidden="true" className="text-slate-400">·</span>
+                        <span className={`font-semibold uppercase ${scenarioTextColor}`}>{proj.scenario}</span>
+                        <span aria-hidden="true" className="text-slate-400">·</span>
+                        <span className="font-semibold text-slate-700">{proj.state}</span>
                       </div>
                       <h3 className="text-base font-bold text-slate-900 mt-1">{proj.name}</h3>
                       <p className="text-xs text-slate-500">{proj.developer} · {proj.municipality}</p>

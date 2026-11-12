@@ -141,3 +141,148 @@ test('DATA_CENTER_PIPELINE contains exactly 14 nominal projects conforming to of
   assert.equal(pecem.voltageKV, 500, 'SE Pecém II is connected at 500 kV trunk line');
 });
 
+test('ANOVA_TEST_RESULTS and MONTHLY_WIND_PROFILES statistically validate Northeast wind seasonality', async () => {
+  const { ANOVA_TEST_RESULTS, MONTHLY_WIND_PROFILES, FEATURE_CORRELATIONS } = await import(
+    '../data/featuresAnovaCatalog'
+  );
+
+  // Validação dos testes ANOVA
+  assert.ok(ANOVA_TEST_RESULTS.length >= 4, 'Should include at least 4 core ANOVA tests');
+  for (const anova of ANOVA_TEST_RESULTS) {
+    assert.equal(anova.pValue, 0.0, 'P-value must reject null hypothesis (p < 0.01)');
+    assert.ok(anova.fStatistic > 150, `F-statistic must be highly significant (> 150): got ${anova.fStatistic}`);
+    assert.equal(anova.isSignificantAlpha01, true);
+  }
+
+  const windAnova = ANOVA_TEST_RESULTS.find((a) => a.targetVariable.includes('cf_eolica'));
+  assert.ok(windAnova, 'Wind CF ANOVA test must be present');
+  assert.ok(windAnova.etaSquaredPct > 30, 'Monthly seasonality must explain >30% of CF variance');
+
+  // Validação da Safra dos Ventos (12 meses)
+  assert.equal(MONTHLY_WIND_PROFILES.length, 12, 'Must profile all 12 months');
+  const marco = MONTHLY_WIND_PROFILES.find((m) => m.month === 3);
+  const setembro = MONTHLY_WIND_PROFILES.find((m) => m.month === 9);
+  assert.ok(marco && setembro, 'March and September must exist');
+  assert.ok(
+    setembro.avgCapacityFactor > marco.avgCapacityFactor * 1.8,
+    'September wind CF must be at least 1.8x March CF (demonstrating Safra dos Ventos)'
+  );
+  assert.ok(setembro.p10CapacityFactor > marco.p10CapacityFactor * 2.5, 'Firm P10 in September is much higher');
+
+  // Validação das correlações
+  assert.ok(FEATURE_CORRELATIONS.length >= 10, 'Must have at least 10 feature correlations');
+  const lag1Load = FEATURE_CORRELATIONS.find((f) => f.featureName === 'l_base_mw_lag_1h');
+  const lag1Wind = FEATURE_CORRELATIONS.find((f) => f.featureName === 'cf_eolica_lag_1h');
+  assert.ok(lag1Load && lag1Load.corrBaseLoad > 0.95, 'Lag 1h load correlation must exceed 0.95');
+  assert.ok(lag1Wind && lag1Wind.corrWindCF > 0.95, 'Lag 1h wind CF correlation must exceed 0.95');
+});
+
+test('Passo 3 Out-of-Time 2025 benchmarks confirm non-linear models outperform linear baselines across Models A, B, and C', async () => {
+  const {
+    MODEL_A_BENCHMARK_2025,
+    MODEL_B_BENCHMARK_2025,
+    MODEL_C_BENCHMARK_2025,
+    HOURLY_VALIDATION_2025_PROFILE,
+  } = await import('../data/featuresAnovaCatalog');
+
+  assert.equal(HOURLY_VALIDATION_2025_PROFILE.length, 24, 'Must contain 24 hourly validation points for 2025');
+
+  // Modelo A: ResMLP beats Linear Ridge on both 1h and 24h horizons
+  const linA1h = MODEL_A_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.family === 'Linear');
+  const mlpA1h = MODEL_A_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.architecture.includes('ResMLP'));
+  assert.ok(linA1h && mlpA1h, 'Both Linear and ResMLP 1h benchmarks must exist for Model A');
+  assert.ok(mlpA1h.maeMW < linA1h.maeMW, 'ResMLP 1h MAE must be lower than Linear Ridge MAE');
+  assert.ok(mlpA1h.mapePct < 1.5, 'ResMLP 1h MAPE on 2025 must be under 1.5%');
+
+  // Modelo B: ResMLP beats Linear Ridge on CF(t)
+  const linB1h = MODEL_B_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.family === 'Linear');
+  const mlpB1h = MODEL_B_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.architecture.includes('ResMLP'));
+  assert.ok(linB1h && mlpB1h, 'Both Linear and ResMLP 1h benchmarks must exist for Model B');
+  assert.ok(mlpB1h.r2Score > 0.98 && mlpB1h.maeCF < linB1h.maeCF, 'ResMLP 1h R2 must exceed 0.98 and beat Linear');
+
+  // Modelo C: Non-Linear Hurdle beats Linear Hurdle on ROC-AUC, Brier Score, and Volume R2
+  assert.ok(MODEL_C_BENCHMARK_2025.length >= 2);
+  const linearHurdle = MODEL_C_BENCHMARK_2025.find((m) => m.family === 'Linear');
+  const nonLinearHurdle = MODEL_C_BENCHMARK_2025.find((m) => m.family.includes('Não-Linear'));
+  assert.ok(linearHurdle && nonLinearHurdle);
+  assert.ok(nonLinearHurdle.rocAuc > linearHurdle.rocAuc, 'Non-linear Hurdle ROC-AUC must exceed Linear Hurdle');
+  assert.ok(nonLinearHurdle.brierScore < linearHurdle.brierScore, 'Non-linear Brier score must be lower (better)');
+  assert.ok(nonLinearHurdle.r2Volume > linearHurdle.r2Volume, 'Non-linear Volume R2 must exceed Linear Hurdle');
+});
+
+test('Passo 4 Monte Carlo 2035 12-scenario matrix and compensatory wind curve validate physical trade-offs', async () => {
+  const {
+    MONTE_CARLO_12_SCENARIOS_2035,
+    COMPENSATORY_WIND_CURVE_2035,
+    ANNUAL_RISK_TIMELINE_2026_2035,
+  } = await import('../data/featuresAnovaCatalog');
+
+  assert.equal(MONTE_CARLO_12_SCENARIOS_2035.length, 12, 'Must contain all 12 scenarios (4 DC x 3 Wind)');
+  assert.equal(ANNUAL_RISK_TIMELINE_2026_2035.length, 10, 'Must cover 10 years from 2026 to 2035');
+
+  const noDcInterm = MONTE_CARLO_12_SCENARIOS_2035.find(
+    (s) => s.dcScenarioId === 'none' && Math.abs(s.windCapacityMW - 36400) < 100
+  );
+  const centralInterm = MONTE_CARLO_12_SCENARIOS_2035.find(
+    (s) => s.dcScenarioId === 'central' && Math.abs(s.windCapacityMW - 36400) < 100
+  );
+  const highInterm = MONTE_CARLO_12_SCENARIOS_2035.find(
+    (s) => s.dcScenarioId === 'high' && Math.abs(s.windCapacityMW - 36400) < 100
+  );
+
+  assert.ok(noDcInterm && centralInterm && highInterm);
+  // Adding Data Centers increases P95 import and critical risk, while reducing wind curtailment
+  assert.ok(centralInterm.importP95MW > noDcInterm.importP95MW);
+  assert.ok(highInterm.importP95MW > centralInterm.importP95MW);
+  assert.ok(centralInterm.curtailmentAvoidedGWh > 3000, 'Central DCs absorb > 3,000 GWh/yr of wind curtailment');
+  assert.ok(centralInterm.compensatoryWindExpansionGW > 0, 'Central DCs under Intermediate wind require extra compensatory GW');
+
+  // Compensatory wind curve monotonically reduces P(Import > 7 GW) and P95 import as extra GW are added
+  const firstPt = COMPENSATORY_WIND_CURVE_2035[0];
+  const lastPt = COMPENSATORY_WIND_CURVE_2035[COMPENSATORY_WIND_CURVE_2035.length - 1];
+  assert.ok(lastPt.probExceedInterchangePct < firstPt.probExceedInterchangePct);
+  assert.ok(lastPt.importP95MW < firstPt.importP95MW - 1800, 'At +18.4 GW extra wind, P95 import drops by > 1,800 MW');
+});
+
+test('Passo 5 sensitivity datasets validate transmission expansion (TX-01..05), H2V flexible synergy, and ANEEL vs ONS indicators', async () => {
+  const {
+    TRANSMISSION_SENSITIVITY_2035,
+    H2V_SYNERGY_SENSITIVITY_2035,
+    ANEEL_VS_ONS_WIND_INDICATORS_2015_2035,
+    PASSO5_FINAL_EXECUTIVE_REPORT_MD,
+  } = await import('../data/featuresAnovaCatalog');
+  const { SCRIPTS_PIPELINE } = await import('../data/scriptsRoadmap');
+
+  assert.equal(SCRIPTS_PIPELINE.length, 7, 'Pipeline must include all 7 executed Python scripts (01 through 07)');
+  assert.equal(TRANSMISSION_SENSITIVITY_2035.length, 5, 'Must include 5 transmission configurations TX-01..TX-05');
+
+  // Higher import & export limits monotonically reduce critical import probability, curtailment, and required compensatory wind GW
+  const tx01 = TRANSMISSION_SENSITIVITY_2035[0];
+  const tx03 = TRANSMISSION_SENSITIVITY_2035[2];
+  const tx05 = TRANSMISSION_SENSITIVITY_2035[4];
+  assert.ok(tx05.probCriticalImportPct < tx03.probCriticalImportPct && tx03.probCriticalImportPct < tx01.probCriticalImportPct);
+  assert.ok(tx05.curtailmentWithDcTWh < tx03.curtailmentWithDcTWh && tx03.curtailmentWithDcTWh < tx01.curtailmentWithDcTWh);
+  assert.equal(tx05.compensatoryWindGW, 0.0, 'Full HVDC Bipole (TX-05) eliminates extra wind requirement under Central DC');
+
+  // H2V flexible demand-response absorbs more curtailment and requires far less compensatory wind than inflexible H2V
+  const h2v2gwInflex = H2V_SYNERGY_SENSITIVITY_2035.find((r) => r.h2vNominalMW === 2000 && r.scenarioId.includes('Inflexível'));
+  const h2v2gwFlex = H2V_SYNERGY_SENSITIVITY_2035.find((r) => r.h2vNominalMW === 2000 && r.scenarioId.includes('Flexível'));
+  assert.ok(h2v2gwInflex && h2v2gwFlex);
+  assert.ok(h2v2gwFlex.probCriticalImportPct < h2v2gwInflex.probCriticalImportPct, 'Flexible H2V has much lower critical import risk');
+  assert.ok(
+    h2v2gwFlex.totalAbsorbedCurtailmentTWh > h2v2gwInflex.totalAbsorbedCurtailmentTWh,
+    'Flexible H2V absorbs more renewable surplus than inflexible baseload H2V'
+  );
+  assert.ok(h2v2gwFlex.compensatoryWindGW < h2v2gwInflex.compensatoryWindGW - 7.0);
+
+  // ANEEL vs ONS indicator series covers 2015–2035 and confirms 2025 constrained-off gap
+  const ind2025 = ANEEL_VS_ONS_WIND_INDICATORS_2015_2035.find((r) => r.year === 2025);
+  assert.ok(ind2025, '2025 indicator row must exist');
+  assert.ok(ind2025.onsEffectiveGenSharePct > ind2025.aneelInstalledSharePct, 'Wind generation share exceeds installed capacity share in NE');
+  assert.equal(ind2025.annualCurtailmentLossTWh, 25.7, '2025 verified curtailment loss equals 25.70 TWh');
+  assert.ok(PASSO5_FINAL_EXECUTIVE_REPORT_MD.includes('Relatório Técnico Consolidado Final'));
+});
+
+
+
+
