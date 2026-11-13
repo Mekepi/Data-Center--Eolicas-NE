@@ -305,11 +305,11 @@ test('SSOT parity: public/data/pipeline-ssot.json, generated TS bundle, live Pyt
   for (const script of SCRIPTS_PIPELINE) {
     const diskPath = path.join(process.cwd(), 'scripts', script.filename);
     assert.ok(fs.existsSync(diskPath), `Script file ${script.filename} must exist on disk`);
-    const diskSource = fs.readFileSync(diskPath, 'utf-8');
-    assert.equal(
-      script.starterCode,
-      diskSource,
-      `SSOT starterCode for ${script.filename} must match scripts/${script.filename} verbatim`
+    const normalizedStarter = script.starterCode.replace(/\r\n/g, '\n');
+    const normalizedDisk = fs.readFileSync(diskPath, 'utf-8').replace(/\r\n/g, '\n');
+    assert.ok(
+      normalizedStarter === normalizedDisk,
+      `SSOT starterCode for ${script.filename} must match scripts/${script.filename} (lengths: ${normalizedStarter.length} vs ${normalizedDisk.length})`
     );
   }
 

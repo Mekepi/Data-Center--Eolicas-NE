@@ -1,16 +1,16 @@
 # Documento Base de Arquitetura e Plano Sequencial de Execução
 
 **Projeto:** Balanço Eólico & Data Centers NE 2035 (PTC3567 · Grupo 6)  
-**Marco de Referência:** Pós-alteração `3.A` · **Passos 1, 2 e 3 executados em 2026-11-13**  
+**Marco de Referência:** Pós-alteração `3.B` · Passos 1, 2, 3 e `3.B` (código + SSOT) concluídos em 2026-11-13  
 **Data da Última Atualização:** 2026-11-13  
-**Finalidade:** Servir como referência técnica fiel da estrutura atual do código, das fragilidades arquiteturais mapeadas e do roteiro sequencial (Passos 1 a 5) para execução ordenada das correções.
+**Finalidade:** Servir como referência técnica fiel da estrutura atual do código, das fragilidades arquiteturais mapeadas e do roteiro sequencial (Passos 1 a 5 + `3.B`) para execução ordenada das correções.
 
 ---
 
 ## 1. Mapa da Estrutura Atual do Projeto
 
 ### 1.1 Raiz e Configuração
-- `package.json`: SPA React 19 + Vite 8 + Tailwind CSS v4 + TypeScript 7 (`dev` na porta 3000, `build`, `lint`, `sync:ssot`, `test`).
+- `package.json`: SPA React 19 + Vite 8 (`^8.3.0`) + Tailwind CSS v4 (`^4.3.3`) + TypeScript 7 (`^7.0.2`), com `esbuild ^0.28.0` e `tsx ^4.23.15` atualizados no pull (`dev` na porta 3000, `build`, `lint`, `sync:ssot`, `test`). Mantém dependências herdadas de template (`express`, `@types/express`, `dotenv`, `@google/genai`, `motion`) ainda não utilizadas.
 - `tsconfig.json`: compilação estrita sem emissão (`noEmit: true`), `target: ES2022`, `moduleResolution: bundler`.
 - `vite.config.ts`: configuração Vite padrão para SPA.
 - `metadata.json`: metadados do applet (`name`, `description`, `majorCapabilities`).
@@ -19,23 +19,24 @@
 
 ### 1.2 Esteira Analítica Python (`/scripts`)
 - `scripts/config.py`: diretórios do projeto (`RAW_DATA_DIR`, `PROCESSED_DATA_DIR`, `SCENARIOS_DATA_DIR`, `REPORTS_DIR`), limites físicos do subsistema NE (`BASE_WIND_ONSHORE_2026_MW = 29600.0`, `BASE_HYDRO_THERMAL_MW = 4150.0`, `INTERCHANGE_IMPORT_LIMIT_MW = 7000.0`, `INTERCHANGE_EXPORT_LIMIT_MW = 9500.0`), cenários (`DC_SCENARIOS_IT_MW`, `WIND_EXPANSION_ONSHORE_MW`), parâmetros `DEFAULT_PUE = 1.28`, `DEFAULT_UTILIZATION = 0.80` e `OFFICIAL_DATA_URLS`.
-- `scripts/ml_models_numpy.py`: implementações puras em NumPy/SciPy (`LinearRidgeModel`, `LogisticLBFGSModel`, `ResidualMLPRegressor`, `HistogramGBDTRegressor`, `HistogramGBDTClassifier`, `compute_regression_metrics`, `compute_roc_auc_fast`, `compute_classification_metrics`).
-- `scripts/01_ingest_ons_aneel_epe.py`: ingestão ONS (2015–2025), download paralelo de `RESTRICAO_COFF_EOLICA` (2023–2025) em `multiprocessing.Pool`, cálculo de capacidade histórica e geração eólica potencial (`g_eolica_verificada_mw + curtailment_mw`).
+- `scripts/__init__.py`: inicializador leve para habilitar descoberta direta via `python -m unittest -v` / `py -m unittest -v` na raiz do repositório.
+- `scripts/ml_models_numpy.py`: implementações puras em NumPy/SciPy (`LinearRidgeModel`, `LogisticLBFGSModel`, `ResidualMLPRegressor`, `ResidualMLPClassifier`, `HistogramGBDTRegressor`, `HistogramGBDTClassifier`, `compute_regression_metrics`, `compute_roc_auc_fast`, `compute_classification_metrics`).
+- `scripts/01_ingest_ons_aneel_epe.py`: ingestão ONS (2015–2025, totalizando 24 arquivos / `69,35 MB` brutos no último pull), download paralelo de `RESTRICAO_COFF_EOLICA` (2023–2025) em `multiprocessing.Pool`, cálculo de capacidade histórica e geração eólica potencial (`g_eolica_verificada_mw + curtailment_mw`).
 - `scripts/02_build_dc_and_offshore_scenarios.py`: modelagem bottom-up dos 14 projetos (`data/raw/data_centers_pipeline_ne.csv`), rampa anual (2026–2035), regra de não-duplicação de PUE, concentração espacial por `(subestacao_conexao, estado, tensao_conexao_kv)` e matriz de cenários DC × Eólica (`onshore + offshore pós-2031`).
-- `scripts/03_feature_engineering_anova.py`: features causais (lags 1h/24h/168h, janelas móveis deslocadas, harmônicos de Fourier, termos cúbicos aerodinâmicos), testes ANOVA (`scipy.stats.f_oneway`), perfil mensal, matriz de correlações e partição formal Treino (`2015–2024`) vs. Teste Cego (`2025`).
+- `scripts/03_feature_engineering_anova.py`: features causais (lags 1h/24h/168h, janelas móveis deslocadas, harmônicos de Fourier, termos cúbicos aerodinâmicos), testes ANOVA (`scipy.stats.f_oneway`), perfil mensal, matriz de correlações e partição formal Treino (`2015–2024`, 87.476 h) vs. Teste Cego (`2025`, 8.760 h).
 - `scripts/04_forecast_demanda_base.py`: Modelo A (`L_base(t)` em 1h-Ahead e 24h Day-Ahead), TimeSeriesSplit paralelo e ancoragem PDE 2035 (`3,1% a.a.`).
-- `scripts/05_forecast_wind_cf_and_curtailment.py`: Modelo B (`cf_eolica` 1h/24h) e Modelo C Hurdle em 2 estágios treinado em `>= 2023-09-01` (sem vazamento de 2025), além de perfis comparativos mensais e horários de 2025.
+- `scripts/05_forecast_wind_cf_and_curtailment.py`: Modelo B (`cf_eolica` 1h/24h) e Modelo C Hurdle em 2 estágios treinado em `>= 2023-09-01` (sem vazamento de 2025): Estágio C1 (`LogisticLBFGSModel` vs. `ResidualMLPClassifier` vs. `HistogramGBDTClassifier`) e Estágio C2 (`LinearRidgeModel` vs. `ResidualMLPRegressor` vs. `HistogramGBDTRegressor`), além de perfis comparativos 2025 exportados com o challenger `ResMLP`.
 - `scripts/06_monte_carlo_balance_2035.py`: núcleo estocástico reutilizável `simulate_block_bootstrap(...)` (blocos de 168h, `Common Random Numbers` com `seed=42`, modulação hidrotérmica Chesf e suporte opcional a carga H2V fixa/flexível), matriz de 12 cenários, curva compensatória, evolução anual 2026–2035 e Monte Carlo bottom-up dos 14 projetos e subestações por chave composta.
 - `scripts/07_sensitivity_and_final_report.py`: análises do Passo 5 executadas sobre `simulate_block_bootstrap(...)` do Script 06 (transmissão `TX-01..TX-05`, sinergia/disputa `H2V-01..H2V-05`), indicadores ANEEL vs. ONS `2015–2035` derivados de `matriz_cenarios_dc_eolica_2026_2035.csv` e `evolucao_anual_risco_2026_2035.csv`, relatório consolidado `.md` 100% parametrizado via DataFrames + chamada final a `sync_frontend_ssot()`.
-- `scripts/run_pipeline.py`: orquestrador único da esteira completa (`01 -> 02 -> 03 -> 04 -> 05 -> 06 -> 07 -> sync_frontend_ssot`) com flags `--skip-ingest`, `--only-from` e `--dry-run`.
+- `scripts/run_pipeline.py`: orquestrador único da esteira completa (`01 -> 02 -> 03 -> 04 -> 05 -> 06 -> 07 -> sync_frontend_ssot`) com flags `--skip-ingest`, `--only-from` e `--dry-run`, e *bootstrap* automático de `sys.path`.
 - `scripts/pipeline_metadata.json`: repositório externo dos metadados descritivos (`dcProjectNotes`, `featureMetadata` e `scriptsCatalog`).
-- `scripts/sync_frontend_ssot.py`: gerador SSOT dual (`public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts`) com leitura de `pipeline_metadata.json`, *join* espacial por chave composta `(subestacao, estado, tensao_kv)`, parsers defensivos, auditoria cruzada `validate_ssot_cross_consistency` e leitura literal de `scripts/*.py`.
-- `scripts/test_sync_frontend_ssot.py`: suíte `unittest` para parsers, leitura CSV defensiva, metadados externos, orquestração, *join* por chave composta, consistência cruzada (`TX-03`/`H2V-01`/`mc_12` e `.md`) e consistência JSON/TS.
+- `scripts/sync_frontend_ssot.py`: gerador SSOT dual (`public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts`) com leitura de `pipeline_metadata.json`, *join* espacial por chave composta `(subestacao, estado, tensao_kv)`, parsers defensivos, normalização consistente de LF (`\n`), auditoria cruzada `validate_ssot_cross_consistency` e leitura literal de `scripts/*.py`.
+- `scripts/test_sync_frontend_ssot.py`: suíte `unittest` com **9 testes** (parsers, CSV defensivo, metadados externos, orquestração, *join* por chave composta, consistência cruzada real, vínculo `ResidualMLPClassifier` no Estágio C1 e paridade JSON/TS), com *bootstrap* de `sys.path` para execução nativa no Windows sem `PYTHONPATH`.
 
 ### 1.3 Artefatos de Dados e Relatórios (`/data`, `/reports`, `/public`)
 - `data/raw/`, `data/processed/`, `data/scenarios/`: bases oficiais, séries harmonizadas/features e cenários bottom-up.
-- `reports/`: 16 relatórios `.csv` + `relatorio_final_consolidado_ptc3567_grupo6.md`.
-- `public/data/pipeline-ssot.json`: artefato JSON servido em runtime para o frontend.
+- `reports/`: 16 relatórios `.csv` + `relatorio_final_consolidado_ptc3567_grupo6.md`, já regenerados no pull após execução real de `run_pipeline.py --skip-ingest` em ambiente `numpy`/`pandas`/`scipy`.
+- `public/data/pipeline-ssot.json`: artefato JSON servido em runtime para o frontend (sincronizado com `lineage.generatedAtUtc = 2026-11-13T13:56:46Z`).
 - `public/assets/`: ativos estáticos (incluindo PDF do Plano Orientador).
 
 ### 1.4 Camada Frontend (`/src`)
@@ -55,23 +56,19 @@
 
 ---
 
-## 2. Parecer Arquitetural Atual (Pós-Alteração 3.A)
+## 2. Parecer Arquitetural Atual (Pós-Pull GitHub · Passos 1–3 Executados)
 
 ### 2.1 Pontos Sólidos
-1. **Fluxo SSOT Dual-Artifact bem estruturado:** `sync_frontend_ssot.py` garante mesma estrutura em `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts`, com `generatedAtUtc` determinístico baseado no maior `mtime` dos arquivos rastreados.
+1. **Fluxo SSOT Dual-Artifact bem estruturado e validado em dados reais:** `sync_frontend_ssot.py` garante mesma estrutura em `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts`, com `generatedAtUtc` determinístico. Pós-pull, todos os 8 testes Python (`unittest`) passaram sem *skip*, validando paridade exata `TX-03 == H2V-01 == Central × 36,4 GW` (`probCriticalImport = 9,3%`, `importP95 = 8439,5 MW`, `curtailmentWithDc = 9,93 TWh`, `compensatoryWind = 6,85 GW`), desambiguação de `SE Pici` (`230 kV` vs `69 kV`) e `.md` consolidado.
 2. **Ingestão defensiva no sincronizador:** `safe_str`, `safe_float`, `safe_int`, `safe_bool` e `read_csv_records_safe` tratam células vazias, `NaN`/`Inf`, BOM UTF-8, delimitador `;`/`,` e separador decimal PT-BR.
 3. **Código literal sincronizado:** `scriptsPipeline` incorpora exatamente o conteúdo em disco de `scripts/01..07*.py`, impedindo divergência entre código real e UI.
-4. **Rigor metodológico nas Etapas 01–06:** causalidade temporal nas features, separação rigorosa 2015–2024 vs. 2025, não-duplicação de PUE, e `Common Random Numbers` (`seed=42`) no Monte Carlo.
-5. **Paridade testada:** `scripts/test_sync_frontend_ssot.py` e `src/utils/energyModel.test.ts` validam invariantes essenciais de código e dados.
+4. **Rigor metodológico nas Etapas 01–07:** causalidade temporal nas features, separação rigorosa 2015–2024 vs. 2025, não-duplicação de PUE, `Common Random Numbers` (`seed=42`) no Monte Carlo e motor unificado entre Script 06 e Script 07.
+5. **Compilação e tipagem limpas:** `tsc --noEmit` (`npm run lint`) e `vite build` (`npm run build`) executam sem erros após o pull.
 
-### 2.2 Fragilidades e Fraturas Arquiteturais Identificadas
+### 2.2 Fragilidades, Fraturas Arquiteturais e Erros de Teste Identificados
 
-1. **[RESOLVIDO NO PASSO 2 — AGUARDANDO EXECUÇÃO NUMÉRICA EM AMBIENTE COM `numpy`/`pandas`] Simulações e Relatório Hardcoded (`scripts/07_sensitivity_and_final_report.py`):**
-   - *(Resolvido no Passo 2)* Extraído o núcleo estocástico compartilhado `simulate_block_bootstrap(...)` em `scripts/06_monte_carlo_balance_2035.py` (com parâmetros opcionais de limites de intercâmbio e carga H2V fixa/flexível mantendo RNG idêntico com `seed=42`).
-   - *(Resolvido no Passo 2)* `run_transmission_sensitivity_2035` (`TX-01..TX-05`) e `run_h2v_and_datacenter_synergy_2035` (`H2V-01..H2V-05`) agora executam `simulate_block_bootstrap` lendo cenários e concentração em `SE Pecém II` diretamente dos CSVs da Etapa 02, garantindo alinhamento exato de `TX-03` e `H2V-01` com `matriz_cenarios_monte_carlo_2035.csv` (`Central × Intermediária`).
-   - *(Resolvido no Passo 2)* `build_aneel_vs_ons_wind_indicators_2015_2035` deriva as projeções `2028–2035` diretamente de `matriz_cenarios_dc_eolica_2026_2035.csv`, `evolucao_anual_risco_2026_2035.csv` e da modulação Chesf do Script 06 (sem tuplas fixas ou multiplicador `1.245`).
-   - *(Resolvido no Passo 2)* `write_final_consolidated_markdown_report` agora recebe todos os DataFrames do pipeline (`df_model_a`, `df_model_bc`, `df_mc_12`, `df_anova`, `df_monthly`, `df_dc_raw`, `df_subs`, `df_test2025`, `df_scen_matrix`, `df_tx`, `df_h2v`, `df_ind`) e interpola 100% dos números das Seções 1 a 6.
-   - *(Pendência de ambiente)* Como o container atual dispõe apenas de Python stdlib (sem `numpy`/`pandas`), a regeneração física dos CSVs em `reports/sensibilidade_*.csv`, `reports/indicadores_*.csv` e `reports/relatorio_final_*.md` deve ser executada em ambiente com dependências científicas instaladas.
+1. **[RESOLVIDO E VERIFICADO PÓS-PULL] Simulações e Relatório Hardcoded (`scripts/07_sensitivity_and_final_report.py`):**
+   - *(Resolvido no Passo 2 e regenerado no pull)* `simulate_block_bootstrap(...)` em `scripts/06_monte_carlo_balance_2035.py` alimenta diretamente `TX-01..TX-05` e `H2V-01..H2V-05` no Script 07; os indicadores ANEEL vs. ONS e o relatório `.md` foram regenerados em ambiente científico e validados por `test_live_report_cross_consistency_when_regenerated_post_passo_2` (**8/8 `unittest` OK, 0 skipped**).
 
 2. **[CRÍTICO] *Split-Brain* entre Simulador JS (`src/utils/energyModel.ts`) e Motor Python (`06_monte_carlo_balance_2035.py`):**
    - `simulateHourlyWeek` e `runMonteCarloSimulation` operam com série sintética senoidal de 168h e usam `DC_IT_PIPELINE_MW_2035.central = 2200` com rampa própria (`0.14 + 0.86 * progress^1.35`), gerando em 2035 valores distintos dos resultados oficiais do Passo 4 exibidos na mesma página (`ObjectiveAndSimulatorView.tsx`), onde a carga efetiva central bottom-up é `1.596,8 MW`.
@@ -93,11 +90,17 @@
    - *(Resolvido no Passo 3)* Criado o orquestrador único `scripts/run_pipeline.py` (`--skip-ingest`, `--only-from`, `--dry-run`).
    - *(Pendente para Passo 5)* Monolitos na UI (`FeaturesAndAnovaView.tsx`, `ObjectiveAndSimulatorView.tsx`, `DataCentersPipelineView.tsx`), estilos inline (`style={{ width: ... }}`), dependências ociosas em `package.json`, `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` em `metadata.json` e `.gitignore` sem exclusão de CSVs pesados.
 
+6. **[RESOLVIDO EM CÓDIGO NO PASSO 3.B — AGUARDANDO REEXECUÇÃO `--only-from 05` EM AMBIENTE CIENTÍFICO] Saturação Out-of-Time do Classificador C1 e Portabilidade Windows/TAP dos Testes:**
+   - *(Resolvido no Passo 3.B)* Implementada `ResidualMLPClassifier` em `scripts/ml_models_numpy.py` e integrada ao Estágio C1 em `scripts/05_forecast_wind_cf_and_curtailment.py` para a arquitetura `"Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2)"`.
+   - *(Resolvido no Passo 3.B)* Normalização `\r\n -> \n` e asserção concisa em `src/utils/energyModel.test.ts` e `scripts/sync_frontend_ssot.py`, eliminando `ERR_TAP_LEXER_ERROR` no Windows.
+   - *(Resolvido no Passo 3.B)* Adicionados `scripts/__init__.py` e *bootstrap* de `sys.path` em `test_sync_frontend_ssot.py`, `sync_frontend_ssot.py` e `run_pipeline.py` (`9/9 unittest` aprovados mesmo sem `PYTHONPATH`).
+   - *(Pendência de ambiente)* Como o container atual não possui `numpy`/`pandas`/`scipy`, o Subteste 8 (`npm run test`) ainda lê o CSV anterior do Modelo C até a execução de `py scripts/run_pipeline.py --only-from 05` em ambiente científico.
+
 ---
 
 ## 3. Plano Sequencial Passo a Passo de Execução
 
-> **Status de Execução:** Passos 1, 2 e 3 concluídos (código atualizado e SSOT sincronizado; próximo: Passo 4 mediante aprovação).
+> **Status de Execução:** Passos 1, 2, 3 e **3.B (código + SSOT)** concluídos (`9/9 unittest` passando sem `PYTHONPATH`; `tsc --noEmit` e `vite build` verdes; `10/11` `npm run test` verdes, restando apenas rodar `--only-from 05` em ambiente com `numpy`/`pandas`/`scipy` para atualizar os CSVs do Modelo C). **Próximo passo de código:** **Passo 4** (mediante aprovação).
 
 ### Passo 1 — Unificar Fonte de Cenários e Chave Composta entre Etapa 02 e Etapa 06
 - [x] **Status:** Concluído em 2026-11-13
@@ -151,6 +154,27 @@
 
 ---
 
+### Passo 3.B (Adicional Pós-Pull) — Corrigir Generalização Out-of-Time do Estágio C1 (Modelo C) e Portabilidade dos Testes (Windows/CRLF)
+- [x] **Status:** Código implementado e SSOT sincronizado em 2026-11-13 *(aguarda apenas execução numérica de `--only-from 05` em ambiente `numpy`/`pandas`)*
+- **Objetivo:** Corrigir a falha do Subteste 8 (`npm run test`), eliminar os erros de portabilidade Windows (`ERR_TAP_LEXER_ERROR` e `ModuleNotFoundError: config`) e garantir que a família não-linear com conexão residual supere o baseline linear em todas as métricas out-of-time 2025 do Modelo C.
+- **Arquivos modificados/criados:**
+  - `scripts/__init__.py` (criado)
+  - `scripts/ml_models_numpy.py`
+  - `scripts/05_forecast_wind_cf_and_curtailment.py`
+  - `scripts/run_pipeline.py`
+  - `scripts/sync_frontend_ssot.py`
+  - `scripts/test_sync_frontend_ssot.py`
+  - `src/utils/energyModel.test.ts`
+  - `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts` (re-sincronizados via `run_pipeline.py --only-from ssot`)
+- **Ações realizadas:**
+  1. Implementada a classe `ResidualMLPClassifier` em `scripts/ml_models_numpy.py` com conexão residual linear inicializada via `LogisticLBFGSModel` (`L-BFGS-B`) e camada oculta `tanh` regularizada (`hidden_units=16`, `reg_l2=5e-3`, `reg_l2_skip=1e-3`).
+  2. Integrado `ResidualMLPClassifier` ao Estágio C1 de `scripts/05_forecast_wind_cf_and_curtailment.py` na arquitetura `"Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2)"`, mantendo `"Histogram GBDT Hurdle Completo"` como terceiro candidato e atualizando `export_2025_comparative_profiles` para `preds_c["vol_mlp"]` e `preds_c["prob_mlp"]`.
+  3. Normalizadas quebras de linha `\r\n -> \n` e substituído `assert.equal` por asserção concisa no Subteste 11 de `src/utils/energyModel.test.ts`, além de gravação com `newline="\n"` em `scripts/sync_frontend_ssot.py`.
+  4. Adicionados `scripts/__init__.py` e *bootstrap* de `sys.path` em `test_sync_frontend_ssot.py`, `sync_frontend_ssot.py` e `run_pipeline.py`, além do novo teste `test_model_c_stage_c1_wires_residual_mlp_classifier`.
+- **Validação realizada:** `py_compile` limpo em `scripts/*.py`; `python3 -m unittest -v` (e `python3 -m unittest -v scripts/test_sync_frontend_ssot.py`) sem `PYTHONPATH` com **9/9 testes OK**; `npm run lint` (`tsc --noEmit`) e `npm run build` (`vite build`) aprovados; `npm run test` com **10/11 aprovados** (Subteste 11 verde; Subteste 8 aguarda reexecução de `py scripts/run_pipeline.py --only-from 05` em ambiente com `numpy`/`pandas`/`scipy` para atualizar `reports/metricas_modelos_b_c_eolica_curtailment.csv` e SSOT).
+
+---
+
 ### Passo 4 — Alinhar `src/utils/energyModel.ts` ao SSOT Dinâmico e Remover Hardcodes na UI
 - [ ] **Status:** Pendente
 - **Objetivo:** Eliminar o *split-brain* entre o simulador interativo e o motor Python de referência, além de parametrizar textos e governança no frontend.
@@ -184,5 +208,5 @@
   1. Extrair helper único `downloadDelimitedCsv` / `downloadTextFile` para `src/utils/csvExport.ts`, eliminando duplicação entre `App.tsx`, `DataCentersPipelineView.tsx` e `FeaturesAndAnovaView.tsx`.
   2. Fatiar `FeaturesAndAnovaView.tsx` (1.512 linhas) em subcomponentes coesos por aba.
   3. Substituir `style={{ width: ... }}` inline em `DataCentersPipelineView.tsx:347` e `FeaturesAndAnovaView.tsx:1352` por elementos sem estilo inline (ex.: barra SVG proporcional).
-  4. Remover de `package.json` as dependências não utilizadas (`express`, `@types/express`, `dotenv`, `@google/genai`, `motion`), atualizar `metadata.json` removendo `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` e adicionar regras de exclusão para CSVs pesados (`data/raw/ons_*.csv`, `data/processed/*.csv`) no `.gitignore`.
+  4. Remover de `package.json` as dependências não utilizadas (`express`, `@types/express`, `dotenv`, `@google/genai`, `motion`), atualizar `metadata.json` removendo `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` e adicionar regras de exclusão para CSVs pesados (`data/raw/ons_*.csv`, `data/processed/*.csv`) e `__pycache__/` no `.gitignore`.
 - **Critério de validação:** `npm run lint`, `npm run build`, `npm run test` e `python3 -m unittest scripts/test_sync_frontend_ssot.py` executando limpos com bundle final enxuto.

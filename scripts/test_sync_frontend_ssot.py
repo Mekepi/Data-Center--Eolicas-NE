@@ -1,10 +1,16 @@
 import copy
+import importlib.util
 import json
 import math
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, Dict
+
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
 
 from config import SCRIPTS_DIR
 from run_pipeline import main as run_pipeline_main, resolve_stages
@@ -223,16 +229,41 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertEqual(len(payload["h2vSynergySensitivity2035"]), 5)
         self.assertEqual(len(payload["scriptsPipeline"]), 7)
 
-        # Every script starterCode must match the real disk file in scripts/*.py verbatim
+        # Every script starterCode must match the real disk file in scripts/*.py verbatim (ignoring CRLF/LF checkout differences)
         for spec in payload["scriptsPipeline"]:
             real_path = SCRIPTS_DIR / spec["filename"]
             self.assertTrue(real_path.exists(), f"Missing real script {real_path}")
             self.assertEqual(
-                spec["starterCode"],
-                real_path.read_text(encoding="utf-8"),
+                spec["starterCode"].replace("\r\n", "\n"),
+                real_path.read_text(encoding="utf-8").replace("\r\n", "\n"),
                 f"SSOT script mismatch for {spec['filename']}",
             )
             self.assertFalse(math.isnan(payload["lineage"]["trainHours"]))
+
+    def test_model_c_stage_c1_wires_residual_mlp_classifier(self) -> None:
+        ml_source = (SCRIPTS_DIR / "ml_models_numpy.py").read_text(encoding="utf-8")
+        s05_source = (SCRIPTS_DIR / "05_forecast_wind_cf_and_curtailment.py").read_text(encoding="utf-8")
+        self.assertIn("class ResidualMLPClassifier:", ml_source)
+        self.assertIn("ResidualMLPClassifier(", s05_source)
+        self.assertIn("cm_mlp", s05_source)
+
+        if importlib.util.find_spec("numpy") and importlib.util.find_spec("scipy"):
+            import numpy as np
+            from ml_models_numpy import LogisticLBFGSModel, ResidualMLPClassifier, compute_roc_auc_fast
+
+            rng = np.random.default_rng(42)
+            X = rng.normal(0.0, 1.0, size=(600, 4))
+            # Fronteira não-linear simples + componente linear
+            logits_true = 1.2 * X[:, 0] + 1.5 * np.tanh(1.8 * X[:, 1] * X[:, 2]) - 0.3
+            y = (logits_true > 0.0).astype(int)
+            X_tr, y_tr = X[:400], y[:400]
+            X_te, y_te = X[400:], y[400:]
+
+            lin = LogisticLBFGSModel(reg_l2=1e-3, max_iter=150).fit(X_tr, y_tr)
+            mlp = ResidualMLPClassifier(hidden_units=12, reg_l2=5e-3, max_iter=150, seed=42).fit(X_tr, y_tr)
+            auc_lin = compute_roc_auc_fast(y_te, lin.predict_proba(X_te))
+            auc_mlp = compute_roc_auc_fast(y_te, mlp.predict_proba(X_te))
+            self.assertGreater(auc_mlp, auc_lin)
 
     def test_live_report_cross_consistency_when_regenerated_post_passo_2(self) -> None:
         payload = build_ssot_payload()

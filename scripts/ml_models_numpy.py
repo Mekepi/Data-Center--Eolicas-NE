@@ -301,6 +301,131 @@ class ResidualMLPRegressor:
         return y_norm * self.std_y + self.mean_y
 
 
+class ResidualMLPClassifier:
+    """
+    Classificador Neural com Conexão Residual Linear (ResMLP):
+        logit(x) = b_out + X_norm @ w_skip + tanh(X_norm @ W1 + b1) @ w2
+        P(y=1|x) = sigmoid(logit(x))
+    Inicializa (w_skip, b_out) a partir da solução L2 da Regressão Logística e otimiza
+    a entropia cruzada binária regularizada via L-BFGS-B (SciPy), preservando extrapolação
+    monotônica em cenários de expansão de capacidade enquanto captura não-linearidades.
+    """
+
+    def __init__(
+        self,
+        hidden_units: int = 16,
+        reg_l2: float = 5e-3,
+        reg_l2_skip: float = 1e-3,
+        max_iter: int = 160,
+        subsample_max: int = 35000,
+        seed: int = 42,
+    ):
+        self.hidden_units = hidden_units
+        self.reg_l2 = reg_l2
+        self.reg_l2_skip = reg_l2_skip
+        self.max_iter = max_iter
+        self.subsample_max = subsample_max
+        self.seed = seed
+        self.mean_x: Optional[np.ndarray] = None
+        self.std_x: Optional[np.ndarray] = None
+        self.params_: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = None
+
+    def _unpack(self, theta: np.ndarray, d: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+        h = self.hidden_units
+        idx1 = d * h
+        W1 = theta[:idx1].reshape(d, h)
+        b1 = theta[idx1:idx1 + h]
+        w2 = theta[idx1 + h:idx1 + 2 * h]
+        w_skip = theta[idx1 + 2 * h:idx1 + 2 * h + d]
+        b_out = float(theta[-1])
+        return W1, b1, w2, w_skip, b_out
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "ResidualMLPClassifier":
+        rng = np.random.default_rng(self.seed)
+        X_arr = np.asarray(X, dtype=float)
+        y_arr = (np.asarray(y) > 0.5).astype(float)
+
+        if len(X_arr) > self.subsample_max:
+            recent = int(self.subsample_max * 0.65)
+            older_idx = rng.choice(len(X_arr) - recent, size=self.subsample_max - recent, replace=False)
+            sel = np.concatenate([np.sort(older_idx), np.arange(len(X_arr) - recent, len(X_arr))])
+            X_arr = X_arr[sel]
+            y_arr = y_arr[sel]
+
+        n, d = X_arr.shape
+        h = self.hidden_units
+
+        self.mean_x = np.mean(X_arr, axis=0)
+        self.std_x = np.std(X_arr, axis=0)
+        self.std_x[self.std_x < 1e-9] = 1.0
+        X_norm = (X_arr - self.mean_x) / self.std_x
+        X_bias = np.hstack([np.ones((n, 1)), X_norm])
+
+        # Warm-start do ramo residual linear com a solução logística L2 exata
+        def lin_loss_and_grad(w: np.ndarray) -> Tuple[float, np.ndarray]:
+            z = X_bias @ w
+            prob = expit(z)
+            log_loss = float(np.mean(np.logaddexp(0.0, z) - y_arr * z))
+            l2_pen = 0.5 * self.reg_l2_skip * float(np.sum(w[1:] ** 2))
+            grad = (X_bias.T @ (prob - y_arr)) / n
+            grad[1:] += self.reg_l2_skip * w[1:]
+            return log_loss + l2_pen, grad
+
+        lin_res = minimize(
+            lin_loss_and_grad,
+            np.zeros(d + 1),
+            method="L-BFGS-B",
+            jac=True,
+            options={"maxiter": 150},
+        )
+        b_out_0 = float(lin_res.x[0])
+        w_skip_0 = lin_res.x[1:].copy()
+        W1_0 = rng.normal(0.0, 1.0 / np.sqrt(d), size=(d, h))
+        b1_0 = np.zeros(h)
+        w2_0 = rng.normal(0.0, 0.02, size=h)
+        theta0 = np.concatenate([W1_0.ravel(), b1_0, w2_0, w_skip_0, [b_out_0]])
+
+        def obj_and_grad(theta: np.ndarray) -> Tuple[float, np.ndarray]:
+            W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
+            Z1 = X_norm @ W1 + b1
+            A1 = np.tanh(Z1)
+            logits = b_out + X_norm @ w_skip + A1 @ w2
+            prob = expit(logits)
+
+            log_loss = float(np.mean(np.logaddexp(0.0, logits) - y_arr * logits))
+            pen = 0.5 * self.reg_l2 * float(np.sum(W1 ** 2) + np.sum(w2 ** 2))
+            pen += 0.5 * self.reg_l2_skip * float(np.sum(w_skip ** 2))
+
+            d_logit = (prob - y_arr) / n
+            grad_b_out = float(np.sum(d_logit))
+            grad_w_skip = X_norm.T @ d_logit + self.reg_l2_skip * w_skip
+            grad_w2 = A1.T @ d_logit + self.reg_l2 * w2
+            dA1 = np.outer(d_logit, w2) * (1.0 - A1 ** 2)
+            grad_W1 = X_norm.T @ dA1 + self.reg_l2 * W1
+            grad_b1 = np.sum(dA1, axis=0)
+
+            grad = np.concatenate([grad_W1.ravel(), grad_b1, grad_w2, grad_w_skip, [grad_b_out]])
+            return log_loss + pen, grad
+
+        res = minimize(
+            obj_and_grad,
+            theta0,
+            method="L-BFGS-B",
+            jac=True,
+            options={"maxiter": self.max_iter},
+        )
+        self.params_ = self._unpack(res.x, d)
+        return self
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        if self.params_ is None or self.mean_x is None or self.std_x is None:
+            raise ValueError("ResidualMLPClassifier não treinado.")
+        W1, b1, w2, w_skip, b_out = self.params_
+        X_norm = (np.asarray(X, dtype=float) - self.mean_x) / self.std_x
+        logits = b_out + X_norm @ w_skip + np.tanh(X_norm @ W1 + b1) @ w2
+        return expit(logits)
+
+
 # ============================================================================
 # 4. CHALLENGER NÃO-LINEAR 2: HISTOGRAM GRADIENT BOOSTED TREES (NUMPY PURO)
 # ============================================================================

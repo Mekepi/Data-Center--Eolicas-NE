@@ -9,8 +9,8 @@ Objetivo:
   (Ridge L2) contra Challengers Não-Lineares (Rede Neural ResMLP via L-BFGS-B e Histogram GBDT).
 - Modelo C (Hurdle 2 Estágios): Treinar no regime estrutural real de Constrained-Off do ONS
   dentro da amostra de treino (2023–2024, zero vazamento de 2025) e avaliar de forma cega em 2025:
-    * Estágio C1 (Classificação P(Curtailment > 50 MW)): Logística L-BFGS-B vs. Histogram GBDT Classifier.
-    * Estágio C2 (Volume Cortado E[MWmed]): Ridge L2 vs. ResMLP vs. Histogram GBDT Regressor.
+    * Estágio C1 (Classificação P(Curtailment > 50 MW)): Logística L-BFGS-B vs. ResMLP Classifier vs. Histogram GBDT Classifier.
+    * Estágio C2 (Volume Cortado E[MWmed]): Ridge L2 vs. ResMLP Regressor vs. Histogram GBDT Regressor.
 - Exportar relatórios comparativos completos de 2025 (métricas globais, perfil mensal 12 meses e
   curva média horária 00h–23h Real vs. Predito) para auditoria e visualização na interface.
 """
@@ -28,6 +28,7 @@ from ml_models_numpy import (
     LinearRidgeModel,
     LogisticLBFGSModel,
     ResidualMLPRegressor,
+    ResidualMLPClassifier,
     HistogramGBDTRegressor,
     HistogramGBDTClassifier,
     compute_regression_metrics,
@@ -176,10 +177,16 @@ def evaluate_model_c_curtailment(
     y_te_flag = test_df["flag_curtailment"].to_numpy(dtype=int)
     y_te_vol = test_df["curtailment_mw"].to_numpy(dtype=float)
 
-    # 1. Estágio de Classificação: Logística L-BFGS-B vs. Histogram GBDT Classifier
+    # 1. Estágio de Classificação: Logística L-BFGS-B vs. ResMLP Classifier vs. Histogram GBDT Classifier
     clf_lin = LogisticLBFGSModel(reg_l2=1e-3, max_iter=200).fit(X_tr, y_tr_flag)
     prob_lin = clf_lin.predict_proba(X_te)
     cm_lin = compute_classification_metrics(y_te_flag, prob_lin, threshold=0.45)
+
+    clf_mlp = ResidualMLPClassifier(
+        hidden_units=16, reg_l2=5e-3, reg_l2_skip=1e-3, max_iter=160, seed=42
+    ).fit(X_tr, y_tr_flag)
+    prob_mlp = clf_mlp.predict_proba(X_te)
+    cm_mlp = compute_classification_metrics(y_te_flag, prob_mlp, threshold=0.45)
 
     clf_gbdt = HistogramGBDTClassifier(
         n_estimators=85, learning_rate=0.07, max_depth=4, min_samples_leaf=40
@@ -199,10 +206,10 @@ def evaluate_model_c_curtailment(
     vol_cond_lin = np.clip(reg_lin.predict(X_te), 0.0, g_pot_te)
     pred_vol_lin = np.clip(prob_lin * vol_cond_lin, 0.0, g_pot_te)
 
-    # Challenger Não-Linear 1: Rede Neural ResMLP (treinada diretamente para capturar o joelho max(0, excedente))
+    # Challenger Não-Linear 1: Rede Neural ResMLP Hurdle (ResMLP Classifier * ResMLP Regressor condicional)
     reg_mlp = ResidualMLPRegressor(hidden_units=24, reg_l2=2e-3, max_iter=150, seed=42).fit(X_tr_pos, y_tr_pos)
     vol_cond_mlp = np.clip(reg_mlp.predict(X_te), 0.0, g_pot_te)
-    pred_vol_mlp = np.clip(prob_gbdt * vol_cond_mlp, 0.0, g_pot_te)
+    pred_vol_mlp = np.clip(prob_mlp * vol_cond_mlp, 0.0, g_pot_te)
 
     # Challenger Não-Linear 2: Histogram GBDT Hurdle (GBDT Classifier * GBDT Regressor condicional)
     reg_gbdt = HistogramGBDTRegressor(
@@ -218,9 +225,9 @@ def evaluate_model_c_curtailment(
     for arch_name, family, cm, pred_vol in [
         ("Baseline Linear · Logística + Ridge Hurdle", "Linear", cm_lin, pred_vol_lin),
         (
-            "Challenger Não-Linear · GBDT + Rede Neural ResMLP",
-            "Não-Linear (SciPy + NumPy)",
-            cm_gbdt,
+            "Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2)",
+            "Não-Linear (SciPy L-BFGS-B)",
+            cm_mlp,
             pred_vol_mlp,
         ),
         (
@@ -254,6 +261,7 @@ def evaluate_model_c_curtailment(
 
     preds_c = {
         "prob_lin": prob_lin,
+        "prob_mlp": prob_mlp,
         "prob_gbdt": prob_gbdt,
         "vol_lin": pred_vol_lin,
         "vol_mlp": pred_vol_mlp,
@@ -292,8 +300,8 @@ def export_2025_comparative_profiles(
     comp["pred_cf_nonlin"] = preds_b["gbdt_1h"]
     comp["pred_cf_24h_nonlin"] = preds_b["gbdt_24h"]
     comp["pred_curt_lin_mw"] = preds_c["vol_lin"]
-    comp["pred_curt_nonlin_mw"] = preds_c["vol_gbdt"]
-    comp["pred_curt_prob_nonlin"] = preds_c["prob_gbdt"]
+    comp["pred_curt_nonlin_mw"] = preds_c["vol_mlp"]
+    comp["pred_curt_prob_nonlin"] = preds_c["prob_mlp"]
 
     meses_curtos = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
     monthly_rows = []
