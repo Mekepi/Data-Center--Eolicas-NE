@@ -306,17 +306,17 @@ class ResidualMLPClassifier:
     Classificador Neural com Conexão Residual Linear (ResMLP):
         logit(x) = b_out + X_norm @ w_skip + tanh(X_norm @ W1 + b1) @ w2
         P(y=1|x) = sigmoid(logit(x))
-    Inicializa (w_skip, b_out) a partir da solução L2 da Regressão Logística e otimiza
-    a entropia cruzada binária regularizada via L-BFGS-B (SciPy), preservando extrapolação
-    monotônica em cenários de expansão de capacidade enquanto captura não-linearidades.
+    Inicializa (w_skip, b_out) a partir da solução L2 da Regressão Logística,
+    calcula warm-start Newton-Ridge amortecido em w2 para escapar do ponto de sela
+    (W1=0, w2=0) e otimiza a entropia cruzada binária regularizada via L-BFGS-B.
     """
 
     def __init__(
         self,
         hidden_units: int = 16,
-        reg_l2: float = 5e-3,
+        reg_l2: float = 8e-4,
         reg_l2_skip: float = 1e-3,
-        max_iter: int = 160,
+        max_iter: int = 180,
         subsample_max: int = 35000,
         seed: int = 42,
     ):
@@ -328,6 +328,7 @@ class ResidualMLPClassifier:
         self.seed = seed
         self.mean_x: Optional[np.ndarray] = None
         self.std_x: Optional[np.ndarray] = None
+        self.reg_l2_selected_: Optional[float] = None
         self.params_: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = None
 
     def _unpack(self, theta: np.ndarray, d: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
@@ -340,28 +341,20 @@ class ResidualMLPClassifier:
         b_out = float(theta[-1])
         return W1, b1, w2, w_skip, b_out
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> "ResidualMLPClassifier":
+    def _fit_with_reg(
+        self,
+        X_norm: np.ndarray,
+        y_arr: np.ndarray,
+        reg_l2_val: float,
+        max_iter: int,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
         rng = np.random.default_rng(self.seed)
-        X_arr = np.asarray(X, dtype=float)
-        y_arr = (np.asarray(y) > 0.5).astype(float)
-
-        if len(X_arr) > self.subsample_max:
-            recent = int(self.subsample_max * 0.65)
-            older_idx = rng.choice(len(X_arr) - recent, size=self.subsample_max - recent, replace=False)
-            sel = np.concatenate([np.sort(older_idx), np.arange(len(X_arr) - recent, len(X_arr))])
-            X_arr = X_arr[sel]
-            y_arr = y_arr[sel]
-
-        n, d = X_arr.shape
+        n, d = X_norm.shape
         h = self.hidden_units
-
-        self.mean_x = np.mean(X_arr, axis=0)
-        self.std_x = np.std(X_arr, axis=0)
-        self.std_x[self.std_x < 1e-9] = 1.0
-        X_norm = (X_arr - self.mean_x) / self.std_x
+        w1_reg = 0.15 * reg_l2_val
         X_bias = np.hstack([np.ones((n, 1)), X_norm])
 
-        # Warm-start do ramo residual linear com a solução logística L2 exata
+        # 1. Warm-start do ramo residual linear com a solução logística L2 exata
         def lin_loss_and_grad(w: np.ndarray) -> Tuple[float, np.ndarray]:
             z = X_bias @ w
             prob = expit(z)
@@ -380,10 +373,51 @@ class ResidualMLPClassifier:
         )
         b_out_0 = float(lin_res.x[0])
         w_skip_0 = lin_res.x[1:].copy()
+
+        logits_lin = b_out_0 + X_norm @ w_skip_0
+        prob_lin = expit(logits_lin)
+        obj_lin_pure = (
+            float(np.mean(np.logaddexp(0.0, logits_lin) - y_arr * logits_lin))
+            + 0.5 * self.reg_l2_skip * float(np.sum(w_skip_0 ** 2))
+        )
+
+        # 2. Quebra de simetria + passo Newton-Ridge amortecido sobre os resíduos logísticos
         W1_0 = rng.normal(0.0, 1.0 / np.sqrt(d), size=(d, h))
-        b1_0 = np.zeros(h)
-        w2_0 = rng.normal(0.0, 0.02, size=h)
-        theta0 = np.concatenate([W1_0.ravel(), b1_0, w2_0, w_skip_0, [b_out_0]])
+        b1_0 = rng.uniform(-0.6, 0.6, size=h)
+        H_0 = np.tanh(X_norm @ W1_0 + b1_0)
+        hess_0 = np.maximum(1e-3, prob_lin * (1.0 - prob_lin))
+        gram_h = (H_0.T @ (H_0 * hess_0[:, None])) / n + max(5e-3, 2.0 * reg_l2_val) * np.eye(h)
+        rhs_h = (H_0.T @ (y_arr - prob_lin)) / n
+        w2_base = solve(gram_h, rhs_h, assume_a="pos")
+
+        def eval_obj(theta: np.ndarray) -> float:
+            W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
+            A1 = np.tanh(X_norm @ W1 + b1)
+            logits = b_out + X_norm @ w_skip + A1 @ w2
+            log_loss = float(np.mean(np.logaddexp(0.0, logits) - y_arr * logits))
+            pen = (
+                0.5 * w1_reg * float(np.sum(W1 ** 2))
+                + 0.5 * reg_l2_val * float(np.sum(w2 ** 2))
+                + 0.5 * self.reg_l2_skip * float(np.sum(w_skip ** 2))
+            )
+            return log_loss + pen
+
+        theta0 = None
+        best_theta = None
+        best_obj = float("inf")
+        for damp in (0.6, 0.3, 0.15, 0.05):
+            cand = np.concatenate([W1_0.ravel(), b1_0, damp * w2_base, w_skip_0, [b_out_0]])
+            cand_obj = eval_obj(cand)
+            if cand_obj < best_obj:
+                best_obj = cand_obj
+                best_theta = cand
+            if cand_obj < obj_lin_pure:
+                theta0 = cand
+                break
+        if theta0 is None:
+            theta0 = best_theta if best_theta is not None else np.concatenate(
+                [W1_0.ravel(), b1_0, 0.15 * w2_base, w_skip_0, [b_out_0]]
+            )
 
         def obj_and_grad(theta: np.ndarray) -> Tuple[float, np.ndarray]:
             W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
@@ -393,15 +427,18 @@ class ResidualMLPClassifier:
             prob = expit(logits)
 
             log_loss = float(np.mean(np.logaddexp(0.0, logits) - y_arr * logits))
-            pen = 0.5 * self.reg_l2 * float(np.sum(W1 ** 2) + np.sum(w2 ** 2))
-            pen += 0.5 * self.reg_l2_skip * float(np.sum(w_skip ** 2))
+            pen = (
+                0.5 * w1_reg * float(np.sum(W1 ** 2))
+                + 0.5 * reg_l2_val * float(np.sum(w2 ** 2))
+                + 0.5 * self.reg_l2_skip * float(np.sum(w_skip ** 2))
+            )
 
             d_logit = (prob - y_arr) / n
             grad_b_out = float(np.sum(d_logit))
             grad_w_skip = X_norm.T @ d_logit + self.reg_l2_skip * w_skip
-            grad_w2 = A1.T @ d_logit + self.reg_l2 * w2
+            grad_w2 = A1.T @ d_logit + reg_l2_val * w2
             dA1 = np.outer(d_logit, w2) * (1.0 - A1 ** 2)
-            grad_W1 = X_norm.T @ dA1 + self.reg_l2 * W1
+            grad_W1 = X_norm.T @ dA1 + w1_reg * W1
             grad_b1 = np.sum(dA1, axis=0)
 
             grad = np.concatenate([grad_W1.ravel(), grad_b1, grad_w2, grad_w_skip, [grad_b_out]])
@@ -412,9 +449,58 @@ class ResidualMLPClassifier:
             theta0,
             method="L-BFGS-B",
             jac=True,
-            options={"maxiter": self.max_iter},
+            options={"maxiter": max_iter},
         )
-        self.params_ = self._unpack(res.x, d)
+        return self._unpack(res.x, d)
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "ResidualMLPClassifier":
+        rng = np.random.default_rng(self.seed)
+        X_arr = np.asarray(X, dtype=float)
+        y_arr = (np.asarray(y) > 0.5).astype(float)
+
+        if len(X_arr) > self.subsample_max:
+            recent = int(self.subsample_max * 0.65)
+            older_idx = rng.choice(len(X_arr) - recent, size=self.subsample_max - recent, replace=False)
+            sel = np.concatenate([np.sort(older_idx), np.arange(len(X_arr) - recent, len(X_arr))])
+            X_arr = X_arr[sel]
+            y_arr = y_arr[sel]
+
+        selected_reg = float(self.reg_l2)
+        n = len(X_arr)
+        # Seleção cronológica interna 80/20 dentro do treino (< 2025, zero vazamento de 2025)
+        if n >= 500:
+            split_idx = int(n * 0.80)
+            X_sub_tr, y_sub_tr = X_arr[:split_idx], y_arr[:split_idx]
+            X_sub_val, y_sub_val = X_arr[split_idx:], y_arr[split_idx:]
+            if np.sum(y_sub_tr == 1) >= 20 and np.sum(y_sub_tr == 0) >= 20 and np.sum(y_sub_val == 1) >= 20 and np.sum(y_sub_val == 0) >= 20:
+                sub_mean = np.mean(X_sub_tr, axis=0)
+                sub_std = np.std(X_sub_tr, axis=0)
+                sub_std[sub_std < 1e-9] = 1.0
+                X_sub_tr_n = (X_sub_tr - sub_mean) / sub_std
+                X_sub_val_n = (X_sub_val - sub_mean) / sub_std
+
+                best_score = (-1.0, float("-inf"), float("-inf"))
+                for cand_reg in (2e-4, 8e-4, 2.5e-3):
+                    params_c = self._fit_with_reg(
+                        X_sub_tr_n, y_sub_tr, reg_l2_val=cand_reg, max_iter=min(120, self.max_iter)
+                    )
+                    W1_c, b1_c, w2_c, w_skip_c, b_out_c = params_c
+                    logits_val = b_out_c + X_sub_val_n @ w_skip_c + np.tanh(X_sub_val_n @ W1_c + b1_c) @ w2_c
+                    prob_val = expit(logits_val)
+                    auc_val = compute_roc_auc_fast(y_sub_val, prob_val)
+                    bce_val = float(np.mean(np.logaddexp(0.0, logits_val) - y_sub_val * logits_val))
+                    brier_val = float(np.mean((prob_val - y_sub_val) ** 2))
+                    score = (round(auc_val, 5), -bce_val, -brier_val)
+                    if score > best_score:
+                        best_score = score
+                        selected_reg = cand_reg
+
+        self.reg_l2_selected_ = selected_reg
+        self.mean_x = np.mean(X_arr, axis=0)
+        self.std_x = np.std(X_arr, axis=0)
+        self.std_x[self.std_x < 1e-9] = 1.0
+        X_norm = (X_arr - self.mean_x) / self.std_x
+        self.params_ = self._fit_with_reg(X_norm, y_arr, reg_l2_val=selected_reg, max_iter=self.max_iter)
         return self
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:

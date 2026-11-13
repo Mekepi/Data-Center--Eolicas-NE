@@ -244,6 +244,7 @@ class TestSyncFrontendSsot(unittest.TestCase):
         ml_source = (SCRIPTS_DIR / "ml_models_numpy.py").read_text(encoding="utf-8")
         s05_source = (SCRIPTS_DIR / "05_forecast_wind_cf_and_curtailment.py").read_text(encoding="utf-8")
         self.assertIn("class ResidualMLPClassifier:", ml_source)
+        self.assertIn("w2_base = solve(", ml_source)
         self.assertIn("ResidualMLPClassifier(", s05_source)
         self.assertIn("cm_mlp", s05_source)
 
@@ -252,15 +253,17 @@ class TestSyncFrontendSsot(unittest.TestCase):
             from ml_models_numpy import LogisticLBFGSModel, ResidualMLPClassifier, compute_roc_auc_fast
 
             rng = np.random.default_rng(42)
-            X = rng.normal(0.0, 1.0, size=(600, 4))
-            # Fronteira não-linear simples + componente linear
-            logits_true = 1.2 * X[:, 0] + 1.5 * np.tanh(1.8 * X[:, 1] * X[:, 2]) - 0.3
+            X = rng.normal(0.0, 1.0, size=(850, 4))
+            # Componente linear dominante (~92% separação) + fronteira não-linear acoplada
+            logits_true = 2.0 * X[:, 0] + 1.5 * np.tanh(1.8 * X[:, 1] * X[:, 2]) - 0.3
             y = (logits_true > 0.0).astype(int)
-            X_tr, y_tr = X[:400], y[:400]
-            X_te, y_te = X[400:], y[400:]
+            X_tr, y_tr = X[:600], y[:600]
+            X_te, y_te = X[600:], y[600:]
 
-            lin = LogisticLBFGSModel(reg_l2=1e-3, max_iter=150).fit(X_tr, y_tr)
-            mlp = ResidualMLPClassifier(hidden_units=12, reg_l2=5e-3, max_iter=150, seed=42).fit(X_tr, y_tr)
+            lin = LogisticLBFGSModel(reg_l2=1e-3, max_iter=180).fit(X_tr, y_tr)
+            mlp = ResidualMLPClassifier(hidden_units=16, reg_l2=8e-4, max_iter=180, seed=42).fit(X_tr, y_tr)
+            self.assertIsNotNone(mlp.params_)
+            self.assertGreater(float(np.max(np.abs(mlp.params_[2]))), 1e-4)
             auc_lin = compute_roc_auc_fast(y_te, lin.predict_proba(X_te))
             auc_mlp = compute_roc_auc_fast(y_te, mlp.predict_proba(X_te))
             self.assertGreater(auc_mlp, auc_lin)

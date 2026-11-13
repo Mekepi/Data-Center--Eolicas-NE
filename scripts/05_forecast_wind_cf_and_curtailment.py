@@ -183,7 +183,7 @@ def evaluate_model_c_curtailment(
     cm_lin = compute_classification_metrics(y_te_flag, prob_lin, threshold=0.45)
 
     clf_mlp = ResidualMLPClassifier(
-        hidden_units=16, reg_l2=5e-3, reg_l2_skip=1e-3, max_iter=160, seed=42
+        hidden_units=16, reg_l2=8e-4, reg_l2_skip=1e-3, max_iter=180, seed=42
     ).fit(X_tr, y_tr_flag)
     prob_mlp = clf_mlp.predict_proba(X_te)
     cm_mlp = compute_classification_metrics(y_te_flag, prob_mlp, threshold=0.45)
