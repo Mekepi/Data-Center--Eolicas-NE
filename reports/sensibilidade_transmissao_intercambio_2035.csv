@@ -1,6 +1,6 @@
 id_config,import_limit_mw,export_limit_mw,descricao_infraestrutura,prob_import_critica_pct,lole_horas_ano,import_p95_mw,curtailment_com_dc_twh,curtailment_sem_dc_twh,curtailment_evitado_dc_gwh,expansao_eolica_compensatoria_gw
-TX-01 (Restrição Severa / Atraso de Obras),5500.0,8000.0,Malha atual sob contingência N-1 sem novos reforços de 500 kV,28.5,146.4,6611.6,26.84,30.92,4080.0,13.85
-TX-02 (Limite Conservador Operativo),6250.0,8750.0,Reforços parciais de compensação síncrona/estática sem novas LTs,16.5,68.2,6611.6,23.62,27.45,3830.0,10.35
-TX-03 (Referência Base PDE / ONS 2035),7000.0,9500.0,"Malha de referência do estudo (Import 7,0 GW / Export 9,5 GW)",9.0,24.4,6611.6,20.66,24.26,3600.0,6.85
-TX-04 (Expansão 500 kV NE–SE/CO Planejada),8000.0,11000.0,Entrada das novas LTs 500 kV Graça Aranha–Silvânia e reforços Chesf,3.5,6.8,6611.6,15.48,18.63,3150.0,2.2
-TX-05 (Bipolo HVDC + Malha 500 kV Completa),9000.0,12500.0,"Expansão plena HVDC Bipolo Nordeste–Sudeste + escoamento de 12,5 GW",1.0,1.2,6611.6,11.12,13.84,2720.0,0.0
+TX-01 (Restrição Severa / Atraso de Obras),5500.0,8000.0,Malha atual sob contingência N-1 sem novos reforços de 500 kV,15.6,125.6,8439.5,13.3,17.72,4413.2,14.0
+TX-02 (Limite Conservador Operativo),6250.0,8750.0,Reforços parciais de compensação síncrona/estática sem novas LTs,11.8,89.1,8439.5,11.52,15.51,3986.3,10.43
+TX-03 (Referência Base PDE / ONS 2035),7000.0,9500.0,"Malha de referência do estudo (Import 7,0 GW / Export 9,5 GW)",9.3,59.4,8439.5,9.93,13.51,3578.1,6.85
+TX-04 (Expansão 500 kV NE–SE/CO Planejada),8000.0,11000.0,Entrada das novas LTs 500 kV Graça Aranha–Silvânia e reforços Chesf,6.6,31.2,8439.5,7.26,10.1,2837.4,2.09
+TX-05 (Bipolo HVDC + Malha 500 kV Completa),9000.0,12500.0,"Expansão plena HVDC Bipolo Nordeste–Sudeste + escoamento de 12,5 GW",3.5,12.9,8439.5,5.2,7.4,2199.6,0.0

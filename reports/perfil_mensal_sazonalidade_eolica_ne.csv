@@ -3,7 +3,7 @@ mes,nome_mes,cf_medio,cf_desvio_padrao,cf_p10,cf_p50_mediana,cf_p90,carga_base_m
 2,Fevereiro,0.34,0.148,0.145,0.334,0.544,11343.7,1316.8,Transição
 3,Março,0.299,0.145,0.107,0.294,0.494,11361.9,473.8,Estação Chuvosa / Calmaria
 4,Abril,0.318,0.147,0.125,0.313,0.511,11073.6,339.3,Estação Chuvosa / Calmaria
-5,Maio,0.411,0.139,0.217,0.423,0.585,10961.3,947.0,Estação Chuvosa / Calmaria
+5,Maio,0.409,0.138,0.217,0.42,0.582,10961.3,779.2,Estação Chuvosa / Calmaria
 6,Junho,0.487,0.131,0.3,0.503,0.645,10578.0,1217.3,Transição
 7,Julho,0.55,0.13,0.359,0.573,0.7,10451.8,1711.6,Transição
 8,Agosto,0.603,0.131,0.422,0.628,0.749,10688.0,2373.1,Safra dos Ventos

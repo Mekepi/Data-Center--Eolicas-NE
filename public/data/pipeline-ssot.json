@@ -27,12 +27,12 @@
     }
   },
   "lineage": {
-    "generatedAtUtc": "2026-11-13T13:44:17Z",
+    "generatedAtUtc": "2026-11-13T13:56:46Z",
     "windowLabel": "2015–2024 (Treino) · 2025 (Teste Cego Out-of-Time)",
     "trainHours": 87476,
     "testHours": 8760,
-    "rawOnsFilesCount": 23,
-    "rawDataTotalMb": 67.35,
+    "rawOnsFilesCount": 24,
+    "rawDataTotalMb": 69.35,
     "yearsCovered": [
       2015,
       2016,
@@ -430,8 +430,8 @@
       "itPowerTotalMW": 180.0,
       "effectiveDemand2035MW": 178.6,
       "sharePct": 5.2,
-      "p95MonteCarloMW": 238.7,
-      "congestionRisk": "Elevado"
+      "p95MonteCarloMW": 206.7,
+      "congestionRisk": "Moderado"
     },
     {
       "substation": "SE Pici",
@@ -441,8 +441,8 @@
       "itPowerTotalMW": 30.0,
       "effectiveDemand2035MW": 31.2,
       "sharePct": 0.9,
-      "p95MonteCarloMW": 238.7,
-      "congestionRisk": "Elevado"
+      "p95MonteCarloMW": 36.2,
+      "congestionRisk": "Baixo"
     },
     {
       "substation": "SE Fortaleza II",
@@ -543,9 +543,9 @@
     {
       "targetVariable": "CF Eólico Potencial (cf_eolica)",
       "groupingFactor": "Mês do Ano (Sazonalidade 12 meses)",
-      "fStatistic": 5166.3,
+      "fStatistic": 5176.56,
       "pValue": 0.0,
-      "etaSquaredPct": 37.13,
+      "etaSquaredPct": 37.18,
       "isSignificantAlpha01": true,
       "technicalInterpretation": "Fortíssima sazonalidade atmosférica: a Safra dos Ventos (Ago-Nov) supera em ~2x a calmaria (Mar-Abr)"
     },
@@ -570,9 +570,9 @@
     {
       "targetVariable": "Curtailment Eólico Real (curtailment_mw · 2023-2025)",
       "groupingFactor": "Faixa Horária do Dia (24 horas)",
-      "fStatistic": 182.0,
+      "fStatistic": 176.02,
       "pValue": 0.0,
-      "etaSquaredPct": 13.74,
+      "etaSquaredPct": 13.35,
       "isSignificantAlpha01": true,
       "technicalInterpretation": "Pico severo de constrained-off entre 09h e 16h pela rampa solar diurna simultânea à geração eólica"
     }
@@ -629,13 +629,13 @@
     {
       "month": 5,
       "monthName": "Maio",
-      "avgCapacityFactor": 0.411,
-      "stdCapacityFactor": 0.139,
+      "avgCapacityFactor": 0.409,
+      "stdCapacityFactor": 0.138,
       "p10CapacityFactor": 0.217,
-      "p50MedianCapacityFactor": 0.423,
-      "p90CapacityFactor": 0.585,
+      "p50MedianCapacityFactor": 0.42,
+      "p90CapacityFactor": 0.582,
       "avgBaseLoadMW": 10961.3,
-      "avgCurtailmentMW": 947.0,
+      "avgCurtailmentMW": 779.2,
       "seasonalRegime": "Estação Chuvosa / Calmaria"
     },
     {
@@ -728,56 +728,56 @@
       "featureName": "l_base_mw_lag_1h",
       "featureDescription": "Demanda de carga base observada na hora anterior (t-1h)",
       "corrBaseLoad": 0.973,
-      "corrWindCF": -0.014,
-      "corrCurtailment": -0.154,
+      "corrWindCF": -0.015,
+      "corrCurtailment": -0.153,
       "roleInModel": "Autoregressiva (Lag)"
     },
     {
       "featureName": "l_base_mw_lag_24h",
       "featureDescription": "Demanda de carga no mesmo horário do dia anterior (t-24h)",
       "corrBaseLoad": 0.865,
-      "corrWindCF": -0.03,
-      "corrCurtailment": -0.059,
+      "corrWindCF": -0.031,
+      "corrCurtailment": -0.058,
       "roleInModel": "Autoregressiva (Lag)"
     },
     {
       "featureName": "l_base_mw_lag_168h",
       "featureDescription": "Demanda no mesmo dia e hora da semana anterior (t-168h)",
       "corrBaseLoad": 0.935,
-      "corrWindCF": -0.009,
-      "corrCurtailment": -0.093,
+      "corrWindCF": -0.01,
+      "corrCurtailment": -0.092,
       "roleInModel": "Autoregressiva (Lag)"
     },
     {
       "featureName": "cf_eolica_lag_1h",
       "featureDescription": "Fator de capacidade potencial observado na hora anterior (t-1h)",
-      "corrBaseLoad": -0.051,
+      "corrBaseLoad": -0.052,
       "corrWindCF": 0.984,
-      "corrCurtailment": 0.426,
+      "corrCurtailment": 0.425,
       "roleInModel": "Autoregressiva (Lag)"
     },
     {
       "featureName": "cf_eolica_lag_24h",
       "featureDescription": "Fator de capacidade potencial no mesmo horário do dia anterior (t-24h)",
-      "corrBaseLoad": -0.02,
+      "corrBaseLoad": -0.021,
       "corrWindCF": 0.82,
-      "corrCurtailment": 0.316,
+      "corrCurtailment": 0.318,
       "roleInModel": "Autoregressiva (Lag)"
     },
     {
       "featureName": "month_sin",
       "featureDescription": "Harmônico anual senoidal de Fourier do mês do ano",
       "corrBaseLoad": 0.042,
-      "corrWindCF": -0.591,
-      "corrCurtailment": -0.305,
+      "corrWindCF": -0.592,
+      "corrCurtailment": -0.309,
       "roleInModel": "Harmônica (Fourier)"
     },
     {
       "featureName": "hour_cos",
       "featureDescription": "Harmônico diurno cossenoidal da hora do dia (24h)",
       "corrBaseLoad": 0.044,
-      "corrWindCF": 0.228,
-      "corrCurtailment": -0.298,
+      "corrWindCF": 0.229,
+      "corrCurtailment": -0.295,
       "roleInModel": "Harmônica (Fourier)"
     },
     {
@@ -785,7 +785,7 @@
       "featureDescription": "Harmônico diurno senoidal da hora do dia (24h)",
       "corrBaseLoad": -0.342,
       "corrWindCF": 0.047,
-      "corrCurtailment": 0.1,
+      "corrCurtailment": 0.098,
       "roleInModel": "Harmônica (Fourier)"
     },
     {
@@ -800,16 +800,16 @@
       "featureName": "faixa_solar_pico",
       "featureDescription": "Janela diurna de radiação solar máxima (10h às 15h)",
       "corrBaseLoad": 0.034,
-      "corrWindCF": -0.203,
-      "corrCurtailment": 0.232,
+      "corrWindCF": -0.204,
+      "corrCurtailment": 0.23,
       "roleInModel": "Calendário"
     },
     {
       "featureName": "excedente_renovavel_mw",
       "featureDescription": "Saldo renovável instantâneo (G_eólica_pot + G_solar - L_base) em MW",
-      "corrBaseLoad": 0.317,
-      "corrWindCF": 0.554,
-      "corrCurtailment": 0.701,
+      "corrBaseLoad": 0.316,
+      "corrWindCF": 0.553,
+      "corrCurtailment": 0.7,
       "roleInModel": "Balanço Físico Exógeno"
     },
     {
@@ -817,7 +817,7 @@
       "featureDescription": "Razão física (G_eólica_pot + G_solar) / L_base no instante t",
       "corrBaseLoad": 0.386,
       "corrWindCF": 0.538,
-      "corrCurtailment": 0.723,
+      "corrCurtailment": 0.722,
       "roleInModel": "Balanço Físico Exógeno"
     },
     {
@@ -825,7 +825,7 @@
       "featureDescription": "Velocidade cúbica equivalente causal v_eq(t-1) ~ cbrt(CF_t-1)",
       "corrBaseLoad": -0.057,
       "corrWindCF": 0.964,
-      "corrCurtailment": 0.386,
+      "corrCurtailment": 0.385,
       "roleInModel": "Não-Linearidade Aerodinâmica"
     },
     {
@@ -852,21 +852,21 @@
       "horizon": "Operativo Curto Prazo (1h-Ahead)",
       "architecture": "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
       "family": "Não-Linear (SciPy L-BFGS-B)",
-      "maeMW": 158.86,
-      "rmseMW": 213.01,
+      "maeMW": 159.61,
+      "rmseMW": 214.03,
       "mapePct": 1.22,
-      "r2Score": 0.9719,
-      "peakHourMaeMW": 169.75
+      "r2Score": 0.9717,
+      "peakHourMaeMW": 166.67
     },
     {
       "horizon": "Operativo Curto Prazo (1h-Ahead)",
       "architecture": "Challenger Não-Linear · Histogram GBDT (Árvores)",
       "family": "Não-Linear (NumPy GBDT)",
-      "maeMW": 186.79,
-      "rmseMW": 255.36,
+      "maeMW": 187.45,
+      "rmseMW": 256.23,
       "mapePct": 1.41,
-      "r2Score": 0.9597,
-      "peakHourMaeMW": 199.47
+      "r2Score": 0.9594,
+      "peakHourMaeMW": 201.99
     },
     {
       "horizon": "Programação Diária (24h Day-Ahead)",
@@ -882,21 +882,21 @@
       "horizon": "Programação Diária (24h Day-Ahead)",
       "architecture": "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
       "family": "Não-Linear (SciPy L-BFGS-B)",
-      "maeMW": 309.4,
-      "rmseMW": 446.24,
-      "mapePct": 2.37,
-      "r2Score": 0.8768,
-      "peakHourMaeMW": 261.84
+      "maeMW": 310.01,
+      "rmseMW": 446.55,
+      "mapePct": 2.38,
+      "r2Score": 0.8766,
+      "peakHourMaeMW": 264.03
     },
     {
       "horizon": "Programação Diária (24h Day-Ahead)",
       "architecture": "Challenger Não-Linear · Histogram GBDT (Árvores)",
       "family": "Não-Linear (NumPy GBDT)",
-      "maeMW": 349.61,
-      "rmseMW": 492.41,
+      "maeMW": 349.47,
+      "rmseMW": 492.05,
       "mapePct": 2.68,
-      "r2Score": 0.85,
-      "peakHourMaeMW": 319.25
+      "r2Score": 0.8502,
+      "peakHourMaeMW": 318.61
     }
   ],
   "modelBBenchmark2025": [
@@ -913,19 +913,19 @@
       "horizon": "Operativo Curto Prazo (1h-Ahead)",
       "architecture": "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
       "family": "Não-Linear (SciPy L-BFGS-B)",
-      "maeCF": 0.0173,
-      "rmseCF": 0.0228,
-      "r2Score": 0.9853,
-      "equivPowerMaeMW": 517.6
+      "maeCF": 0.0172,
+      "rmseCF": 0.0227,
+      "r2Score": 0.9854,
+      "equivPowerMaeMW": 515.7
     },
     {
       "horizon": "Operativo Curto Prazo (1h-Ahead)",
       "architecture": "Challenger Não-Linear · Histogram GBDT (Árvores)",
       "family": "Não-Linear (NumPy GBDT)",
       "maeCF": 0.0203,
-      "rmseCF": 0.0271,
+      "rmseCF": 0.0272,
       "r2Score": 0.9791,
-      "equivPowerMaeMW": 607.2
+      "equivPowerMaeMW": 607.6
     },
     {
       "horizon": "Regime Diário / Sazonal (24h Day-Ahead)",
@@ -933,61 +933,61 @@
       "family": "Linear",
       "maeCF": 0.081,
       "rmseCF": 0.1031,
-      "r2Score": 0.6986,
-      "equivPowerMaeMW": 2422.4
+      "r2Score": 0.6985,
+      "equivPowerMaeMW": 2422.9
     },
     {
       "horizon": "Regime Diário / Sazonal (24h Day-Ahead)",
       "architecture": "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
       "family": "Não-Linear (SciPy L-BFGS-B)",
-      "maeCF": 0.0798,
-      "rmseCF": 0.1018,
-      "r2Score": 0.7058,
-      "equivPowerMaeMW": 2386.5
+      "maeCF": 0.0801,
+      "rmseCF": 0.1022,
+      "r2Score": 0.7039,
+      "equivPowerMaeMW": 2398.0
     },
     {
       "horizon": "Regime Diário / Sazonal (24h Day-Ahead)",
       "architecture": "Challenger Não-Linear · Histogram GBDT (Árvores)",
       "family": "Não-Linear (NumPy GBDT)",
-      "maeCF": 0.0808,
-      "rmseCF": 0.1028,
-      "r2Score": 0.7,
-      "equivPowerMaeMW": 2418.6
+      "maeCF": 0.0806,
+      "rmseCF": 0.1026,
+      "r2Score": 0.7014,
+      "equivPowerMaeMW": 2411.8
     }
   ],
   "modelCBenchmark2025": [
     {
       "architecture": "Baseline Linear · Logística + Ridge Hurdle",
       "family": "Linear",
-      "rocAuc": 0.9296,
-      "brierScore": 0.1053,
-      "f1Score": 0.9035,
-      "maeGlobalMW": 1474.3,
-      "r2Volume": 0.5801,
+      "rocAuc": 0.9289,
+      "brierScore": 0.1208,
+      "f1Score": 0.8863,
+      "maeGlobalMW": 1482.2,
+      "r2Volume": 0.579,
       "realCurtailed2025TWh": 25.7,
-      "predCurtailed2025TWh": 15.48
+      "predCurtailed2025TWh": 15.21
     },
     {
       "architecture": "Challenger Não-Linear · GBDT + Rede Neural ResMLP",
       "family": "Não-Linear (SciPy + NumPy)",
-      "rocAuc": 0.9311,
-      "brierScore": 0.099,
-      "f1Score": 0.9106,
-      "maeGlobalMW": 1317.9,
-      "r2Volume": 0.6876,
+      "rocAuc": 0.9146,
+      "brierScore": 0.1371,
+      "f1Score": 0.8653,
+      "maeGlobalMW": 1353.7,
+      "r2Volume": 0.6694,
       "realCurtailed2025TWh": 25.7,
-      "predCurtailed2025TWh": 17.53
+      "predCurtailed2025TWh": 16.7
     },
     {
       "architecture": "Challenger Não-Linear · Histogram GBDT Hurdle Completo",
       "family": "Não-Linear (NumPy GBDT)",
-      "rocAuc": 0.9311,
-      "brierScore": 0.099,
-      "f1Score": 0.9106,
-      "maeGlobalMW": 1387.6,
-      "r2Volume": 0.6151,
+      "rocAuc": 0.9146,
+      "brierScore": 0.1371,
+      "f1Score": 0.8653,
+      "maeGlobalMW": 1459.2,
+      "r2Volume": 0.5831,
       "realCurtailed2025TWh": 25.7,
-      "predCurtailed2025TWh": 16.14
+      "predCurtailed2025TWh": 15.44
     }
   ],
   "hourlyValidation2025Profile": [
@@ -995,289 +995,289 @@
       "hour": 0,
       "hourLabel": "00h",
       "realLoadMW": 13745.8,
-      "predLoadNonLinearMW": 13714.7,
+      "predLoadNonLinearMW": 13718.4,
       "realWindCfPct": 57.89,
-      "predWindCfNonLinearPct": 57.54,
+      "predWindCfNonLinearPct": 57.59,
       "realSolarMW": 2.1,
       "realCurtailmentMW": 1264.7,
-      "predCurtailmentLinearMW": 1140.3,
-      "predCurtailmentNonLinearMW": 1010.9
+      "predCurtailmentLinearMW": 1098.5,
+      "predCurtailmentNonLinearMW": 992.1
     },
     {
       "hour": 1,
       "hourLabel": "01h",
       "realLoadMW": 13370.1,
-      "predLoadNonLinearMW": 13384.4,
+      "predLoadNonLinearMW": 13387.5,
       "realWindCfPct": 57.2,
-      "predWindCfNonLinearPct": 56.86,
+      "predWindCfNonLinearPct": 56.9,
       "realSolarMW": 2.1,
       "realCurtailmentMW": 1132.0,
-      "predCurtailmentLinearMW": 984.7,
-      "predCurtailmentNonLinearMW": 842.8
+      "predCurtailmentLinearMW": 950.7,
+      "predCurtailmentNonLinearMW": 861.4
     },
     {
       "hour": 2,
       "hourLabel": "02h",
       "realLoadMW": 13078.5,
-      "predLoadNonLinearMW": 13118.4,
+      "predLoadNonLinearMW": 13122.7,
       "realWindCfPct": 56.47,
-      "predWindCfNonLinearPct": 56.27,
+      "predWindCfNonLinearPct": 56.28,
       "realSolarMW": 2.8,
       "realCurtailmentMW": 1063.6,
-      "predCurtailmentLinearMW": 821.4,
-      "predCurtailmentNonLinearMW": 795.2
+      "predCurtailmentLinearMW": 794.5,
+      "predCurtailmentNonLinearMW": 800.0
     },
     {
       "hour": 3,
       "hourLabel": "03h",
       "realLoadMW": 12858.2,
-      "predLoadNonLinearMW": 12904.3,
+      "predLoadNonLinearMW": 12909.4,
       "realWindCfPct": 55.74,
-      "predWindCfNonLinearPct": 55.58,
+      "predWindCfNonLinearPct": 55.62,
       "realSolarMW": 2.7,
       "realCurtailmentMW": 1007.2,
-      "predCurtailmentLinearMW": 718.6,
-      "predCurtailmentNonLinearMW": 746.3
+      "predCurtailmentLinearMW": 695.0,
+      "predCurtailmentNonLinearMW": 768.8
     },
     {
       "hour": 4,
       "hourLabel": "04h",
       "realLoadMW": 12724.8,
-      "predLoadNonLinearMW": 12763.5,
+      "predLoadNonLinearMW": 12767.1,
       "realWindCfPct": 54.96,
-      "predWindCfNonLinearPct": 54.87,
+      "predWindCfNonLinearPct": 54.83,
       "realSolarMW": 11.2,
       "realCurtailmentMW": 982.5,
-      "predCurtailmentLinearMW": 688.9,
-      "predCurtailmentNonLinearMW": 739.4
+      "predCurtailmentLinearMW": 661.6,
+      "predCurtailmentNonLinearMW": 752.4
     },
     {
       "hour": 5,
       "hourLabel": "05h",
       "realLoadMW": 12402.3,
-      "predLoadNonLinearMW": 12461.1,
+      "predLoadNonLinearMW": 12465.9,
       "realWindCfPct": 54.28,
-      "predWindCfNonLinearPct": 53.94,
+      "predWindCfNonLinearPct": 54.0,
       "realSolarMW": 340.4,
       "realCurtailmentMW": 1143.7,
-      "predCurtailmentLinearMW": 934.4,
-      "predCurtailmentNonLinearMW": 904.8
+      "predCurtailmentLinearMW": 896.8,
+      "predCurtailmentNonLinearMW": 884.2
     },
     {
       "hour": 6,
       "hourLabel": "06h",
       "realLoadMW": 12107.1,
-      "predLoadNonLinearMW": 12192.8,
+      "predLoadNonLinearMW": 12198.5,
       "realWindCfPct": 52.73,
-      "predWindCfNonLinearPct": 52.32,
+      "predWindCfNonLinearPct": 52.34,
       "realSolarMW": 2831.1,
       "realCurtailmentMW": 2289.5,
-      "predCurtailmentLinearMW": 1628.4,
-      "predCurtailmentNonLinearMW": 1705.7
+      "predCurtailmentLinearMW": 1590.7,
+      "predCurtailmentNonLinearMW": 1656.6
     },
     {
       "hour": 7,
       "hourLabel": "07h",
       "realLoadMW": 12253.8,
-      "predLoadNonLinearMW": 12332.0,
+      "predLoadNonLinearMW": 12336.6,
       "realWindCfPct": 53.5,
-      "predWindCfNonLinearPct": 52.99,
+      "predWindCfNonLinearPct": 52.85,
       "realSolarMW": 5678.9,
       "realCurtailmentMW": 4355.8,
-      "predCurtailmentLinearMW": 2634.3,
-      "predCurtailmentNonLinearMW": 3057.8
+      "predCurtailmentLinearMW": 2608.1,
+      "predCurtailmentNonLinearMW": 2923.4
     },
     {
       "hour": 8,
       "hourLabel": "08h",
       "realLoadMW": 12545.0,
-      "predLoadNonLinearMW": 12632.3,
+      "predLoadNonLinearMW": 12641.0,
       "realWindCfPct": 54.35,
-      "predWindCfNonLinearPct": 53.7,
+      "predWindCfNonLinearPct": 53.66,
       "realSolarMW": 7220.3,
       "realCurtailmentMW": 6009.6,
-      "predCurtailmentLinearMW": 3444.7,
-      "predCurtailmentNonLinearMW": 3921.5
+      "predCurtailmentLinearMW": 3420.8,
+      "predCurtailmentNonLinearMW": 3753.2
     },
     {
       "hour": 9,
       "hourLabel": "09h",
       "realLoadMW": 12630.5,
-      "predLoadNonLinearMW": 12711.2,
+      "predLoadNonLinearMW": 12719.9,
       "realWindCfPct": 51.38,
-      "predWindCfNonLinearPct": 51.73,
+      "predWindCfNonLinearPct": 51.75,
       "realSolarMW": 8230.1,
       "realCurtailmentMW": 6773.9,
-      "predCurtailmentLinearMW": 3909.4,
-      "predCurtailmentNonLinearMW": 4148.8
+      "predCurtailmentLinearMW": 3882.0,
+      "predCurtailmentNonLinearMW": 3913.2
     },
     {
       "hour": 10,
       "hourLabel": "10h",
       "realLoadMW": 12779.2,
-      "predLoadNonLinearMW": 12857.5,
+      "predLoadNonLinearMW": 12864.9,
       "realWindCfPct": 47.03,
-      "predWindCfNonLinearPct": 47.85,
+      "predWindCfNonLinearPct": 47.82,
       "realSolarMW": 8895.4,
       "realCurtailmentMW": 6775.6,
-      "predCurtailmentLinearMW": 3455.5,
-      "predCurtailmentNonLinearMW": 3807.6
+      "predCurtailmentLinearMW": 3410.7,
+      "predCurtailmentNonLinearMW": 3583.6
     },
     {
       "hour": 11,
       "hourLabel": "11h",
       "realLoadMW": 12779.5,
-      "predLoadNonLinearMW": 12857.7,
+      "predLoadNonLinearMW": 12865.1,
       "realWindCfPct": 42.67,
-      "predWindCfNonLinearPct": 43.79,
+      "predWindCfNonLinearPct": 43.76,
       "realSolarMW": 9275.4,
       "realCurtailmentMW": 6254.5,
-      "predCurtailmentLinearMW": 3311.8,
-      "predCurtailmentNonLinearMW": 3361.2
+      "predCurtailmentLinearMW": 3266.6,
+      "predCurtailmentNonLinearMW": 3200.0
     },
     {
       "hour": 12,
       "hourLabel": "12h",
       "realLoadMW": 12474.1,
-      "predLoadNonLinearMW": 12563.4,
+      "predLoadNonLinearMW": 12573.1,
       "realWindCfPct": 39.64,
-      "predWindCfNonLinearPct": 40.23,
+      "predWindCfNonLinearPct": 40.25,
       "realSolarMW": 9152.1,
       "realCurtailmentMW": 5876.2,
-      "predCurtailmentLinearMW": 3268.9,
-      "predCurtailmentNonLinearMW": 3134.8
+      "predCurtailmentLinearMW": 3236.9,
+      "predCurtailmentNonLinearMW": 2986.5
     },
     {
       "hour": 13,
       "hourLabel": "13h",
       "realLoadMW": 12602.8,
-      "predLoadNonLinearMW": 12702.3,
+      "predLoadNonLinearMW": 12709.8,
       "realWindCfPct": 38.17,
-      "predWindCfNonLinearPct": 38.56,
+      "predWindCfNonLinearPct": 38.63,
       "realSolarMW": 8997.5,
       "realCurtailmentMW": 5197.2,
-      "predCurtailmentLinearMW": 2854.5,
-      "predCurtailmentNonLinearMW": 2836.5
+      "predCurtailmentLinearMW": 2843.0,
+      "predCurtailmentNonLinearMW": 2693.5
     },
     {
       "hour": 14,
       "hourLabel": "14h",
       "realLoadMW": 12900.5,
-      "predLoadNonLinearMW": 12993.5,
+      "predLoadNonLinearMW": 13000.1,
       "realWindCfPct": 38.5,
-      "predWindCfNonLinearPct": 38.23,
+      "predWindCfNonLinearPct": 38.28,
       "realSolarMW": 8329.7,
       "realCurtailmentMW": 4346.8,
-      "predCurtailmentLinearMW": 2317.2,
-      "predCurtailmentNonLinearMW": 2572.9
+      "predCurtailmentLinearMW": 2318.8,
+      "predCurtailmentNonLinearMW": 2402.5
     },
     {
       "hour": 15,
       "hourLabel": "15h",
       "realLoadMW": 13155.8,
-      "predLoadNonLinearMW": 13236.4,
+      "predLoadNonLinearMW": 13246.5,
       "realWindCfPct": 40.21,
-      "predWindCfNonLinearPct": 39.68,
+      "predWindCfNonLinearPct": 39.74,
       "realSolarMW": 6863.7,
       "realCurtailmentMW": 3555.1,
-      "predCurtailmentLinearMW": 1790.6,
-      "predCurtailmentNonLinearMW": 2194.5
+      "predCurtailmentLinearMW": 1791.8,
+      "predCurtailmentNonLinearMW": 2077.1
     },
     {
       "hour": 16,
       "hourLabel": "16h",
       "realLoadMW": 13502.2,
-      "predLoadNonLinearMW": 13507.3,
+      "predLoadNonLinearMW": 13514.8,
       "realWindCfPct": 42.67,
-      "predWindCfNonLinearPct": 42.03,
+      "predWindCfNonLinearPct": 42.01,
       "realSolarMW": 3745.8,
       "realCurtailmentMW": 2461.6,
-      "predCurtailmentLinearMW": 1425.3,
-      "predCurtailmentNonLinearMW": 1436.4
+      "predCurtailmentLinearMW": 1407.4,
+      "predCurtailmentNonLinearMW": 1366.6
     },
     {
       "hour": 17,
       "hourLabel": "17h",
       "realLoadMW": 13832.7,
-      "predLoadNonLinearMW": 13821.1,
+      "predLoadNonLinearMW": 13824.0,
       "realWindCfPct": 44.37,
-      "predWindCfNonLinearPct": 44.03,
+      "predWindCfNonLinearPct": 44.07,
       "realSolarMW": 560.9,
       "realCurtailmentMW": 1243.6,
-      "predCurtailmentLinearMW": 773.3,
-      "predCurtailmentNonLinearMW": 659.4
+      "predCurtailmentLinearMW": 742.0,
+      "predCurtailmentNonLinearMW": 645.8
     },
     {
       "hour": 18,
       "hourLabel": "18h",
       "realLoadMW": 14525.2,
-      "predLoadNonLinearMW": 14434.0,
+      "predLoadNonLinearMW": 14436.1,
       "realWindCfPct": 47.56,
       "predWindCfNonLinearPct": 47.03,
       "realSolarMW": 25.3,
       "realCurtailmentMW": 930.3,
-      "predCurtailmentLinearMW": 579.4,
-      "predCurtailmentNonLinearMW": 617.1
+      "predCurtailmentLinearMW": 546.7,
+      "predCurtailmentNonLinearMW": 571.8
     },
     {
       "hour": 19,
       "hourLabel": "19h",
       "realLoadMW": 14430.6,
-      "predLoadNonLinearMW": 14365.3,
+      "predLoadNonLinearMW": 14369.2,
       "realWindCfPct": 52.4,
-      "predWindCfNonLinearPct": 51.27,
+      "predWindCfNonLinearPct": 51.13,
       "realSolarMW": 7.8,
       "realCurtailmentMW": 1253.1,
-      "predCurtailmentLinearMW": 917.3,
-      "predCurtailmentNonLinearMW": 874.8
+      "predCurtailmentLinearMW": 879.0,
+      "predCurtailmentNonLinearMW": 821.3
     },
     {
       "hour": 20,
       "hourLabel": "20h",
       "realLoadMW": 14321.3,
-      "predLoadNonLinearMW": 14283.0,
+      "predLoadNonLinearMW": 14287.3,
       "realWindCfPct": 55.67,
-      "predWindCfNonLinearPct": 54.78,
+      "predWindCfNonLinearPct": 54.7,
       "realSolarMW": 3.0,
       "realCurtailmentMW": 1617.4,
-      "predCurtailmentLinearMW": 1228.8,
-      "predCurtailmentNonLinearMW": 1184.0
+      "predCurtailmentLinearMW": 1184.3,
+      "predCurtailmentNonLinearMW": 1117.6
     },
     {
       "hour": 21,
       "hourLabel": "21h",
       "realLoadMW": 14609.4,
-      "predLoadNonLinearMW": 14469.7,
+      "predLoadNonLinearMW": 14482.7,
       "realWindCfPct": 57.49,
-      "predWindCfNonLinearPct": 56.86,
+      "predWindCfNonLinearPct": 57.0,
       "realSolarMW": 4.0,
       "realCurtailmentMW": 1737.4,
-      "predCurtailmentLinearMW": 1200.4,
-      "predCurtailmentNonLinearMW": 1249.1
+      "predCurtailmentLinearMW": 1150.4,
+      "predCurtailmentNonLinearMW": 1191.1
     },
     {
       "hour": 22,
       "hourLabel": "22h",
       "realLoadMW": 14570.8,
-      "predLoadNonLinearMW": 14422.7,
+      "predLoadNonLinearMW": 14434.9,
       "realWindCfPct": 58.31,
-      "predWindCfNonLinearPct": 57.89,
+      "predWindCfNonLinearPct": 57.85,
       "realSolarMW": 3.9,
       "realCurtailmentMW": 1663.2,
-      "predCurtailmentLinearMW": 1186.2,
-      "predCurtailmentNonLinearMW": 1240.5
+      "predCurtailmentLinearMW": 1135.5,
+      "predCurtailmentNonLinearMW": 1185.7
     },
     {
       "hour": 23,
       "hourLabel": "23h",
       "realLoadMW": 14204.5,
-      "predLoadNonLinearMW": 14135.7,
+      "predLoadNonLinearMW": 14142.3,
       "realWindCfPct": 58.35,
-      "predWindCfNonLinearPct": 58.23,
+      "predWindCfNonLinearPct": 58.24,
       "realSolarMW": 3.3,
       "realCurtailmentMW": 1471.1,
-      "predCurtailmentLinearMW": 1201.7,
-      "predCurtailmentNonLinearMW": 1186.8
+      "predCurtailmentLinearMW": 1153.3,
+      "predCurtailmentNonLinearMW": 1162.6
     }
   ],
   "monteCarlo12Scenarios2035": [
@@ -1293,8 +1293,8 @@
       "importP50MW": 1960.1,
       "importP90MW": 5824.8,
       "importP95MW": 7336.3,
-      "curtailmentWithoutDcTWh": 5.44,
-      "curtailmentWithDcTWh": 5.44,
+      "curtailmentWithoutDcTWh": 5.42,
+      "curtailmentWithDcTWh": 5.42,
       "curtailmentAvoidedGWh": 0.0,
       "curtailmentReductionPct": 0.0,
       "compensatoryWindExpansionGW": 1.6
@@ -1311,8 +1311,8 @@
       "importP50MW": 1213.6,
       "importP90MW": 5066.6,
       "importP95MW": 6612.2,
-      "curtailmentWithoutDcTWh": 13.11,
-      "curtailmentWithDcTWh": 13.11,
+      "curtailmentWithoutDcTWh": 13.05,
+      "curtailmentWithDcTWh": 13.05,
       "curtailmentAvoidedGWh": 0.0,
       "curtailmentReductionPct": 0.0,
       "compensatoryWindExpansionGW": 0.0
@@ -1329,8 +1329,8 @@
       "importP50MW": 0.0,
       "importP90MW": 3561.5,
       "importP95MW": 5364.6,
-      "curtailmentWithoutDcTWh": 37.5,
-      "curtailmentWithDcTWh": 37.5,
+      "curtailmentWithoutDcTWh": 37.39,
+      "curtailmentWithDcTWh": 37.39,
       "curtailmentAvoidedGWh": 0.0,
       "curtailmentReductionPct": 0.0,
       "compensatoryWindExpansionGW": 0.0
@@ -1347,9 +1347,9 @@
       "importP50MW": 2577.0,
       "importP90MW": 6415.0,
       "importP95MW": 7924.5,
-      "curtailmentWithoutDcTWh": 5.78,
-      "curtailmentWithDcTWh": 5.16,
-      "curtailmentAvoidedGWh": 627.0,
+      "curtailmentWithoutDcTWh": 5.75,
+      "curtailmentWithDcTWh": 5.13,
+      "curtailmentAvoidedGWh": 621.6,
       "curtailmentReductionPct": 10.8,
       "compensatoryWindExpansionGW": 4.4
     },
@@ -1365,9 +1365,9 @@
       "importP50MW": 1782.9,
       "importP90MW": 5593.8,
       "importP95MW": 7293.9,
-      "curtailmentWithoutDcTWh": 13.59,
-      "curtailmentWithDcTWh": 12.45,
-      "curtailmentAvoidedGWh": 1145.4,
+      "curtailmentWithoutDcTWh": 13.51,
+      "curtailmentWithDcTWh": 12.37,
+      "curtailmentAvoidedGWh": 1138.9,
       "curtailmentReductionPct": 8.4,
       "compensatoryWindExpansionGW": 1.4
     },
@@ -1383,9 +1383,9 @@
       "importP50MW": 514.4,
       "importP90MW": 4148.5,
       "importP95MW": 6006.5,
-      "curtailmentWithoutDcTWh": 37.74,
-      "curtailmentWithDcTWh": 35.65,
-      "curtailmentAvoidedGWh": 2085.6,
+      "curtailmentWithoutDcTWh": 37.57,
+      "curtailmentWithDcTWh": 35.49,
+      "curtailmentAvoidedGWh": 2082.2,
       "curtailmentReductionPct": 5.5,
       "compensatoryWindExpansionGW": 0.0
     },
@@ -1401,10 +1401,10 @@
       "importP50MW": 3692.1,
       "importP90MW": 7506.5,
       "importP95MW": 9030.1,
-      "curtailmentWithoutDcTWh": 5.78,
-      "curtailmentWithDcTWh": 3.87,
-      "curtailmentAvoidedGWh": 1914.5,
-      "curtailmentReductionPct": 33.1,
+      "curtailmentWithoutDcTWh": 5.75,
+      "curtailmentWithDcTWh": 3.86,
+      "curtailmentAvoidedGWh": 1898.5,
+      "curtailmentReductionPct": 33.0,
       "compensatoryWindExpansionGW": 9.67
     },
     {
@@ -1419,9 +1419,9 @@
       "importP50MW": 2900.8,
       "importP90MW": 6698.8,
       "importP95MW": 8439.5,
-      "curtailmentWithoutDcTWh": 13.59,
-      "curtailmentWithDcTWh": 9.99,
-      "curtailmentAvoidedGWh": 3601.5,
+      "curtailmentWithoutDcTWh": 13.51,
+      "curtailmentWithDcTWh": 9.93,
+      "curtailmentAvoidedGWh": 3578.1,
       "curtailmentReductionPct": 26.5,
       "compensatoryWindExpansionGW": 6.85
     },
@@ -1437,10 +1437,10 @@
       "importP50MW": 1641.3,
       "importP90MW": 5264.6,
       "importP95MW": 7106.3,
-      "curtailmentWithoutDcTWh": 37.74,
-      "curtailmentWithDcTWh": 30.94,
-      "curtailmentAvoidedGWh": 6796.1,
-      "curtailmentReductionPct": 18.0,
+      "curtailmentWithoutDcTWh": 37.57,
+      "curtailmentWithDcTWh": 30.79,
+      "curtailmentAvoidedGWh": 6782.2,
+      "curtailmentReductionPct": 18.1,
       "compensatoryWindExpansionGW": 0.5
     },
     {
@@ -1455,10 +1455,10 @@
       "importP50MW": 5462.8,
       "importP90MW": 9307.7,
       "importP95MW": 10835.6,
-      "curtailmentWithoutDcTWh": 5.78,
+      "curtailmentWithoutDcTWh": 5.75,
       "curtailmentWithDcTWh": 2.35,
-      "curtailmentAvoidedGWh": 3433.7,
-      "curtailmentReductionPct": 59.4,
+      "curtailmentAvoidedGWh": 3409.2,
+      "curtailmentReductionPct": 59.2,
       "compensatoryWindExpansionGW": 18.26
     },
     {
@@ -1473,10 +1473,10 @@
       "importP50MW": 4708.7,
       "importP90MW": 8539.0,
       "importP95MW": 10177.2,
-      "curtailmentWithoutDcTWh": 13.59,
-      "curtailmentWithDcTWh": 6.84,
-      "curtailmentAvoidedGWh": 6756.5,
-      "curtailmentReductionPct": 49.7,
+      "curtailmentWithoutDcTWh": 13.51,
+      "curtailmentWithDcTWh": 6.8,
+      "curtailmentAvoidedGWh": 6707.9,
+      "curtailmentReductionPct": 49.6,
       "compensatoryWindExpansionGW": 15.13
     },
     {
@@ -1491,9 +1491,9 @@
       "importP50MW": 3377.7,
       "importP90MW": 7147.6,
       "importP95MW": 8878.3,
-      "curtailmentWithoutDcTWh": 37.74,
-      "curtailmentWithDcTWh": 24.24,
-      "curtailmentAvoidedGWh": 13495.1,
+      "curtailmentWithoutDcTWh": 37.57,
+      "curtailmentWithDcTWh": 24.11,
+      "curtailmentAvoidedGWh": 13459.4,
       "curtailmentReductionPct": 35.8,
       "compensatoryWindExpansionGW": 8.76
     }
@@ -1505,8 +1505,8 @@
       "probExceedInterchangePct": 12.1,
       "loleHoursYear": 90.2,
       "importP95MW": 9030.1,
-      "curtailmentWithDcTWh": 3.87,
-      "curtailmentAvoidedGWh": 1914.5,
+      "curtailmentWithDcTWh": 3.86,
+      "curtailmentAvoidedGWh": 1898.5,
       "remainingExtraWindNeededGW": 9.67
     },
     {
@@ -1515,8 +1515,8 @@
       "probExceedInterchangePct": 11.2,
       "loleHoursYear": 80.0,
       "importP95MW": 8863.6,
-      "curtailmentWithDcTWh": 5.25,
-      "curtailmentAvoidedGWh": 2359.1,
+      "curtailmentWithDcTWh": 5.23,
+      "curtailmentAvoidedGWh": 2339.1,
       "remainingExtraWindNeededGW": 8.87
     },
     {
@@ -1525,8 +1525,8 @@
       "probExceedInterchangePct": 10.2,
       "loleHoursYear": 71.7,
       "importP95MW": 8696.1,
-      "curtailmentWithDcTWh": 6.97,
-      "curtailmentAvoidedGWh": 2848.4,
+      "curtailmentWithDcTWh": 6.94,
+      "curtailmentAvoidedGWh": 2825.4,
       "remainingExtraWindNeededGW": 8.08
     },
     {
@@ -1535,8 +1535,8 @@
       "probExceedInterchangePct": 9.3,
       "loleHoursYear": 59.4,
       "importP95MW": 8439.5,
-      "curtailmentWithDcTWh": 9.99,
-      "curtailmentAvoidedGWh": 3601.5,
+      "curtailmentWithDcTWh": 9.93,
+      "curtailmentAvoidedGWh": 3578.1,
       "remainingExtraWindNeededGW": 6.85
     },
     {
@@ -1545,8 +1545,8 @@
       "probExceedInterchangePct": 8.1,
       "loleHoursYear": 48.9,
       "importP95MW": 8090.8,
-      "curtailmentWithDcTWh": 14.38,
-      "curtailmentAvoidedGWh": 4507.1,
+      "curtailmentWithDcTWh": 14.29,
+      "curtailmentAvoidedGWh": 4486.2,
       "remainingExtraWindNeededGW": 5.19
     },
     {
@@ -1555,8 +1555,8 @@
       "probExceedInterchangePct": 7.1,
       "loleHoursYear": 39.0,
       "importP95MW": 7710.1,
-      "curtailmentWithDcTWh": 22.81,
-      "curtailmentAvoidedGWh": 5813.2,
+      "curtailmentWithDcTWh": 22.69,
+      "curtailmentAvoidedGWh": 5795.0,
       "remainingExtraWindNeededGW": 3.38
     },
     {
@@ -1565,70 +1565,70 @@
       "probExceedInterchangePct": 5.4,
       "loleHoursYear": 26.9,
       "importP95MW": 7106.3,
-      "curtailmentWithDcTWh": 30.94,
-      "curtailmentAvoidedGWh": 6796.1,
+      "curtailmentWithDcTWh": 30.79,
+      "curtailmentAvoidedGWh": 6782.2,
       "remainingExtraWindNeededGW": 0.5
     }
   ],
   "annualRiskTimeline2026_2035": [
     {
       "year": 2026,
-      "dcLoadMW": 185.0,
+      "dcLoadMW": 67.0,
       "windCapacityMW": 29600.0,
       "probExceedInterchangePct": 0.0,
       "loleHoursYear": 0.0,
-      "importP50MW": 481.3,
-      "importP95MW": 3148.7,
-      "curtailmentWithDcTWh": 8.07,
-      "curtailmentAvoidedGWh": 385.0,
+      "importP50MW": 366.0,
+      "importP95MW": 3026.9,
+      "curtailmentWithDcTWh": 8.26,
+      "curtailmentAvoidedGWh": 140.1,
       "compensatoryWindGW": 0.0
     },
     {
       "year": 2027,
-      "dcLoadMW": 492.0,
+      "dcLoadMW": 242.8,
       "windCapacityMW": 30541.2,
       "probExceedInterchangePct": 0.0,
       "loleHoursYear": 0.0,
-      "importP50MW": 871.5,
-      "importP95MW": 3677.6,
-      "curtailmentWithDcTWh": 8.3,
-      "curtailmentAvoidedGWh": 1047.3,
+      "importP50MW": 623.9,
+      "importP95MW": 3421.1,
+      "curtailmentWithDcTWh": 8.77,
+      "curtailmentAvoidedGWh": 525.5,
       "compensatoryWindGW": 0.0
     },
     {
       "year": 2028,
-      "dcLoadMW": 948.0,
+      "dcLoadMW": 580.2,
       "windCapacityMW": 31356.4,
       "probExceedInterchangePct": 0.0,
       "loleHoursYear": 0.0,
-      "importP50MW": 1442.3,
-      "importP95MW": 4537.9,
-      "curtailmentWithDcTWh": 8.07,
-      "curtailmentAvoidedGWh": 2005.2,
+      "importP50MW": 1069.3,
+      "importP95MW": 4175.8,
+      "curtailmentWithDcTWh": 8.75,
+      "curtailmentAvoidedGWh": 1259.5,
       "compensatoryWindGW": 0.0
     },
     {
       "year": 2029,
-      "dcLoadMW": 1345.0,
+      "dcLoadMW": 1124.2,
       "windCapacityMW": 32129.9,
-      "probExceedInterchangePct": 0.4,
-      "loleHoursYear": 0.8,
-      "importP50MW": 1934.5,
-      "importP95MW": 5366.9,
-      "curtailmentWithDcTWh": 7.89,
-      "curtailmentAvoidedGWh": 2824.9,
+      "probExceedInterchangePct": 0.2,
+      "loleHoursYear": 0.3,
+      "importP50MW": 1722.1,
+      "importP95MW": 5145.8,
+      "curtailmentWithDcTWh": 8.26,
+      "curtailmentAvoidedGWh": 2390.0,
       "compensatoryWindGW": 0.0
     },
     {
       "year": 2030,
-      "dcLoadMW": 1522.0,
+      "dcLoadMW": 1501.5,
       "windCapacityMW": 32877.5,
-      "probExceedInterchangePct": 2.0,
-      "loleHoursYear": 4.5,
-      "importP50MW": 2224.4,
-      "importP95MW": 5985.6,
-      "curtailmentWithDcTWh": 8.09,
-      "curtailmentAvoidedGWh": 3219.9,
+      "probExceedInterchangePct": 1.6,
+      "loleHoursYear": 4.2,
+      "importP50MW": 2205.4,
+      "importP95MW": 5965.0,
+      "curtailmentWithDcTWh": 8.08,
+      "curtailmentAvoidedGWh": 3159.9,
       "compensatoryWindGW": 0.0
     },
     {
@@ -1639,8 +1639,8 @@
       "loleHoursYear": 13.1,
       "importP50MW": 2428.3,
       "importP95MW": 6523.0,
-      "curtailmentWithDcTWh": 8.42,
-      "curtailmentAvoidedGWh": 3416.3,
+      "curtailmentWithDcTWh": 8.37,
+      "curtailmentAvoidedGWh": 3393.0,
       "compensatoryWindGW": 0.0
     },
     {
@@ -1651,8 +1651,8 @@
       "loleHoursYear": 22.9,
       "importP50MW": 2571.3,
       "importP95MW": 7009.7,
-      "curtailmentWithDcTWh": 8.86,
-      "curtailmentAvoidedGWh": 3461.2,
+      "curtailmentWithDcTWh": 8.81,
+      "curtailmentAvoidedGWh": 3438.2,
       "compensatoryWindGW": 0.05
     },
     {
@@ -1663,8 +1663,8 @@
       "loleHoursYear": 34.4,
       "importP50MW": 2722.2,
       "importP95MW": 7514.4,
-      "curtailmentWithDcTWh": 9.26,
-      "curtailmentAvoidedGWh": 3493.2,
+      "curtailmentWithDcTWh": 9.21,
+      "curtailmentAvoidedGWh": 3470.5,
       "compensatoryWindGW": 2.45
     },
     {
@@ -1675,8 +1675,8 @@
       "loleHoursYear": 48.2,
       "importP50MW": 2875.1,
       "importP95MW": 8037.4,
-      "curtailmentWithDcTWh": 9.63,
-      "curtailmentAvoidedGWh": 3513.2,
+      "curtailmentWithDcTWh": 9.57,
+      "curtailmentAvoidedGWh": 3490.7,
       "compensatoryWindGW": 4.94
     },
     {
@@ -1687,8 +1687,8 @@
       "loleHoursYear": 66.4,
       "importP50MW": 3035.8,
       "importP95MW": 8579.2,
-      "curtailmentWithDcTWh": 9.96,
-      "curtailmentAvoidedGWh": 3522.3,
+      "curtailmentWithDcTWh": 9.9,
+      "curtailmentAvoidedGWh": 3499.9,
       "compensatoryWindGW": 7.52
     }
   ],
@@ -1698,38 +1698,38 @@
       "importLimitMW": 5500.0,
       "exportLimitMW": 8000.0,
       "infrastructureDescription": "Malha atual sob contingência N-1 sem novos reforços de 500 kV",
-      "probCriticalImportPct": 28.5,
-      "loleHoursYear": 146.4,
-      "importP95MW": 6611.6,
-      "curtailmentWithDcTWh": 26.84,
-      "curtailmentWithoutDcTWh": 30.92,
-      "curtailmentAvoidedGWh": 4080.0,
-      "compensatoryWindGW": 13.85
+      "probCriticalImportPct": 15.6,
+      "loleHoursYear": 125.6,
+      "importP95MW": 8439.5,
+      "curtailmentWithDcTWh": 13.3,
+      "curtailmentWithoutDcTWh": 17.72,
+      "curtailmentAvoidedGWh": 4413.2,
+      "compensatoryWindGW": 14.0
     },
     {
       "configId": "TX-02 (Limite Conservador Operativo)",
       "importLimitMW": 6250.0,
       "exportLimitMW": 8750.0,
       "infrastructureDescription": "Reforços parciais de compensação síncrona/estática sem novas LTs",
-      "probCriticalImportPct": 16.5,
-      "loleHoursYear": 68.2,
-      "importP95MW": 6611.6,
-      "curtailmentWithDcTWh": 23.62,
-      "curtailmentWithoutDcTWh": 27.45,
-      "curtailmentAvoidedGWh": 3830.0,
-      "compensatoryWindGW": 10.35
+      "probCriticalImportPct": 11.8,
+      "loleHoursYear": 89.1,
+      "importP95MW": 8439.5,
+      "curtailmentWithDcTWh": 11.52,
+      "curtailmentWithoutDcTWh": 15.51,
+      "curtailmentAvoidedGWh": 3986.3,
+      "compensatoryWindGW": 10.43
     },
     {
       "configId": "TX-03 (Referência Base PDE / ONS 2035)",
       "importLimitMW": 7000.0,
       "exportLimitMW": 9500.0,
       "infrastructureDescription": "Malha de referência do estudo (Import 7,0 GW / Export 9,5 GW)",
-      "probCriticalImportPct": 9.0,
-      "loleHoursYear": 24.4,
-      "importP95MW": 6611.6,
-      "curtailmentWithDcTWh": 20.66,
-      "curtailmentWithoutDcTWh": 24.26,
-      "curtailmentAvoidedGWh": 3600.0,
+      "probCriticalImportPct": 9.3,
+      "loleHoursYear": 59.4,
+      "importP95MW": 8439.5,
+      "curtailmentWithDcTWh": 9.93,
+      "curtailmentWithoutDcTWh": 13.51,
+      "curtailmentAvoidedGWh": 3578.1,
       "compensatoryWindGW": 6.85
     },
     {
@@ -1737,25 +1737,25 @@
       "importLimitMW": 8000.0,
       "exportLimitMW": 11000.0,
       "infrastructureDescription": "Entrada das novas LTs 500 kV Graça Aranha–Silvânia e reforços Chesf",
-      "probCriticalImportPct": 3.5,
-      "loleHoursYear": 6.8,
-      "importP95MW": 6611.6,
-      "curtailmentWithDcTWh": 15.48,
-      "curtailmentWithoutDcTWh": 18.63,
-      "curtailmentAvoidedGWh": 3150.0,
-      "compensatoryWindGW": 2.2
+      "probCriticalImportPct": 6.6,
+      "loleHoursYear": 31.2,
+      "importP95MW": 8439.5,
+      "curtailmentWithDcTWh": 7.26,
+      "curtailmentWithoutDcTWh": 10.1,
+      "curtailmentAvoidedGWh": 2837.4,
+      "compensatoryWindGW": 2.09
     },
     {
       "configId": "TX-05 (Bipolo HVDC + Malha 500 kV Completa)",
       "importLimitMW": 9000.0,
       "exportLimitMW": 12500.0,
       "infrastructureDescription": "Expansão plena HVDC Bipolo Nordeste–Sudeste + escoamento de 12,5 GW",
-      "probCriticalImportPct": 1.0,
-      "loleHoursYear": 1.2,
-      "importP95MW": 6611.6,
-      "curtailmentWithDcTWh": 11.12,
-      "curtailmentWithoutDcTWh": 13.84,
-      "curtailmentAvoidedGWh": 2720.0,
+      "probCriticalImportPct": 3.5,
+      "loleHoursYear": 12.9,
+      "importP95MW": 8439.5,
+      "curtailmentWithDcTWh": 5.2,
+      "curtailmentWithoutDcTWh": 7.4,
+      "curtailmentAvoidedGWh": 2199.6,
       "compensatoryWindGW": 0.0
     }
   ],
@@ -1766,11 +1766,11 @@
       "h2vNominalMW": 0.0,
       "h2vEffectiveAvgMW": 0.0,
       "operatingRegime": "Sem H2V (Isolamento de Data Centers)",
-      "probCriticalImportPct": 9.0,
-      "importP95MW": 6611.6,
-      "remainingCurtailmentTWh": 20.66,
-      "totalAbsorbedCurtailmentTWh": 3.6,
-      "pecemSubstationLoadMW": 1168.5,
+      "probCriticalImportPct": 9.3,
+      "importP95MW": 8439.5,
+      "remainingCurtailmentTWh": 9.93,
+      "totalAbsorbedCurtailmentTWh": 3.58,
+      "pecemSubstationLoadMW": 1768.8,
       "compensatoryWindGW": 6.85
     },
     {
@@ -1779,25 +1779,25 @@
       "h2vNominalMW": 1000.0,
       "h2vEffectiveAvgMW": 920.0,
       "operatingRegime": "Baseload Inflexível (92% contínuo)",
-      "probCriticalImportPct": 18.61,
-      "importP95MW": 7182.0,
-      "remainingCurtailmentTWh": 16.95,
-      "totalAbsorbedCurtailmentTWh": 7.31,
-      "pecemSubstationLoadMW": 1918.5,
-      "compensatoryWindGW": 11.13
+      "probCriticalImportPct": 12.1,
+      "importP95MW": 9359.5,
+      "remainingCurtailmentTWh": 8.22,
+      "totalAbsorbedCurtailmentTWh": 5.29,
+      "pecemSubstationLoadMW": 2458.8,
+      "compensatoryWindGW": 11.24
     },
     {
       "scenarioId": "H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)",
       "dcLoadMW": 1596.8,
       "h2vNominalMW": 1000.0,
-      "h2vEffectiveAvgMW": 802.4,
+      "h2vEffectiveAvgMW": 726.3,
       "operatingRegime": "Modulação Dinâmica (12% na calmaria / 100% no excedente)",
-      "probCriticalImportPct": 9.94,
-      "importP95MW": 6686.0,
-      "remainingCurtailmentTWh": 15.88,
-      "totalAbsorbedCurtailmentTWh": 8.38,
-      "pecemSubstationLoadMW": 1633.5,
-      "compensatoryWindGW": 7.41
+      "probCriticalImportPct": 9.7,
+      "importP95MW": 8559.5,
+      "remainingCurtailmentTWh": 8.1,
+      "totalAbsorbedCurtailmentTWh": 5.41,
+      "pecemSubstationLoadMW": 2313.5,
+      "compensatoryWindGW": 7.43
     },
     {
       "scenarioId": "H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)",
@@ -1805,25 +1805,25 @@
       "h2vNominalMW": 2000.0,
       "h2vEffectiveAvgMW": 1840.0,
       "operatingRegime": "Baseload Inflexível (92% contínuo)",
-      "probCriticalImportPct": 28.23,
-      "importP95MW": 7752.4,
-      "remainingCurtailmentTWh": 13.25,
-      "totalAbsorbedCurtailmentTWh": 11.01,
-      "pecemSubstationLoadMW": 2668.5,
-      "compensatoryWindGW": 15.41
+      "probCriticalImportPct": 18.0,
+      "importP95MW": 10279.5,
+      "remainingCurtailmentTWh": 6.75,
+      "totalAbsorbedCurtailmentTWh": 6.77,
+      "pecemSubstationLoadMW": 3148.8,
+      "compensatoryWindGW": 15.62
     },
     {
       "scenarioId": "H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)",
       "dcLoadMW": 1596.8,
       "h2vNominalMW": 2000.0,
-      "h2vEffectiveAvgMW": 1604.9,
+      "h2vEffectiveAvgMW": 1452.7,
       "operatingRegime": "Modulação Dinâmica (12% na calmaria / 100% no excedente)",
-      "probCriticalImportPct": 10.87,
-      "importP95MW": 6760.4,
-      "remainingCurtailmentTWh": 11.1,
-      "totalAbsorbedCurtailmentTWh": 13.16,
-      "pecemSubstationLoadMW": 2098.5,
-      "compensatoryWindGW": 7.97
+      "probCriticalImportPct": 9.9,
+      "importP95MW": 8679.5,
+      "remainingCurtailmentTWh": 6.54,
+      "totalAbsorbedCurtailmentTWh": 6.97,
+      "pecemSubstationLoadMW": 2858.3,
+      "compensatoryWindGW": 8.0
     }
   ],
   "aneelVsOnsWindIndicators2015_2035": [
@@ -1934,8 +1934,8 @@
       "aneelInstalledSharePct": 51.22,
       "onsEffectiveGenSharePct": 61.54,
       "onsEffectiveCfPct": 41.07,
-      "potentialUnconstrainedCfPct": 44.96,
-      "annualCurtailmentLossTWh": 9.39
+      "potentialUnconstrainedCfPct": 44.81,
+      "annualCurtailmentLossTWh": 9.01
     },
     {
       "year": 2025,
@@ -1951,49 +1951,49 @@
     {
       "year": 2028,
       "periodLabel": "Projeção Cenário Central DC + SIGA Interm.",
-      "installedWindGW": 31.8,
-      "totalSubsystemCapGW": 58.6,
-      "aneelInstalledSharePct": 54.27,
-      "onsEffectiveGenSharePct": 67.57,
-      "onsEffectiveCfPct": 40.2,
-      "potentialUnconstrainedCfPct": 44.1,
-      "annualCurtailmentLossTWh": 18.4
+      "installedWindGW": 31.36,
+      "totalSubsystemCapGW": 61.31,
+      "aneelInstalledSharePct": 51.15,
+      "onsEffectiveGenSharePct": 66.14,
+      "onsEffectiveCfPct": 43.07,
+      "potentialUnconstrainedCfPct": 46.25,
+      "annualCurtailmentLossTWh": 8.75
     },
     {
       "year": 2030,
       "periodLabel": "Projeção Cenário Central DC + SIGA Interm.",
-      "installedWindGW": 33.45,
-      "totalSubsystemCapGW": 61.9,
-      "aneelInstalledSharePct": 54.04,
-      "onsEffectiveGenSharePct": 67.28,
-      "onsEffectiveCfPct": 40.65,
-      "potentialUnconstrainedCfPct": 44.3,
-      "annualCurtailmentLossTWh": 19.2
+      "installedWindGW": 32.88,
+      "totalSubsystemCapGW": 63.99,
+      "aneelInstalledSharePct": 51.38,
+      "onsEffectiveGenSharePct": 66.29,
+      "onsEffectiveCfPct": 43.45,
+      "potentialUnconstrainedCfPct": 46.25,
+      "annualCurtailmentLossTWh": 8.08
     },
     {
       "year": 2032,
       "periodLabel": "Projeção Cenário Central DC + SIGA Interm.",
-      "installedWindGW": 34.9,
-      "totalSubsystemCapGW": 65.1,
-      "aneelInstalledSharePct": 53.61,
-      "onsEffectiveGenSharePct": 66.74,
-      "onsEffectiveCfPct": 41.0,
-      "potentialUnconstrainedCfPct": 44.5,
-      "annualCurtailmentLossTWh": 19.95
+      "installedWindGW": 34.32,
+      "totalSubsystemCapGW": 66.59,
+      "aneelInstalledSharePct": 51.54,
+      "onsEffectiveGenSharePct": 66.11,
+      "onsEffectiveCfPct": 43.32,
+      "potentialUnconstrainedCfPct": 46.25,
+      "annualCurtailmentLossTWh": 8.81
     },
     {
       "year": 2035,
       "periodLabel": "Projeção Cenário Central DC + SIGA Interm.",
       "installedWindGW": 36.4,
-      "totalSubsystemCapGW": 69.2,
-      "aneelInstalledSharePct": 52.6,
-      "onsEffectiveGenSharePct": 65.49,
-      "onsEffectiveCfPct": 41.35,
-      "potentialUnconstrainedCfPct": 44.65,
-      "annualCurtailmentLossTWh": 20.66
+      "totalSubsystemCapGW": 70.4,
+      "aneelInstalledSharePct": 51.7,
+      "onsEffectiveGenSharePct": 65.74,
+      "onsEffectiveCfPct": 43.15,
+      "potentialUnconstrainedCfPct": 46.25,
+      "annualCurtailmentLossTWh": 9.9
     }
   ],
-  "passo5FinalExecutiveReportMd": "# Relatório Técnico Consolidado Final — PTC3567 (Grupo 6)\n## Impacto da Expansão de Data Centers e Demanda Elétrica sobre a Geração Eólica no Nordeste (2026–2035)\n\n**Disciplina:** PTC3567 — Ciência dos Dados em Automação e Engenharia (Escola Politécnica da USP)  \n**Subsistema Analisado:** Subsistema Nordeste (SIN — ONS / ANEEL / EPE)  \n**Janela Empírica de Treino e Validação:** 2015–2024 (Treino: 87.476 horas) e 2025 (Validação Out-of-Time Cega: 8.760 horas)  \n**Horizonte Estocástico de Planejamento:** 2026–2035 (Monte Carlo em Blocos Sazonais — 12 Cenários + Sensibilidades)\n\n---\n\n### 1. Resposta Direta à Pergunta Central de Pesquisa\n\n> **Pergunta Central (Seção 1 do Plano Orientador):** *\"Qual o impacto do crescimento da demanda elétrica associado à expansão de data centers sobre a suficiência da geração eólica no Nordeste até 2035, e quanto de expansão eólica seria necessário para compensar esse aumento estrutural de carga?\"*\n\n1. **Impacto Estrutural da Carga Base + Data Centers até 2035:**\n   - A demanda base vegetativa do Subsistema Nordeste cresce de **13.541,8 MW médios em 2025** para **18.003,4 MW médios em 2035** (+3,1% a.a. conforme PDE/EPE).\n   - O pipeline mapeado de **14 projetos nominais de Data Centers no Nordeste** totaliza **3.495 MW de potência de TI** (**4.103 MW de carga máxima na rede** considerando o PUE regional de 1,22 a 1,35).\n   - No **Cenário Central probabilístico (1.596,8 MW médios contínuos na rede em 2035)**, os Data Centers elevam a probabilidade anual de importação crítica acima do limite de intercâmbio ($P(\\text{Import} > 7.000\\text{ MW})$) de **4,50% para 15,50%** caso o parque eólico permaneça congelado em 29,6 GW.\n\n2. **Expansão Eólica Compensatória Exigida ($\\Delta C_{\\text{eólica}}$):**\n   - Devido à **assimetria sazonal severa do vento nordestino** (comprovada via ANOVA com $F = 4.000,19, p < 10^{-16}$, onde o fator de capacidade P10 cai de **44,1% em setembro** para **13,8% em março**) e ao perfil noturno de carga, cada **1,0 MW de carga firme 24/7 de Data Center** exige entre **4,29 MW e 4,42 MW de capacidade eólica onshore adicional** para manter o risco de importação crítica no patamar seguro ($\\le 5\\%$).\n   - **No Cenário Central de Data Centers (1.596,8 MW):**\n     - Com **Eólica Base (29,6 GW)**: são necessários **+13,65 GW eólicos adicionais** (levando o parque a 43,25 GW).\n     - Com **Expansão SIGA Intermediária (36,4 GW, já somando +6,8 GW em construção)**: restam **+6,85 GW eólicos adicionais** para neutralizar o risco operacional na estação chuvosa.\n     - Com **Expansão Alta + Offshore IBAMA pós-2031 (48,0 GW)**: o requisito adicional cai para **0,00 GW** ($P(\\text{Import} > 7\\text{ GW}) = 4,00\\%$), atingindo autossuficiência estatística.\n\n3. **Sinergia Positiva Diurna e Noturna (Absorção de *Constrained-Off* / *Curtailment*):**\n   - Em contrapartida ao estresse nas horas de calmaria, a carga 24/7 dos Data Centers atua como **âncora de absorção local de excedentes renováveis**, evitando o desperdício (*curtailment*) de **3.600 GWh/ano (3,60 TWh/ano)** no Cenário Central e até **7.180 GWh/ano (7,18 TWh/ano)** no Cenário Alto de Data Centers.\n\n---\n\n### 2. Síntese da Validação Cega Out-of-Time em 2025 (Passo 3 — Modelos A, B e C)\n\nTodos os modelos foram implementados em Python utilizando exclusivamente `numpy`, `scipy` e `pandas` (`scripts/ml_models_numpy.py`), comparando arquiteturas **Lineares (Ridge / Logística)** contra arquiteturas **Não-Lineares (`ResidualMLPRegressor` L-BFGS-B e `HistogramGBDT`)**:\n\n| Bloco de Modelagem | Variável Alvo | Melhor Modelo Não-Linear | Baseline Linear | Métrica Principal (Teste Cego 2025 - 8.760 h) | Ganho Não-Linear |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| **Modelo A (Script 04)** | Demanda Base $L_{\\text{base}}(t)$ (1h-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 158,9 MW** · **MAPE = 1,22%** · $R^2 = 0,9719$ | Redução de **24,0%** no erro MAE |\n| **Modelo A (Script 04)** | Demanda Base $L_{\\text{base}}(t)$ (24h Day-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 307,6 MW** · **MAPE = 2,37%** · $R^2 = 0,8891$ | Captura interação térmica × dia útil |\n| **Modelo B (Script 05)** | Fator de Capacidade Potencial $CF_{\\text{pot}}(t)$ (1h) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 0,0173** (517,6 MW) · **$R^2 = 0,9853$** | Captura potência cúbica $v^3$ de Betz |\n| **Modelo C (Script 05)** | *Curtailment* Eólico Real ONS (Hurdle 2 Estágios) | `HistogramGBDT` + `ResMLP` | `Logistic` + `Ridge` | **ROC-AUC = 0,9311** · **Brier = 0,0990** · **F1 = 0,9106** | **$R^2$ Volume = 0,9147** (vs 0,7626 linear) |\n\n---\n\n### 3. Passo 5 · Análise de Sensibilidade à Expansão da Transmissão (Limites de Intercâmbio SIN)\n\nA tabela abaixo demonstra como a expansão das linhas de interligação Nordeste–Sudeste/Centro-Oeste (novas LTs 500 kV e Bipolo HVDC) altera o risco de suprimento e o *curtailment* em 2035 sob o Cenário Central de Data Centers (1.596,8 MW) e Eólica SIGA Intermediária (36,4 GW):\n\n| Configuração de Malha de Transmissão (2035) | Limite Importação (MW) | Limite Exportação (MW) | $P(\\text{Import} > \\text{Limite})$ | Importação P95 (MW) | Curtailment Restante (TWh/ano) | Eólica Extra Req. (GW) |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n| **TX-01 (Restrição Severa / Atraso de Obras)** | 5,500 MW | 8,000 MW | **28.50%** | 6,611.6 MW | 26.84 TWh | **+13.85 GW** |\n| **TX-02 (Limite Conservador Operativo)** | 6,250 MW | 8,750 MW | **16.50%** | 6,611.6 MW | 23.62 TWh | **+10.35 GW** |\n| **TX-03 (Referência Base PDE / ONS 2035)** | 7,000 MW | 9,500 MW | **9.00%** | 6,611.6 MW | 20.66 TWh | **+6.85 GW** |\n| **TX-04 (Expansão 500 kV NE–SE/CO Planejada)** | 8,000 MW | 11,000 MW | **3.50%** | 6,611.6 MW | 15.48 TWh | **+2.20 GW** |\n| **TX-05 (Bipolo HVDC + Malha 500 kV Completa)** | 9,000 MW | 12,500 MW | **1.00%** | 6,611.6 MW | 11.12 TWh | **+0.00 GW** |\n\n---\n\n### 4. Passo 5 · Disputa vs. Sinergia de Rede: Data Centers 24/7 vs. Hidrogênio Verde (H2V) em Pecém e Suape\n\nAtendendo à Seção 10 do Plano Orientador e à Decisão 04 do Grupo 6, avaliamos o efeito da entrada simultânea de eletrolisadores de **Hidrogênio Verde (H2V)** na ZPE do Pecém (CE) e Suape (PE) competindo pelos mesmos barramentos de 500 kV (**SE Pecém II** concentra **51,8%** da carga de Data Centers do NE):\n\n| Cenário de Cargas Eletrointensivas (2035) | Carga DC 24/7 (MW) | Carga H2V Nominal (MW) | Carga H2V Média Efetiva (MW) | $P(\\text{Import} > 7\\text{ GW})$ | Curtailment Absorvido Total (TWh/ano) | Pressão na SE Pecém II 500 kV (MW) | Eólica Extra Req. (GW) |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n| **H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6)** | 1,596.8 MW | 0 MW | 0.0 MW | **9.00%** | **3.60 TWh** | 1,168.5 MW | **+6.85 GW** |\n| **H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)** | 1,596.8 MW | 1,000 MW | 920.0 MW | **18.61%** | **7.31 TWh** | 1,918.5 MW | **+11.13 GW** |\n| **H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)** | 1,596.8 MW | 1,000 MW | 802.4 MW | **9.94%** | **8.38 TWh** | 1,633.5 MW | **+7.41 GW** |\n| **H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)** | 1,596.8 MW | 2,000 MW | 1,840.0 MW | **28.23%** | **11.01 TWh** | 2,668.5 MW | **+15.41 GW** |\n| **H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)** | 1,596.8 MW | 2,000 MW | 1,604.9 MW | **10.87%** | **13.16 TWh** | 2,098.5 MW | **+7.97 GW** |\n\n**Conclusão Operacional sobre H2V vs. Data Centers:**\n- Enquanto os **Data Centers de IA/Cloud** possuem carga estritamente inflexível 24/7 (UPS/SLA Tier III/IV), os **eletrolisadores de H2V** podem e devem ser contratados sob modalidade **flexível / interruptível (*grid-following*)**.\n- Quando 2,0 GW de H2V operam de forma **inflexível 24/7**, o risco de importação crítica salta de **9,00% para 26,40%** e exige **+15,43 GW eólicos extras**. Porém, quando o mesmo H2V de 2,0 GW opera com **modulação dinâmica** (reduzindo a 12% na calmaria noturna e operando a 100% nas horas de vento/sol abundante), ele absorve **8,12 TWh/ano de *curtailment*** com impacto marginal sobre o risco de importação na calmaria (**10,85%**).\n\n---\n\n### 5. Indicadores Separados (Seção 6 do PDF): Capacidade Instalada (ANEEL) vs. Geração Efetiva (ONS)\n\n| Ano | Período / Cenário | Cap. Eólica NE (GW) | Part. na Capacidade Instalada NE (ANEEL %) | Part. na Geração Efetiva NE (ONS %) | CF Potencial s/ Corte (%) | CF Efetivo Verificado ONS (%) | Perda por Curtailment (TWh/ano) |\n| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n| **2015** | Histórico Verificado (ONS/ANEEL) | 4.06 GW | **20.78%** | **22.06%** | 45.05% | 45.05% | 0.00 TWh |\n| **2018** | Histórico Verificado (ONS/ANEEL) | 9.84 GW | **37.89%** | **51.28%** | 45.39% | 45.39% | 0.00 TWh |\n| **2021** | Histórico Verificado (ONS/ANEEL) | 15.25 GW | **46.34%** | **51.76%** | 48.07% | 48.07% | 0.00 TWh |\n| **2023** | Histórico Verificado (ONS/ANEEL) | 22.75 GW | **50.43%** | **61.07%** | 45.69% | 44.00% | 3.36 TWh |\n| **2024** | Histórico Verificado (ONS/ANEEL) | 27.52 GW | **51.22%** | **61.54%** | 44.96% | 41.07% | 9.39 TWh |\n| **2025** | Histórico Verificado (ONS/ANEEL) | 29.91 GW | **51.46%** | **62.41%** | 50.55% | 40.75% | 25.70 TWh |\n| **2028** | Projeção Cenário Central DC + SIGA Interm. | 31.80 GW | **54.27%** | **67.57%** | 44.10% | 40.20% | 18.40 TWh |\n| **2030** | Projeção Cenário Central DC + SIGA Interm. | 33.45 GW | **54.04%** | **67.28%** | 44.30% | 40.65% | 19.20 TWh |\n| **2032** | Projeção Cenário Central DC + SIGA Interm. | 34.90 GW | **53.61%** | **66.74%** | 44.50% | 41.00% | 19.95 TWh |\n| **2035** | Projeção Cenário Central DC + SIGA Interm. | 36.40 GW | **52.60%** | **65.49%** | 44.65% | 41.35% | 20.66 TWh |\n\n---\n\n### 6. Recomendações Finais de Engenharia e Política Energética (Grupo 6)\n\n1. **Contratação Híbrida associada a Armazenamento/Subestações:** A expansão apenas de capacidade eólica onshore apresenta retorno decrescente na ponta noturna de março–maio (cada 1 MW de Data Center requer ~4,3 MW eólicos). A combinação da trajetória **SIGA Intermediária (+6,8 GW onshore)** com **baterias BESS de 4 horas nas subestações de Pecém II e Suape II (~1,2 GW / 4,8 GWh)** ou **eólicas offshore pós-2031** reduz a necessidade de sobre-expansão eólica em mais de 60%.\n2. **Desacoplamento Tarifário/Operativo entre Data Centers (Firme 24/7) e H2V (Flexível):** Novos acessos de Data Centers na SE Pecém II 500 kV (que já concentra 51,8% da demanda de TI projetada) devem ser coordenados com PPAs que remunerem a absorção de *constrained-off* diurno/noturno, enquanto plantas de H2V devem atuar como reserva interruptível para não agravar o déficit nas noites úmidas de fevereiro a maio.\n",
+  "passo5FinalExecutiveReportMd": "# Relatório Técnico Consolidado Final — PTC3567 (Grupo 6)\n## Impacto da Expansão de Data Centers e Demanda Elétrica sobre a Geração Eólica no Nordeste (2026–2035)\n\n**Disciplina:** PTC3567 — Ciência dos Dados em Automação e Engenharia (Escola Politécnica da USP)  \n**Subsistema Analisado:** Subsistema Nordeste (SIN — ONS / ANEEL / EPE)  \n**Janela Empírica de Treino e Validação:** 2015–2024 (Treino: 87.476 horas) e 2025 (Validação Out-of-Time Cega: 8.760 horas)  \n**Horizonte Estocástico de Planejamento:** 2026–2035 (Monte Carlo em Blocos Sazonais — 12 Cenários + Sensibilidades)\n\n---\n\n### 1. Resposta Direta à Pergunta Central de Pesquisa\n\n> **Pergunta Central (Seção 1 do Plano Orientador):** *\"Qual o impacto do crescimento da demanda elétrica associado à expansão de data centers sobre a suficiência da geração eólica no Nordeste até 2035, e quanto de expansão eólica seria necessário para compensar esse aumento estrutural de carga?\"*\n\n1. **Impacto Estrutural da Carga Base + Data Centers até 2035:**\n   - A demanda base vegetativa do Subsistema Nordeste cresce de **13.266,9 MW médios em 2025** para **18.003,4 MW médios em 2035** (+3,1% a.a. conforme PDE/EPE).\n   - O pipeline mapeado de **14 projetos nominais de Data Centers no Nordeste** totaliza **3.495 MW de potência de TI** (**4.268 MW de carga máxima contratada na rede**, com PUE entre 1,18 e 1,32 e regra de não-duplicação quando publicado em potência total de rede).\n   - No **Cenário Central probabilístico (1.596,8 MW médios contínuos na rede em 2035)**, os Data Centers elevam a probabilidade anual de importação crítica acima do limite de intercâmbio ($P(\\text{Import} > 7.000\\text{ MW})$) de **5,8% para 12,1%** caso o parque eólico permaneça congelado em 29,6 GW.\n\n2. **Expansão Eólica Compensatória Exigida ($\\Delta C_{\\text{eólica}}$):**\n   - Devido à **assimetria sazonal severa do vento nordestino** (comprovada via ANOVA com $F = 5.176,56, p < 10^{-16}$, onde o fator de capacidade P10 cai de **44,5% em setembro** para **10,7% em março**) e ao perfil noturno de carga, cada **1,0 MW de carga firme 24/7 de Data Center** exige entre **5,35 MW e 9,38 MW de capacidade eólica onshore adicional** sob o parque base para compensar a perda de margem no P95 em períodos de baixa geração.\n   - **No Cenário Central de Data Centers (1.596,8 MW):**\n     - Com **Eólica Base (29,6 GW)**: são necessários **+9,67 GW eólicos adicionais** (levando o parque a 39,27 GW).\n     - Com **Expansão SIGA Intermediária (36,4 GW, já somando +6,8 GW em construção)**: restam **+6,85 GW eólicos adicionais** para neutralizar o risco operacional no P95.\n     - Com **Expansão Alta + Offshore IBAMA pós-2031 (48,0 GW)**: o requisito adicional cai para **0,50 GW** ($P(\\text{Import} > 7,0\\text{ GW}) = 5,4\\%$), atingindo autossuficiência estatística.\n\n3. **Sinergia Positiva Diurna e Noturna (Absorção de *Constrained-Off* / *Curtailment*):**\n   - Em contrapartida ao estresse nas horas de calmaria, a carga 24/7 dos Data Centers atua como **âncora de absorção local de excedentes renováveis**, evitando o desperdício (*curtailment*) de **3.578 GWh/ano (3,58 TWh/ano)** no Cenário Central e até **6.708 GWh/ano (6,71 TWh/ano)** no Cenário Alto de Data Centers sob expansão SIGA Intermediária.\n\n---\n\n### 2. Síntese da Validação Cega Out-of-Time em 2025 (Passo 3 — Modelos A, B e C)\n\nTodos os modelos foram implementados em Python utilizando exclusivamente `numpy`, `scipy` e `pandas` (`scripts/ml_models_numpy.py`), comparando arquiteturas **Lineares (Ridge / Logística)** contra arquiteturas **Não-Lineares (`ResidualMLPRegressor` L-BFGS-B e `HistogramGBDT`)**:\n\n| Bloco de Modelagem | Variável Alvo | Melhor Modelo Não-Linear | Baseline Linear | Métrica Principal (Teste Cego 2025 - 8.760 h) | Ganho Não-Linear |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| **Modelo A (Script 04)** | Demanda Base $L_{\\text{base}}(t)$ (1h-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 159,6 MW** · **MAPE = 1,22%** · $R^2 = 0,9717$ | Redução de **28,4%** no erro MAE |\n| **Modelo A (Script 04)** | Demanda Base $L_{\\text{base}}(t)$ (24h Day-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 310,0 MW** · **MAPE = 2,38%** · $R^2 = 0,8766$ | Captura interação térmica × dia útil |\n| **Modelo B (Script 05)** | Fator de Capacidade Potencial $CF_{\\text{pot}}(t)$ (1h) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 0,0172** (515,7 MW) · **$R^2 = 0,9854$** | Captura potência cúbica $v^3$ de Betz |\n| **Modelo C (Script 05)** | *Curtailment* Eólico Real ONS (Hurdle 2 Estágios) | `HistogramGBDT` + `ResMLP` | `Logistic` + `Ridge` | **ROC-AUC = 0,9146** · **Brier = 0,1371** · **F1 = 0,8653** | **$R^2$ Volume = 0,6694** (vs 0,5790 linear) |\n\n---\n\n### 3. Passo 5 · Análise de Sensibilidade à Expansão da Transmissão (Limites de Intercâmbio SIN)\n\nA tabela abaixo demonstra como a expansão das linhas de interligação Nordeste–Sudeste/Centro-Oeste (novas LTs 500 kV e Bipolo HVDC) altera o risco de suprimento e o *curtailment* em 2035 sob o Cenário Central de Data Centers (1.596,8 MW) e Eólica SIGA Intermediária (36,4 GW), simulados diretamente pelo motor Block-Bootstrap:\n\n| Configuração de Malha de Transmissão (2035) | Limite Importação (MW) | Limite Exportação (MW) | $P(\\text{Import} > \\text{Limite})$ | Importação P95 (MW) | Curtailment Restante (TWh/ano) | Eólica Extra Req. (GW) |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n| **TX-01 (Restrição Severa / Atraso de Obras)** | 5,500 MW | 8,000 MW | **15.60%** | 8,439.5 MW | 13.30 TWh | **+14.00 GW** |\n| **TX-02 (Limite Conservador Operativo)** | 6,250 MW | 8,750 MW | **11.80%** | 8,439.5 MW | 11.52 TWh | **+10.43 GW** |\n| **TX-03 (Referência Base PDE / ONS 2035)** | 7,000 MW | 9,500 MW | **9.30%** | 8,439.5 MW | 9.93 TWh | **+6.85 GW** |\n| **TX-04 (Expansão 500 kV NE–SE/CO Planejada)** | 8,000 MW | 11,000 MW | **6.60%** | 8,439.5 MW | 7.26 TWh | **+2.09 GW** |\n| **TX-05 (Bipolo HVDC + Malha 500 kV Completa)** | 9,000 MW | 12,500 MW | **3.50%** | 8,439.5 MW | 5.20 TWh | **+0.00 GW** |\n\n---\n\n### 4. Passo 5 · Disputa vs. Sinergia de Rede: Data Centers 24/7 vs. Hidrogênio Verde (H2V) em Pecém e Suape\n\nAtendendo à Seção 10 do Plano Orientador e à Decisão 04 do Grupo 6, avaliamos o efeito da entrada simultânea de eletrolisadores de **Hidrogênio Verde (H2V)** na ZPE do Pecém (CE) e Suape (PE) competindo pelos mesmos barramentos de 500 kV (**SE Pecém II** concentra **51,8%** da carga de Data Centers do NE):\n\n| Cenário de Cargas Eletrointensivas (2035) | Carga DC 24/7 (MW) | Carga H2V Nominal (MW) | Carga H2V Média Efetiva (MW) | $P(\\text{Import} > 7,0\\text{ GW})$ | Curtailment Absorvido Total (TWh/ano) | Pressão na SE Pecém II 500 kV (MW) | Eólica Extra Req. (GW) |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n| **H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6)** | 1,596.8 MW | 0 MW | 0.0 MW | **9.30%** | **3.58 TWh** | 1,768.8 MW | **+6.85 GW** |\n| **H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)** | 1,596.8 MW | 1,000 MW | 920.0 MW | **12.10%** | **5.29 TWh** | 2,458.8 MW | **+11.24 GW** |\n| **H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)** | 1,596.8 MW | 1,000 MW | 726.3 MW | **9.70%** | **5.41 TWh** | 2,313.5 MW | **+7.43 GW** |\n| **H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)** | 1,596.8 MW | 2,000 MW | 1,840.0 MW | **18.00%** | **6.77 TWh** | 3,148.8 MW | **+15.62 GW** |\n| **H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)** | 1,596.8 MW | 2,000 MW | 1,452.7 MW | **9.90%** | **6.97 TWh** | 2,858.3 MW | **+8.00 GW** |\n\n**Conclusão Operacional sobre H2V vs. Data Centers:**\n- Enquanto os **Data Centers de IA/Cloud** possuem carga estritamente inflexível 24/7 (UPS/SLA Tier III/IV), os **eletrolisadores de H2V** podem e devem ser contratados sob modalidade **flexível / interruptível (*grid-following*)**.\n- Quando 2,0 GW de H2V operam de forma **inflexível 24/7**, o risco de importação crítica salta de **9,30% para 18,00%** e exige **+15,62 GW eólicos extras**. Porém, quando o mesmo H2V de 2,0 GW opera com **modulação dinâmica** (reduzindo a 12% na calmaria noturna e operando a 100% nas horas de vento/sol abundante), ele absorve **6,97 TWh/ano de *curtailment*** com impacto mitigado sobre o risco de importação na calmaria (**9,90%** e **+8,00 GW extras**).\n\n---\n\n### 5. Indicadores Separados (Seção 6 do PDF): Capacidade Instalada (ANEEL) vs. Geração Efetiva (ONS)\n\n| Ano | Período / Cenário | Cap. Eólica NE (GW) | Part. na Capacidade Instalada NE (ANEEL %) | Part. na Geração Efetiva NE (ONS %) | CF Potencial s/ Corte (%) | CF Efetivo Verificado ONS (%) | Perda por Curtailment (TWh/ano) |\n| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n| **2015** | Histórico Verificado (ONS/ANEEL) | 4.06 GW | **20.78%** | **22.06%** | 45.05% | 45.05% | 0.00 TWh |\n| **2018** | Histórico Verificado (ONS/ANEEL) | 9.84 GW | **37.89%** | **51.28%** | 45.39% | 45.39% | 0.00 TWh |\n| **2021** | Histórico Verificado (ONS/ANEEL) | 15.25 GW | **46.34%** | **51.76%** | 48.07% | 48.07% | 0.00 TWh |\n| **2023** | Histórico Verificado (ONS/ANEEL) | 22.75 GW | **50.43%** | **61.07%** | 45.69% | 44.00% | 3.36 TWh |\n| **2024** | Histórico Verificado (ONS/ANEEL) | 27.52 GW | **51.22%** | **61.54%** | 44.81% | 41.07% | 9.01 TWh |\n| **2025** | Histórico Verificado (ONS/ANEEL) | 29.91 GW | **51.46%** | **62.41%** | 50.55% | 40.75% | 25.70 TWh |\n| **2028** | Projeção Cenário Central DC + SIGA Interm. | 31.36 GW | **51.15%** | **66.14%** | 46.25% | 43.07% | 8.75 TWh |\n| **2030** | Projeção Cenário Central DC + SIGA Interm. | 32.88 GW | **51.38%** | **66.29%** | 46.25% | 43.45% | 8.08 TWh |\n| **2032** | Projeção Cenário Central DC + SIGA Interm. | 34.32 GW | **51.54%** | **66.11%** | 46.25% | 43.32% | 8.81 TWh |\n| **2035** | Projeção Cenário Central DC + SIGA Interm. | 36.40 GW | **51.70%** | **65.74%** | 46.25% | 43.15% | 9.90 TWh |\n\n---\n\n### 6. Recomendações Finais de Engenharia e Política Energética (Grupo 6)\n\n1. **Contratação Híbrida associada a Armazenamento/Subestações:** A expansão apenas de capacidade eólica onshore apresenta retorno decrescente na ponta noturna de março–maio (no Cenário Central × SIGA Intermediária, cada 1 MW de Data Center ainda requer ~4,29 MW eólicos adicionais para zerar o déficit no P95). A combinação da trajetória **SIGA Intermediária (+6,8 GW onshore)** com **baterias BESS de 4 horas nas subestações de Pecém II e Suape II** ou **eólicas offshore pós-2031** reduz substancialmente a necessidade de sobre-expansão eólica.\n2. **Desacoplamento Tarifário/Operativo entre Data Centers (Firme 24/7) e H2V (Flexível):** Novos acessos de Data Centers na SE Pecém II 500 kV (que já concentra 51,8% da demanda efetiva projetada em 2035) devem ser coordenados com PPAs que remunerem a absorção de *constrained-off* diurno/noturno, enquanto plantas de H2V devem atuar como reserva interruptível para não agravar o déficit nas noites úmidas de fevereiro a maio.\n",
   "scriptsPipeline": [
     {
       "id": "script-01",
@@ -2114,8 +2114,8 @@
         "data/processed/predicoes_2025_modelo_a.csv"
       ],
       "keyDecisionsForGroup": [
-        "ResMLP (L-BFGS-B) alcançou MAE = 158.86 MW, MAPE = 1.22% e R² = 0.9719 em 1h-Ahead (2025).",
-        "No horizonte Day-Ahead 24h sem lags recentes, o ResMLP alcançou MAPE = 2.37% (MAE = 309.40 MW, R² = 0.8768)."
+        "ResMLP (L-BFGS-B) alcançou MAE = 159.61 MW, MAPE = 1.22% e R² = 0.9717 em 1h-Ahead (2025).",
+        "No horizonte Day-Ahead 24h sem lags recentes, o ResMLP alcançou MAPE = 2.38% (MAE = 310.01 MW, R² = 0.8766)."
       ],
       "starterCode": "\"\"\"\n04_forecast_demanda_base.py\nEtapa 04: Modelo A - Previsão da Carga Base Horária do Nordeste L_base(t)\nPTC3567 · Ciência dos Dados em Automação e Engenharia · Grupo 6\n\nObjetivo:\n- Treinar o Modelo A estritamente no histórico 2015–2024 (87.476 horas) e validar de forma cega\n  out-of-time em todas as 8.760 horas de 2025 (conforme protocolo aprovado).\n- Comparar modelos lineares e não-lineares implementados puramente em numpy/scipy:\n  1. Baseline Linear: Regressão Ridge L2 (solução fechada analítica).\n  2. Challenger Não-Linear 1: Rede Neural Residual MLP (ativação tanh + skip linear via L-BFGS-B).\n  3. Challenger Não-Linear 2: Histogram GBDT (Gradient Boosted Decision Trees 100% NumPy).\n- Avaliar tanto o horizonte Operativo 1h-Ahead quanto Programação Diária 24h Day-Ahead (sem lag_1h),\n  além de Backtesting Temporal em múltiplos folds paralelos (multiprocessing.Pool).\n- Ancorar a tendência estrutural de longo prazo até 2035 na taxa oficial do PDE/EPE (~3,1% a.a.).\n\"\"\"\n\nimport os\nimport sys\nimport multiprocessing as mp\nfrom typing import Dict, List, Tuple\nimport numpy as np\nimport pandas as pd\n\nfrom config import (\n    PROCESSED_DATA_DIR,\n    REPORTS_DIR,\n)\nfrom ml_models_numpy import (\n    LinearRidgeModel,\n    ResidualMLPRegressor,\n    HistogramGBDTRegressor,\n    compute_regression_metrics,\n)\n\n\nFEATURES_1H_AHEAD = [\n    \"year_trend\",\n    \"hour_sin\",\n    \"hour_cos\",\n    \"hour_sin_2\",\n    \"hour_cos_2\",\n    \"dow_sin\",\n    \"dow_cos\",\n    \"month_sin\",\n    \"month_cos\",\n    \"is_weekend\",\n    \"faixa_ponta\",\n    \"interaction_hour_month\",\n    \"interaction_weekend_hour\",\n    \"l_base_mw_lag_1h\",\n    \"l_base_mw_lag_24h\",\n    \"l_base_mw_lag_168h\",\n    \"l_base_mw_roll_mean_24h\",\n    \"l_base_mw_roll_std_24h\",\n]\n\nFEATURES_24H_DAY_AHEAD = [\n    \"year_trend\",\n    \"hour_sin\",\n    \"hour_cos\",\n    \"hour_sin_2\",\n    \"hour_cos_2\",\n    \"dow_sin\",\n    \"dow_cos\",\n    \"month_sin\",\n    \"month_cos\",\n    \"is_weekend\",\n    \"faixa_ponta\",\n    \"interaction_hour_month\",\n    \"interaction_weekend_hour\",\n    \"l_base_mw_lag_24h\",\n    \"l_base_mw_lag_168h\",\n    \"l_base_mw_roll_mean_d1\",\n    \"l_base_mw_roll_std_d1\",\n]\n\n\ndef _eval_backtest_fold_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Dict[str, float]:\n    \"\"\"Worker paralelo para validação cruzada em janela expansiva (TimeSeriesSplit) no conjunto 2015-2024.\"\"\"\n    fold_idx, X_tr, y_tr, X_val, y_val = args\n\n    ridge = LinearRidgeModel(alpha=10.0).fit(X_tr, y_tr)\n    m_ridge = compute_regression_metrics(y_val, ridge.predict(X_val))\n\n    mlp = ResidualMLPRegressor(hidden_units=20, reg_l2=1e-3, max_iter=100, seed=42 + fold_idx).fit(X_tr, y_tr)\n    m_mlp = compute_regression_metrics(y_val, mlp.predict(X_val))\n\n    return {\n        \"fold\": fold_idx,\n        \"train_hours\": int(len(X_tr)),\n        \"val_hours\": int(len(X_val)),\n        \"ridge_mae_mw\": round(m_ridge[\"mae\"], 2),\n        \"ridge_mape_pct\": round(m_ridge[\"mape_pct\"], 2),\n        \"resmlp_mae_mw\": round(m_mlp[\"mae\"], 2),\n        \"resmlp_mape_pct\": round(m_mlp[\"mape_pct\"], 2),\n    }\n\n\ndef run_expanding_window_backtest(\n    train_df: pd.DataFrame,\n    feature_cols: List[str],\n    target_col: str = \"l_base_mw\",\n    n_splits: int = 4,\n    val_hours: int = 24 * 90,  # Janelas trimestrais (2.160 h) por fold\n) -> pd.DataFrame:\n    \"\"\"Executa TimeSeriesSplit estritamente dentro da base de treino (2015-2024) em paralelo.\"\"\"\n    X_all = train_df[feature_cols].to_numpy(dtype=float)\n    y_all = train_df[target_col].to_numpy(dtype=float)\n    total = len(train_df)\n\n    tasks = []\n    for i in range(n_splits, 0, -1):\n        val_end = total - (i - 1) * val_hours\n        val_start = val_end - val_hours\n        if val_start < 24 * 365:\n            continue\n        fold_num = n_splits - i + 1\n        tasks.append((fold_num, X_all[:val_start], y_all[:val_start], X_all[val_start:val_end], y_all[val_start:val_end]))\n\n    n_workers = max(1, min(len(tasks), os.cpu_count() or 2))\n    with mp.Pool(processes=n_workers) as pool:\n        rows = pool.map(_eval_backtest_fold_worker, tasks)\n    return pd.DataFrame(rows)\n\n\ndef evaluate_models_out_of_time_2025(\n    train_df: pd.DataFrame,\n    test_df: pd.DataFrame,\n) -> Tuple[pd.DataFrame, pd.DataFrame]:\n    \"\"\"\n    Treina os 3 modelos em 2015-2024 e avalia de forma cega em todas as 8.760 horas de 2025,\n    tanto em 1h-Ahead quanto em 24h Day-Ahead.\n    \"\"\"\n    y_train = train_df[\"l_base_mw\"].to_numpy(dtype=float)\n    y_test = test_df[\"l_base_mw\"].to_numpy(dtype=float)\n    ponta_mask = test_df[\"faixa_ponta\"].to_numpy(dtype=int) == 1\n\n    benchmark_rows = []\n    preds_2025 = test_df[[\"ts\", \"month\", \"hour\", \"faixa_ponta\", \"l_base_mw\"]].copy()\n\n    for horizon_name, cand_cols in [\n        (\"Operativo Curto Prazo (1h-Ahead)\", FEATURES_1H_AHEAD),\n        (\"Programação Diária (24h Day-Ahead)\", FEATURES_24H_DAY_AHEAD),\n    ]:\n        feats = [c for c in cand_cols if c in train_df.columns]\n        X_tr = train_df[feats].to_numpy(dtype=float)\n        X_te = test_df[feats].to_numpy(dtype=float)\n\n        models = [\n            (\"Baseline Linear · Ridge L2\", \"Linear\", LinearRidgeModel(alpha=10.0)),\n            (\n                \"Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)\",\n                \"Não-Linear (SciPy L-BFGS-B)\",\n                ResidualMLPRegressor(hidden_units=24, reg_l2=1e-3, max_iter=140, seed=42),\n            ),\n            (\n                \"Challenger Não-Linear · Histogram GBDT (Árvores)\",\n                \"Não-Linear (NumPy GBDT)\",\n                HistogramGBDTRegressor(n_estimators=85, learning_rate=0.08, max_depth=4, min_samples_leaf=45),\n            ),\n        ]\n\n        for model_name, family, est in models:\n            est.fit(X_tr, y_train)\n            y_hat = est.predict(X_te)\n            m = compute_regression_metrics(y_test, y_hat)\n            ponta_mae = float(np.mean(np.abs(y_test[ponta_mask] - y_hat[ponta_mask])))\n\n            benchmark_rows.append({\n                \"etapa\": \"Modelo A - Carga Base NE\",\n                \"horizonte\": horizon_name,\n                \"arquitetura\": model_name,\n                \"familia\": family,\n                \"mae_mw\": round(m[\"mae\"], 2),\n                \"rmse_mw\": round(m[\"rmse\"], 2),\n                \"mape_pct\": round(m[\"mape_pct\"], 2),\n                \"r2_score\": round(m[\"r2\"], 4),\n                \"mae_ponta_18h_21h_mw\": round(ponta_mae, 2),\n                \"treino_horas\": len(train_df),\n                \"teste_2025_horas\": len(test_df),\n            })\n\n            if horizon_name.startswith(\"Operativo\"):\n                if \"Ridge\" in model_name:\n                    preds_2025[\"pred_l_base_ridge_1h_mw\"] = np.round(y_hat, 2)\n                elif \"ResMLP\" in model_name:\n                    preds_2025[\"pred_l_base_resmlp_1h_mw\"] = np.round(y_hat, 2)\n                elif \"GBDT\" in model_name:\n                    preds_2025[\"pred_l_base_gbdt_1h_mw\"] = np.round(y_hat, 2)\n            else:\n                if \"Ridge\" in model_name:\n                    preds_2025[\"pred_l_base_ridge_24h_mw\"] = np.round(y_hat, 2)\n                elif \"ResMLP\" in model_name:\n                    preds_2025[\"pred_l_base_resmlp_24h_mw\"] = np.round(y_hat, 2)\n                elif \"GBDT\" in model_name:\n                    preds_2025[\"pred_l_base_gbdt_24h_mw\"] = np.round(y_hat, 2)\n\n    return pd.DataFrame(benchmark_rows), preds_2025\n\n\ndef project_load_to_2035(\n    base_series_2025: pd.Series,\n    target_year: int = 2035,\n    annual_epe_growth_rate: float = 0.031,\n) -> pd.Series:\n    \"\"\"Ancora a tendência estrutural da demanda base no PDE 2035 da EPE (~3,1% a.a.).\"\"\"\n    years_ahead = max(0, target_year - 2025)\n    factor = (1.0 + annual_epe_growth_rate) ** years_ahead\n    return (base_series_2025 * factor).round(1)\n\n\ndef main():\n    print(\"=\" * 72)\n    print(\"Script 04: Modelo A - Previsão da Carga Base Horária NE (Treino 2015-2024 -> Teste 2025)\")\n    print(\"=\" * 72)\n\n    train_file = PROCESSED_DATA_DIR / \"train_features_2015_2024.csv\"\n    test_file = PROCESSED_DATA_DIR / \"test_features_2025.csv\"\n    if not train_file.exists() or not test_file.exists():\n        print(\"[ERRO] Arquivos de treino/teste não encontrados. Execute primeiro o Script 03.\")\n        sys.exit(1)\n\n    train_df = pd.read_csv(train_file)\n    test_df = pd.read_csv(test_file)\n\n    feats_1h = [c for c in FEATURES_1H_AHEAD if c in train_df.columns]\n    print(f\"[BACKTEST] Executando TimeSeriesSplit paralelo em 2015-2024 ({len(train_df):,} h)...\")\n    bt_df = run_expanding_window_backtest(train_df, feats_1h)\n    bt_df.to_csv(REPORTS_DIR / \"backtest_folds_modelo_a_2015_2024.csv\", index=False)\n    print(bt_df.to_string(index=False))\n\n    print(f\"\\n[TESTE OUT-OF-TIME 2025] Avaliando Baseline Linear vs. Challengers Não-Lineares em {len(test_df):,} h...\")\n    bench_a_df, preds_2025 = evaluate_models_out_of_time_2025(train_df, test_df)\n\n    report_path = REPORTS_DIR / \"metricas_modelo_a_demanda.csv\"\n    bench_a_df.to_csv(report_path, index=False)\n    preds_2025.to_csv(PROCESSED_DATA_DIR / \"predicoes_2025_modelo_a.csv\", index=False)\n\n    print(\"\\nBenchmark Cego Out-of-Time em 2025 — Modelo A (Carga Base NE):\")\n    print(\n        bench_a_df[[\"horizonte\", \"arquitetura\", \"mae_mw\", \"rmse_mw\", \"mape_pct\", \"r2_score\", \"mae_ponta_18h_21h_mw\"]]\n        .to_string(index=False)\n    )\n\n    proj_2035 = project_load_to_2035(test_df[\"l_base_mw\"], target_year=2035)\n    print(\n        f\"\\n[ANCORAGEM EPE PDE 2035] Carga Base Média NE Real 2025: {test_df['l_base_mw'].mean():,.1f} MW -> \"\n        f\"Projeção Estrutural 2035 (sem DCs): {proj_2035.mean():,.1f} MW (Pico: {proj_2035.max():,.1f} MW)\"\n    )\n\n\nif __name__ == \"__main__\":\n    main()\n"
     },
@@ -2144,8 +2144,8 @@
         "reports/perfil_horario_2025_real_vs_predito.csv"
       ],
       "keyDecisionsForGroup": [
-        "Modelo B (ResMLP 1h): R² = 0.9853 e MAE = 0.0173 (517.6 MW equiv.).",
-        "Modelo C Hurdle Não-Linear (GBDT + ResMLP): ROC-AUC = 0.9311, Brier = 0.0990, F1 = 0.9106 e R² Volume = 0.6876."
+        "Modelo B (ResMLP 1h): R² = 0.9854 e MAE = 0.0172 (515.7 MW equiv.).",
+        "Modelo C Hurdle Não-Linear (GBDT + ResMLP): ROC-AUC = 0.9146, Brier = 0.1371, F1 = 0.8653 e R² Volume = 0.6694."
       ],
       "starterCode": "\"\"\"\n05_forecast_wind_cf_and_curtailment.py\nEtapa 05: Modelos B (Fator de Capacidade Eólico Potencial) e C (Curtailment / Constrained-Off)\nPTC3567 · Ciência dos Dados em Automação e Engenharia · Grupo 6\n\nObjetivo:\n- Modelo B: Prever o Fator de Capacidade Eólico potencial CF(t) in [0, 1], treinado em 2015–2024\n  (87.476 horas) e testado out-of-time em todas as 8.760 horas de 2025, comparando Baseline Linear\n  (Ridge L2) contra Challengers Não-Lineares (Rede Neural ResMLP via L-BFGS-B e Histogram GBDT).\n- Modelo C (Hurdle 2 Estágios): Treinar no regime estrutural real de Constrained-Off do ONS\n  dentro da amostra de treino (2023–2024, zero vazamento de 2025) e avaliar de forma cega em 2025:\n    * Estágio C1 (Classificação P(Curtailment > 50 MW)): Logística L-BFGS-B vs. Histogram GBDT Classifier.\n    * Estágio C2 (Volume Cortado E[MWmed]): Ridge L2 vs. ResMLP vs. Histogram GBDT Regressor.\n- Exportar relatórios comparativos completos de 2025 (métricas globais, perfil mensal 12 meses e\n  curva média horária 00h–23h Real vs. Predito) para auditoria e visualização na interface.\n\"\"\"\n\nimport sys\nfrom typing import Dict, List, Tuple\nimport numpy as np\nimport pandas as pd\n\nfrom config import (\n    PROCESSED_DATA_DIR,\n    REPORTS_DIR,\n)\nfrom ml_models_numpy import (\n    LinearRidgeModel,\n    LogisticLBFGSModel,\n    ResidualMLPRegressor,\n    HistogramGBDTRegressor,\n    HistogramGBDTClassifier,\n    compute_regression_metrics,\n    compute_classification_metrics,\n)\n\n\nFEATURES_CF_1H = [\n    \"hour_sin\",\n    \"hour_cos\",\n    \"hour_sin_2\",\n    \"hour_cos_2\",\n    \"month_sin\",\n    \"month_cos\",\n    \"interaction_hour_month\",\n    \"cf_eolica_lag_1h\",\n    \"cf_eolica_lag_24h\",\n    \"cf_eolica_lag_168h\",\n    \"cf_eolica_roll_mean_24h\",\n    \"cf_eolica_roll_std_24h\",\n    \"cf_lag1_squared\",\n    \"cf_lag1_cubed\",\n    \"wind_speed_lag1_approx\",\n]\n\nFEATURES_CF_24H = [\n    \"hour_sin\",\n    \"hour_cos\",\n    \"hour_sin_2\",\n    \"hour_cos_2\",\n    \"month_sin\",\n    \"month_cos\",\n    \"interaction_hour_month\",\n    \"cf_eolica_lag_24h\",\n    \"cf_eolica_lag_168h\",\n    \"cf_eolica_roll_mean_d1\",\n    \"cf_eolica_roll_std_d1\",\n    \"wind_speed_lag24_approx\",\n]\n\n# Features físicas e de calendário do Modelo C (aplicáveis diretamente nos cenários de Monte Carlo 2035)\nFEATURES_CURTAILMENT = [\n    \"hour_sin\",\n    \"hour_cos\",\n    \"hour_sin_2\",\n    \"hour_cos_2\",\n    \"month_sin\",\n    \"month_cos\",\n    \"is_weekend\",\n    \"faixa_solar_pico\",\n    \"faixa_ponta\",\n    \"g_eolica_potencial_mw\",\n    \"g_solar_mw\",\n    \"l_base_mw\",\n    \"excedente_renovavel_mw\",\n    \"razao_renovavel_carga\",\n    \"penetracao_solar\",\n    \"penetracao_eolica_pot\",\n]\n\n\ndef evaluate_model_b_wind_cf(\n    train_df: pd.DataFrame,\n    test_df: pd.DataFrame,\n) -> Tuple[List[Dict[str, object]], Dict[str, np.ndarray]]:\n    \"\"\"Treina Modelo B em 2015-2024 e valida out-of-time em 2025 (1h-Ahead e 24h Day-Ahead).\"\"\"\n    y_train = train_df[\"cf_eolica\"].to_numpy(dtype=float)\n    y_test = test_df[\"cf_eolica\"].to_numpy(dtype=float)\n\n    rows: List[Dict[str, object]] = []\n    preds_map: Dict[str, np.ndarray] = {}\n\n    for horizon_label, cand_cols, key_suffix in [\n        (\"Operativo Curto Prazo (1h-Ahead)\", FEATURES_CF_1H, \"1h\"),\n        (\"Regime Diário / Sazonal (24h Day-Ahead)\", FEATURES_CF_24H, \"24h\"),\n    ]:\n        feats = [c for c in cand_cols if c in train_df.columns]\n        X_tr = train_df[feats].to_numpy(dtype=float)\n        X_te = test_df[feats].to_numpy(dtype=float)\n\n        candidates = [\n            (\"Baseline Linear · Ridge L2\", \"Linear\", LinearRidgeModel(alpha=8.0), f\"ridge_{key_suffix}\"),\n            (\n                \"Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)\",\n                \"Não-Linear (SciPy L-BFGS-B)\",\n                ResidualMLPRegressor(hidden_units=20, reg_l2=1e-3, max_iter=130, seed=42),\n                f\"resmlp_{key_suffix}\",\n            ),\n            (\n                \"Challenger Não-Linear · Histogram GBDT (Árvores)\",\n                \"Não-Linear (NumPy GBDT)\",\n                HistogramGBDTRegressor(n_estimators=80, learning_rate=0.08, max_depth=4, min_samples_leaf=50),\n                f\"gbdt_{key_suffix}\",\n            ),\n        ]\n\n        for arch_name, family, model, tag in candidates:\n            model.fit(X_tr, y_train)\n            y_hat = np.clip(model.predict(X_te), 0.0, 1.0)\n            preds_map[tag] = y_hat\n            m = compute_regression_metrics(y_test, y_hat)\n\n            # Erro equivalente em MW sobre a capacidade instalada real de 2025 (~30,7 GW)\n            cap_2025 = test_df[\"cap_eolica_instalada_mw\"].to_numpy(dtype=float)\n            mae_equiv_mw = float(np.mean(np.abs(y_test - y_hat) * cap_2025))\n\n            rows.append({\n                \"etapa\": \"Modelo B - Fator de Capacidade CF(t)\",\n                \"horizonte\": horizon_label,\n                \"arquitetura\": arch_name,\n                \"familia\": family,\n                \"mae_cf\": round(m[\"mae\"], 4),\n                \"rmse_cf\": round(m[\"rmse\"], 4),\n                \"r2_score\": round(m[\"r2\"], 4),\n                \"mae_potencia_equiv_mw\": round(mae_equiv_mw, 1),\n                \"treino_horas\": len(train_df),\n                \"teste_2025_horas\": len(test_df),\n            })\n\n    return rows, preds_map\n\n\ndef evaluate_model_c_curtailment(\n    train_df: pd.DataFrame,\n    test_df: pd.DataFrame,\n) -> Tuple[List[Dict[str, object]], Dict[str, np.ndarray]]:\n    \"\"\"\n    Avalia o Modelo C (Classificação de Evento > 50 MW + Regressão Hurdle de Volume Cortado MWmed).\n    Treino: janela 2023-2024 (regime real pós-expansão solar/eólica dentro da partição < 2025,\n    especificamente pós-agosto/2023 onde entraram em vigor os limites operativos atuais do ONS,\n    com avaliação cega nas 8.760 horas de 2025).\n    \"\"\"\n    # Usar o regime operativo pós-agosto/2023 dentro do conjunto de treino (< 2025) para evitar viés\n    # de época em que o SIN operava sob outra malha e sem geração solar distribuída relevante\n    ts_train = pd.to_datetime(train_df[\"ts\"])\n    train_coff = train_df[ts_train >= pd.Timestamp(\"2023-09-01\")].reset_index(drop=True)\n    if len(train_coff) < 2000:\n        train_coff = train_df[train_df[\"year\"] >= 2023].reset_index(drop=True)\n\n    feats = [c for c in FEATURES_CURTAILMENT if c in train_coff.columns]\n    X_tr = train_coff[feats].to_numpy(dtype=float)\n    y_tr_flag = train_coff[\"flag_curtailment\"].to_numpy(dtype=int)\n    y_tr_vol = train_coff[\"curtailment_mw\"].to_numpy(dtype=float)\n\n    X_te = test_df[feats].to_numpy(dtype=float)\n    y_te_flag = test_df[\"flag_curtailment\"].to_numpy(dtype=int)\n    y_te_vol = test_df[\"curtailment_mw\"].to_numpy(dtype=float)\n\n    # 1. Estágio de Classificação: Logística L-BFGS-B vs. Histogram GBDT Classifier\n    clf_lin = LogisticLBFGSModel(reg_l2=1e-3, max_iter=200).fit(X_tr, y_tr_flag)\n    prob_lin = clf_lin.predict_proba(X_te)\n    cm_lin = compute_classification_metrics(y_te_flag, prob_lin, threshold=0.45)\n\n    clf_gbdt = HistogramGBDTClassifier(\n        n_estimators=85, learning_rate=0.07, max_depth=4, min_samples_leaf=40\n    ).fit(X_tr, y_tr_flag)\n    prob_gbdt = clf_gbdt.predict_proba(X_te)\n    cm_gbdt = compute_classification_metrics(y_te_flag, prob_gbdt, threshold=0.45)\n\n    # 2. Estágio de Volume Hurdle/Direto: Ridge L2 vs. ResMLP vs. Histogram GBDT\n    # No modelo Hurdle calibrado: E[Corte(t)] = clip(Reg_Positivo(X_t), 0, G_eol_pot) * P(Corte_t)\n    pos_mask_tr = y_tr_flag == 1\n    X_tr_pos = X_tr[pos_mask_tr]\n    y_tr_pos = y_tr_vol[pos_mask_tr]\n    g_pot_te = test_df[\"g_eolica_potencial_mw\"].to_numpy(dtype=float)\n\n    # Baseline Linear Hurdle (Logística + Ridge condicional)\n    reg_lin = LinearRidgeModel(alpha=20.0).fit(X_tr_pos, y_tr_pos)\n    vol_cond_lin = np.clip(reg_lin.predict(X_te), 0.0, g_pot_te)\n    pred_vol_lin = np.clip(prob_lin * vol_cond_lin, 0.0, g_pot_te)\n\n    # Challenger Não-Linear 1: Rede Neural ResMLP (treinada diretamente para capturar o joelho max(0, excedente))\n    reg_mlp = ResidualMLPRegressor(hidden_units=24, reg_l2=2e-3, max_iter=150, seed=42).fit(X_tr_pos, y_tr_pos)\n    vol_cond_mlp = np.clip(reg_mlp.predict(X_te), 0.0, g_pot_te)\n    pred_vol_mlp = np.clip(prob_gbdt * vol_cond_mlp, 0.0, g_pot_te)\n\n    # Challenger Não-Linear 2: Histogram GBDT Hurdle (GBDT Classifier * GBDT Regressor condicional)\n    reg_gbdt = HistogramGBDTRegressor(\n        n_estimators=90, learning_rate=0.07, max_depth=4, min_samples_leaf=35\n    ).fit(X_tr_pos, y_tr_pos)\n    vol_cond_gbdt = np.clip(reg_gbdt.predict(X_te), 0.0, g_pot_te)\n    pred_vol_gbdt = np.clip(prob_gbdt * vol_cond_gbdt, 0.0, g_pot_te)\n\n    real_twh_2025 = float(np.sum(y_te_vol) / 1e6)\n    pos_te = y_te_flag == 1\n\n    rows: List[Dict[str, object]] = []\n    for arch_name, family, cm, pred_vol in [\n        (\"Baseline Linear · Logística + Ridge Hurdle\", \"Linear\", cm_lin, pred_vol_lin),\n        (\n            \"Challenger Não-Linear · GBDT + Rede Neural ResMLP\",\n            \"Não-Linear (SciPy + NumPy)\",\n            cm_gbdt,\n            pred_vol_mlp,\n        ),\n        (\n            \"Challenger Não-Linear · Histogram GBDT Hurdle Completo\",\n            \"Não-Linear (NumPy GBDT)\",\n            cm_gbdt,\n            pred_vol_gbdt,\n        ),\n    ]:\n        rm_all = compute_regression_metrics(y_te_vol, pred_vol)\n        mae_active = float(np.mean(np.abs(y_te_vol[pos_te] - pred_vol[pos_te]))) if np.any(pos_te) else 0.0\n        pred_twh = float(np.sum(pred_vol) / 1e6)\n\n        rows.append({\n            \"etapa\": \"Modelo C - Curtailment Eólico (2 Estágios)\",\n            \"horizonte\": \"Estrutural Físico Horário (Exógeno p/ 2035)\",\n            \"arquitetura\": arch_name,\n            \"familia\": family,\n            \"roc_auc\": cm[\"roc_auc\"],\n            \"brier_score\": cm[\"brier_score\"],\n            \"f1_score\": cm[\"f1_score\"],\n            \"mae_global_mw\": round(rm_all[\"mae\"], 1),\n            \"rmse_global_mw\": round(rm_all[\"rmse\"], 1),\n            \"mae_horas_corte_mw\": round(mae_active, 1),\n            \"r2_volume\": round(rm_all[\"r2\"], 4),\n            \"energia_cortada_real_2025_twh\": round(real_twh_2025, 2),\n            \"energia_cortada_pred_2025_twh\": round(pred_twh, 2),\n            \"treino_horas\": len(train_coff),\n            \"teste_2025_horas\": len(test_df),\n        })\n\n    preds_c = {\n        \"prob_lin\": prob_lin,\n        \"prob_gbdt\": prob_gbdt,\n        \"vol_lin\": pred_vol_lin,\n        \"vol_mlp\": pred_vol_mlp,\n        \"vol_gbdt\": pred_vol_gbdt,\n    }\n    return rows, preds_c\n\n\ndef export_2025_comparative_profiles(\n    test_df: pd.DataFrame,\n    preds_b: Dict[str, np.ndarray],\n    preds_c: Dict[str, np.ndarray],\n) -> None:\n    \"\"\"\n    Consolida os perfis mensais (12 meses) e horários (00h–23h) de 2025 comparando\n    Valores Reais ONS 2025 vs. Baseline Linear vs. Challenger Não-Linear para os Modelos A, B e C.\n    \"\"\"\n    comp = test_df[[\n        \"ts\", \"month\", \"hour\", \"l_base_mw\", \"cf_eolica\", \"g_solar_mw\",\n        \"g_eolica_potencial_mw\", \"curtailment_mw\", \"flag_curtailment\",\n    ]].copy()\n\n    # Integrar predições do Modelo A (se já geradas pelo Script 04)\n    pred_a_path = PROCESSED_DATA_DIR / \"predicoes_2025_modelo_a.csv\"\n    if pred_a_path.exists():\n        pa = pd.read_csv(pred_a_path)\n        comp[\"pred_load_lin_mw\"] = pa[\"pred_l_base_ridge_24h_mw\"].to_numpy(dtype=float)\n        comp[\"pred_load_nonlin_mw\"] = pa[\"pred_l_base_gbdt_24h_mw\"].to_numpy(dtype=float)\n        comp[\"pred_load_1h_nonlin_mw\"] = pa[\"pred_l_base_resmlp_1h_mw\"].to_numpy(dtype=float)\n    else:\n        comp[\"pred_load_lin_mw\"] = comp[\"l_base_mw\"]\n        comp[\"pred_load_nonlin_mw\"] = comp[\"l_base_mw\"]\n        comp[\"pred_load_1h_nonlin_mw\"] = comp[\"l_base_mw\"]\n\n    comp[\"pred_cf_lin\"] = preds_b[\"ridge_1h\"]\n    comp[\"pred_cf_nonlin\"] = preds_b[\"gbdt_1h\"]\n    comp[\"pred_cf_24h_nonlin\"] = preds_b[\"gbdt_24h\"]\n    comp[\"pred_curt_lin_mw\"] = preds_c[\"vol_lin\"]\n    comp[\"pred_curt_nonlin_mw\"] = preds_c[\"vol_gbdt\"]\n    comp[\"pred_curt_prob_nonlin\"] = preds_c[\"prob_gbdt\"]\n\n    meses_curtos = [\"Jan\", \"Fev\", \"Mar\", \"Abr\", \"Mai\", \"Jun\", \"Jul\", \"Ago\", \"Set\", \"Out\", \"Nov\", \"Dez\"]\n    monthly_rows = []\n    for m in range(1, 13):\n        sub = comp[comp[\"month\"] == m]\n        monthly_rows.append({\n            \"mes\": m,\n            \"nome_mes\": meses_curtos[m - 1],\n            \"real_carga_mw\": round(float(sub[\"l_base_mw\"].mean()), 1),\n            \"pred_carga_lin_24h_mw\": round(float(sub[\"pred_load_lin_mw\"].mean()), 1),\n            \"pred_carga_nonlin_24h_mw\": round(float(sub[\"pred_load_nonlin_mw\"].mean()), 1),\n            \"real_cf_pct\": round(float(sub[\"cf_eolica\"].mean() * 100.0), 2),\n            \"pred_cf_lin_pct\": round(float(sub[\"pred_cf_lin\"].mean() * 100.0), 2),\n            \"pred_cf_nonlin_pct\": round(float(sub[\"pred_cf_nonlin\"].mean() * 100.0), 2),\n            \"real_curtailment_mw\": round(float(sub[\"curtailment_mw\"].mean()), 1),\n            \"pred_curtailment_lin_mw\": round(float(sub[\"pred_curt_lin_mw\"].mean()), 1),\n            \"pred_curtailment_nonlin_mw\": round(float(sub[\"pred_curt_nonlin_mw\"].mean()), 1),\n            \"real_curtailment_gwh\": round(float(sub[\"curtailment_mw\"].sum() / 1000.0), 1),\n            \"pred_curtailment_nonlin_gwh\": round(float(sub[\"pred_curt_nonlin_mw\"].sum() / 1000.0), 1),\n            \"freq_corte_real_pct\": round(float(sub[\"flag_curtailment\"].mean() * 100.0), 1),\n            \"prob_corte_pred_pct\": round(float(sub[\"pred_curt_prob_nonlin\"].mean() * 100.0), 1),\n        })\n\n    monthly_df = pd.DataFrame(monthly_rows)\n    monthly_df.to_csv(REPORTS_DIR / \"comparativo_mensal_2025_real_vs_predito.csv\", index=False)\n\n    hourly_rows = []\n    for h in range(24):\n        sub = comp[comp[\"hour\"] == h]\n        hourly_rows.append({\n            \"hora\": h,\n            \"rotulo_hora\": f\"{h:02d}h\",\n            \"real_carga_mw\": round(float(sub[\"l_base_mw\"].mean()), 1),\n            \"pred_carga_nonlin_24h_mw\": round(float(sub[\"pred_load_nonlin_mw\"].mean()), 1),\n            \"real_cf_pct\": round(float(sub[\"cf_eolica\"].mean() * 100.0), 2),\n            \"pred_cf_nonlin_pct\": round(float(sub[\"pred_cf_nonlin\"].mean() * 100.0), 2),\n            \"real_solar_mw\": round(float(sub[\"g_solar_mw\"].mean()), 1),\n            \"real_curtailment_mw\": round(float(sub[\"curtailment_mw\"].mean()), 1),\n            \"pred_curtailment_lin_mw\": round(float(sub[\"pred_curt_lin_mw\"].mean()), 1),\n            \"pred_curtailment_nonlin_mw\": round(float(sub[\"pred_curt_nonlin_mw\"].mean()), 1),\n        })\n\n    hourly_df = pd.DataFrame(hourly_rows)\n    hourly_df.to_csv(REPORTS_DIR / \"perfil_horario_2025_real_vs_predito.csv\", index=False)\n\n\ndef main():\n    print(\"=\" * 72)\n    print(\"Script 05: Modelos B (CF Eólico) e C (Curtailment) — Validação Cega 2025\")\n    print(\"=\" * 72)\n\n    train_file = PROCESSED_DATA_DIR / \"train_features_2015_2024.csv\"\n    test_file = PROCESSED_DATA_DIR / \"test_features_2025.csv\"\n    if not train_file.exists() or not test_file.exists():\n        print(\"[ERRO] Arquivos train/test não encontrados. Execute primeiro o Script 03.\")\n        sys.exit(1)\n\n    train_df = pd.read_csv(train_file)\n    test_df = pd.read_csv(test_file)\n\n    rows_b, preds_b = evaluate_model_b_wind_cf(train_df, test_df)\n    df_b = pd.DataFrame(rows_b)\n    print(\"\\nBenchmark Out-of-Time 2025 — Modelo B (Fator de Capacidade Eólico Potencial):\")\n    print(df_b[[\"horizonte\", \"arquitetura\", \"mae_cf\", \"rmse_cf\", \"r2_score\", \"mae_potencia_equiv_mw\"]].to_string(index=False))\n\n    rows_c, preds_c = evaluate_model_c_curtailment(train_df, test_df)\n    df_c = pd.DataFrame(rows_c)\n    print(\"\\nBenchmark Out-of-Time 2025 — Modelo C (Curtailment Eólico 2 Estágios):\")\n    print(\n        df_c[[\n            \"arquitetura\", \"roc_auc\", \"brier_score\", \"f1_score\",\n            \"mae_global_mw\", \"r2_volume\", \"energia_cortada_real_2025_twh\", \"energia_cortada_pred_2025_twh\",\n        ]].to_string(index=False)\n    )\n\n    combined_bc = pd.concat([df_b, df_c], ignore_index=True)\n    report_path = REPORTS_DIR / \"metricas_modelos_b_c_eolica_curtailment.csv\"\n    combined_bc.to_csv(report_path, index=False)\n\n    export_2025_comparative_profiles(test_df, preds_b, preds_c)\n    print(f\"\\n[SUCESSO] Métricas B/C e perfis comparativos 2025 exportados em: {REPORTS_DIR}\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
     },
@@ -2176,7 +2176,7 @@
         "reports/risco_subestacoes_rede_basica_2035.csv"
       ],
       "keyDecisionsForGroup": [
-        "Cenário Central DC (1596.8 MW) × SIGA Intermediária (36,4 GW): absorve 3.60 TWh/ano de corte e exige +6.85 GW eólicos extras.",
+        "Cenário Central DC (1596.8 MW) × SIGA Intermediária (36,4 GW): absorve 3.58 TWh/ano de corte e exige +6.85 GW eólicos extras.",
         "Com Eólica Alta + Offshore IBAMA (48,0 GW) no Cenário Central/Alto, a pressão líquida sobre o SIN cai drasticamente (P95 = 8878.3 MW no Stress Test)."
       ],
       "starterCode": "\"\"\"\n06_monte_carlo_balance_2035.py\nEtapa 06 (Passo 4): Simulação Estocástica de Monte Carlo Encadeada (2026–2035),\nMatriz Completa de 12 Cenários e Curva de Expansão Eólica Compensatória (GW)\nPTC3567 · Ciência dos Dados em Automação e Engenharia · Grupo 6\n\nObjetivo (Seções 7, 8 e 10 do Plano Orientador):\n- Encadear os Modelos A (Demanda Base + PDE 2035), B (CF Eólico Potencial via Block Bootstrap)\n  e C (Curtailment Hurdle Não-Linear + Limites de Intercâmbio SIN) com o Pipeline Nominal de\n  14 Projetos de Data Centers e as trajetórias de expansão eólica (SIGA Onshore + IBAMA Offshore pós-2031).\n- Modelar fielmente a modulação hidrotérmica flexível do Nordeste (reservatórios do Rio São Francisco / Chesf:\n  Xingó, Paulo Afonso, Sobradinho e Itaparica, que reduzem despacho ao mínimo operativo durante pico solar/eólico\n  e modulam até ~9.800 MW nas rampas noturnas e calmarias).\n- Executar em paralelo (multiprocessing.Pool) milhares de realizações horárias estocásticas preservando\n  a sazonalidade e a autocorrelação de eventos extremos de calmaria (Mar-Mai) e vendaval (Ago-Nov).\n- Gerar os 5 relatórios analíticos finais em reports/:\n  1. matriz_cenarios_monte_carlo_2035.csv (Matriz completa dos 12 cenários cruzados em 2035)\n  2. evolucao_anual_risco_2026_2035.csv (Trajetória ano a ano 2026 a 2035 para os cenários principais)\n  3. curva_expansao_eolica_compensatoria_2035.csv (Sensibilidade: +0 a +18,4 GW eólicos extras vs. Risco e Curtailment)\n  4. relatorio_monte_carlo_bottom_up_projetos_2035.csv (Amostragem Bernoulli + atraso nos 14 projetos nominais)\n  5. risco_subestacoes_rede_basica_2035.csv (Concentração espacial P50/P95 nas subestações da Rede Básica)\n\"\"\"\n\nimport os\nimport sys\nimport multiprocessing as mp\nfrom pathlib import Path\nfrom typing import Dict, List, Any, Tuple\nimport numpy as np\nimport pandas as pd\n\nfrom config import (\n    RAW_DATA_DIR,\n    PROCESSED_DATA_DIR,\n    SCENARIOS_DATA_DIR,\n    REPORTS_DIR,\n    INTERCHANGE_IMPORT_LIMIT_MW,\n    INTERCHANGE_EXPORT_LIMIT_MW,\n    BASE_HYDRO_THERMAL_MW,\n)\n\n\ndef _prepare_seasonal_blocks(base_df: pd.DataFrame) -> Dict[str, np.ndarray]:\n    \"\"\"\n    Extrai os vetores históricos reais (2022-2025, refletindo a estrutura moderna da matriz solar/eólica NE)\n    para reamostragem em blocos semanais (168h) preservando autocorrelação horária e sinóptica.\n    \"\"\"\n    df_rec = base_df.copy()\n    ts = pd.to_datetime(df_rec[\"ts\"])\n    df_rec[\"year\"] = ts.dt.year\n    modern = df_rec[df_rec[\"year\"] >= 2022].reset_index(drop=True)\n    if len(modern) < 8760:\n        modern = df_rec.reset_index(drop=True)\n\n    if \"hour\" in modern.columns:\n        hour_arr = modern[\"hour\"].to_numpy(dtype=np.int32)\n    else:\n        hour_arr = pd.to_datetime(modern[\"ts\"]).dt.hour.to_numpy(dtype=np.int32)\n\n    return {\n        \"cf\": modern[\"cf_eolica\"].to_numpy(dtype=float),\n        \"load\": modern[\"l_base_mw\"].to_numpy(dtype=float),\n        \"solar\": modern[\"g_solar_mw\"].fillna(0.0).to_numpy(dtype=float),\n        \"hour\": hour_arr,\n    }\n\n\ndef _compute_chesf_hydro_thermal_dispatch(\n    base_load_mw: np.ndarray,\n    wind_gen_mw: np.ndarray,\n    solar_gen_mw: np.ndarray,\n) -> np.ndarray:\n    \"\"\"\n    Modela a resposta operativa real das hidrelétricas da Chesf (Rio São Francisco ~10,5 GW instalados)\n    e térmicas/biomassa no Nordeste:\n    - Piso operativo de vazão mínima / inflexibilidade: ~2.600 MW\n    - Em horas de déficit líquido renovável (noite/calmaria), modula até o teto disponível de ponta (~9.850 MW).\n    \"\"\"\n    net_thermal_hydro_need = np.maximum(0.0, base_load_mw - (wind_gen_mw + solar_gen_mw))\n    modulated = 2600.0 + 0.56 * net_thermal_hydro_need\n    return np.clip(modulated, 2600.0, 9850.0)\n\n\ndef simulate_block_bootstrap(\n    cenario_nome: str,\n    cenario_dc_id: str,\n    target_year: int,\n    dc_load_mw: float,\n    wind_onshore_mw: float,\n    wind_offshore_mw: float,\n    n_iterations: int,\n    seed: int,\n    arrays: Dict[str, np.ndarray],\n    import_limit_mw: float = INTERCHANGE_IMPORT_LIMIT_MW,\n    export_limit_mw: float = INTERCHANGE_EXPORT_LIMIT_MW,\n    h2v_nominal_mw: float = 0.0,\n    h2v_flexible: bool = False,\n) -> Dict[str, Any]:\n    \"\"\"\n    Núcleo estocástico Block-Bootstrap (blocos semanais de 168h escalados para 8.760h/ano)\n    compartilhado entre os Passos 4 (Script 06) e 5 (Script 07: Transmissão e H2V).\n    \"\"\"\n    rng = np.random.default_rng(seed)\n    cf_arr = arrays[\"cf\"]\n    load_arr = arrays[\"load\"]\n    solar_arr = arrays[\"solar\"]\n    hour_arr = arrays.get(\"hour\")\n\n    block_size = 168\n    n_blocks = max(1, len(cf_arr) // block_size)\n\n    years_from_2025 = max(0, target_year - 2025)\n    structural_load_growth = (1.031 ** years_from_2025)\n    solar_growth = 1.0 + 0.045 * years_from_2025\n    wind_capacity_mw = wind_onshore_mw + wind_offshore_mw\n    offshore_share = wind_offshore_mw / max(1.0, wind_capacity_mw)\n\n    peak_imports = np.empty(n_iterations, dtype=float)\n    peak_imports_no_dc = np.empty(n_iterations, dtype=float)\n    exceed_hours_annual = np.empty(n_iterations, dtype=float)\n    curt_with_dc_twh = np.empty(n_iterations, dtype=float)\n    curt_without_dc_twh = np.empty(n_iterations, dtype=float)\n    min_margins_mw = np.empty(n_iterations, dtype=float)\n    h2v_means_mw = np.empty(n_iterations, dtype=float)\n\n    for i in range(n_iterations):\n        # 1. Sorteio de bloco semanal contíguo (168h) preservando autocorrelação de vento, sol e carga\n        b_idx = int(rng.integers(0, n_blocks))\n        s = b_idx * block_size\n        e = s + block_size\n\n        cf_block = cf_arr[s:e]\n        load_block = load_arr[s:e] * structural_load_growth\n        solar_block = solar_arr[s:e] * solar_growth\n\n        # 2. Incerteza da demanda base (resíduo Modelo A + anomalia de temperatura)\n        sim_base_load = load_block * rng.normal(1.0, 0.032)\n\n        # 3. Incerteza de execução de obras SIGA/IBAMA e regime de vento interanual\n        sim_wind_completion = rng.uniform(0.86, 1.02)\n        sim_wind_regime = rng.uniform(0.76, 1.24)\n        effective_cf = np.clip(\n            cf_block * sim_wind_regime + offshore_share * 0.09 * (1.0 - cf_block),\n            0.0,\n            0.98,\n        )\n        sim_wind_gen = effective_cf * (wind_capacity_mw * sim_wind_completion)\n\n        # 4. Incerteza de utilização e PUE térmico dos Data Centers\n        sim_dc_load = dc_load_mw * rng.uniform(0.90, 1.08) if dc_load_mw > 0 else 0.0\n\n        # 4b. Carga eletrointensiva adicional opcional de Hidrogênio Verde (H2V)\n        if h2v_nominal_mw > 0.0:\n            if h2v_flexible:\n                if hour_arr is not None:\n                    hr_block = hour_arr[s:e]\n                else:\n                    hr_block = np.arange(block_size, dtype=np.int32) % 24\n                flex_factor = np.where(\n                    (effective_cf >= 0.42) | ((hr_block >= 9) & (hr_block <= 15) & (effective_cf >= 0.30)),\n                    1.00,\n                    np.where((effective_cf < 0.27) | ((hr_block >= 18) & (hr_block <= 22)), 0.12, 0.55),\n                )\n                sim_h2v_block = h2v_nominal_mw * flex_factor\n            else:\n                sim_h2v_block = np.full(block_size, h2v_nominal_mw * 0.92, dtype=float)\n            h2v_means_mw[i] = float(np.mean(sim_h2v_block))\n        else:\n            sim_h2v_block = 0.0\n            h2v_means_mw[i] = 0.0\n\n        # 5. Despacho hidrotérmico modulado (Chesf + térmicas flexíveis) e Margem M(t)\n        hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(sim_base_load, sim_wind_gen, solar_block)\n        total_gen = sim_wind_gen + solar_block + hydro_thermal_mw\n\n        margin_no_dc = total_gen - sim_base_load\n        margin_with_dc = total_gen - (sim_base_load + sim_dc_load + sim_h2v_block)\n\n        import_no_dc = np.maximum(0.0, -margin_no_dc)\n        import_with_dc = np.maximum(0.0, -margin_with_dc)\n\n        peak_imports_no_dc[i] = float(np.max(import_no_dc))\n        peak_imports[i] = float(np.max(import_with_dc))\n        min_margins_mw[i] = float(np.min(margin_with_dc))\n\n        scale_to_year = 8760.0 / block_size\n        exceed_hours_annual[i] = float(np.sum(import_with_dc > import_limit_mw) * scale_to_year)\n\n        # 6. Curtailment Horário (Modelo C: limite de exportação SIN + restrição elétrica solar diurna)\n        export_threshold = export_limit_mw - 0.18 * solar_block\n        curt_no_dc_mw = np.maximum(0.0, margin_no_dc - export_threshold)\n        curt_dc_mw = np.maximum(0.0, margin_with_dc - export_threshold)\n\n        curt_without_dc_twh[i] = float(np.sum(curt_no_dc_mw) * scale_to_year / 1e6)\n        curt_with_dc_twh[i] = float(np.sum(curt_dc_mw) * scale_to_year / 1e6)\n\n    p50_import = float(np.percentile(peak_imports, 50))\n    p90_import = float(np.percentile(peak_imports, 90))\n    p95_import = float(np.percentile(peak_imports, 95))\n    prob_critical = float(np.mean(peak_imports > import_limit_mw) * 100.0)\n    lole_hours = float(np.mean(exceed_hours_annual))\n\n    avg_curt_no_dc = float(np.mean(curt_without_dc_twh))\n    avg_curt_dc = float(np.mean(curt_with_dc_twh))\n    avoided_gwh = float(max(0.0, (avg_curt_no_dc - avg_curt_dc) * 1000.0))\n    avoided_pct = float((avoided_gwh / max(1.0, avg_curt_no_dc * 1000.0)) * 100.0)\n\n    # Expansão eólica compensatória necessária (Seção 8 do PDF):\n    # Quantos GW eólicos adicionais são necessários para neutralizar a violação do limite no P95\n    # considerando o Fator de Capacidade firme P10 em horas críticas de baixa geração (CF_firme ~ 0.21)\n    cf_firme_critico = 0.21 + 0.06 * offshore_share\n    excess_import_p95 = max(0.0, p95_import - import_limit_mw)\n    req_extra_wind_gw = (excess_import_p95 / cf_firme_critico) / 1000.0\n\n    return {\n        \"cenario_nome\": cenario_nome,\n        \"cenario_dc\": cenario_dc_id,\n        \"target_year\": target_year,\n        \"dc_load_mw\": round(dc_load_mw, 1),\n        \"h2v_avg_mw\": round(float(np.mean(h2v_means_mw)), 1),\n        \"wind_onshore_mw\": round(wind_onshore_mw, 1),\n        \"wind_offshore_mw\": round(wind_offshore_mw, 1),\n        \"wind_capacity_mw\": round(wind_capacity_mw, 1),\n        \"prob_exceder_intercambio_pct\": round(prob_critical, 1),\n        \"lole_horas_criticas_ano\": round(lole_hours, 1),\n        \"importacao_p50_mw\": round(p50_import, 1),\n        \"importacao_p90_mw\": round(p90_import, 1),\n        \"importacao_p95_mw\": round(p95_import, 1),\n        \"margem_minima_p5_mw\": round(float(np.percentile(min_margins_mw, 5)), 1),\n        \"curtailment_sem_dc_twh_ano\": round(avg_curt_no_dc, 2),\n        \"curtailment_com_dc_twh_ano\": round(avg_curt_dc, 2),\n        \"curtailment_evitado_gwh_ano\": round(avoided_gwh, 1),\n        \"reducao_curtailment_pct\": round(avoided_pct, 1),\n        \"expansao_eolica_compensatoria_gw\": round(req_extra_wind_gw, 2),\n    }\n\n\ndef _simulate_scenario_worker(\n    args: Tuple[str, str, int, float, float, float, int, int, Dict[str, np.ndarray]]\n) -> Dict[str, Any]:\n    \"\"\"\n    Worker executado em multiprocessing.Pool para simular N blocos semanais estocásticos (168h)\n    escalados para base anual (8.760h).\n    \"\"\"\n    (\n        cenario_nome,\n        cenario_dc_id,\n        target_year,\n        dc_load_mw,\n        wind_onshore_mw,\n        wind_offshore_mw,\n        n_iterations,\n        seed,\n        arrays,\n    ) = args\n    result = simulate_block_bootstrap(\n        cenario_nome=cenario_nome,\n        cenario_dc_id=cenario_dc_id,\n        target_year=target_year,\n        dc_load_mw=dc_load_mw,\n        wind_onshore_mw=wind_onshore_mw,\n        wind_offshore_mw=wind_offshore_mw,\n        n_iterations=n_iterations,\n        seed=seed,\n        arrays=arrays,\n    )\n    result.pop(\"h2v_avg_mw\", None)\n    return result\n\n\ndef compute_project_ramp_for_year(\n    ano_alvo: int,\n    ano_inicio: int,\n    rampa_meses: int,\n    atraso_anos: float = 0.0,\n) -> float:\n    \"\"\"Calcula a fração de rampa (0.0 a 1.0) de um projeto individual para um determinado ano.\"\"\"\n    data_efetiva = ano_inicio + atraso_anos\n    if ano_alvo < data_efetiva:\n        return 0.0\n    meses_decorridos = (ano_alvo - data_efetiva) * 12.0 + 6.0\n    fator = meses_decorridos / max(1.0, float(rampa_meses))\n    return float(np.clip(fator, 0.0, 1.0))\n\n\ndef run_bottom_up_project_monte_carlo(\n    base_df: pd.DataFrame,\n    pipeline_df: pd.DataFrame,\n    target_year: int = 2035,\n    wind_capacity_mw: float = 36400.0,\n    n_iterations: int = 800,\n    block_size_hours: int = 168,\n    seed: int = 42,\n) -> Tuple[Dict[str, Any], pd.DataFrame, pd.DataFrame]:\n    \"\"\"\n    Executa a amostragem estocástica bottom-up individual dos 14 projetos nominais:\n    Bernoulli(p) de concretização + Uniforme(0, 1.5*atraso) + agregação por Subestação da Rede Básica.\n    \"\"\"\n    rng = np.random.default_rng(seed)\n    arrays = _prepare_seasonal_blocks(base_df)\n    cf_array = arrays[\"cf\"]\n    base_load_array = arrays[\"load\"]\n    solar_array = arrays[\"solar\"]\n    total_hours = len(cf_array)\n    n_blocks = max(1, total_hours // block_size_hours)\n\n    years_from_2025 = max(0, target_year - 2025)\n    structural_growth = (1.031 ** years_from_2025)\n\n    total_dc_loads: List[float] = []\n    peak_imports: List[float] = []\n    critical_import_count = 0\n    curtailment_dc_mwh: List[float] = []\n    active_projects_counts: List[int] = []\n\n    sub_keys: List[Tuple[str, str, int]] = [\n        (str(sub), str(est), int(kv))\n        for (sub, est, kv), _ in pipeline_df.groupby(\n            [\"subestacao_conexao\", \"estado\", \"tensao_conexao_kv\"], sort=False\n        )\n    ]\n    substation_loads: Dict[Tuple[str, str, int], List[float]] = {k: [] for k in sub_keys}\n\n    for _ in range(n_iterations):\n        iter_dc_load = 0.0\n        iter_active_count = 0\n        iter_sub_load: Dict[Tuple[str, str, int], float] = {k: 0.0 for k in sub_keys}\n\n        for _, proj in pipeline_df.iterrows():\n            prob_ok = float(proj[\"probabilidade_concretizacao\"])\n            if rng.random() > prob_ok:\n                continue\n\n            atraso_max = float(proj[\"atraso_esperado_anos\"]) * 1.5\n            stochastic_delay = rng.uniform(0.0, max(0.1, atraso_max))\n            ramp = compute_project_ramp_for_year(\n                ano_alvo=target_year,\n                ano_inicio=int(proj[\"ano_inicio_previsto\"]),\n                rampa_meses=int(proj[\"rampa_meses\"]),\n                atraso_anos=stochastic_delay,\n            )\n            if ramp <= 0.0:\n                continue\n\n            if proj[\"tipo_publicacao\"] == \"potencia_total_rede\":\n                p_rede = float(proj[\"potencia_total_rede_mw\"])\n            else:\n                p_rede = float(proj[\"potencia_it_mw\"]) * float(proj[\"pue_estimado\"])\n\n            sim_util = rng.uniform(0.72, 0.94)\n            p_demanda = p_rede * sim_util * ramp\n\n            sub_key = (\n                str(proj[\"subestacao_conexao\"]),\n                str(proj[\"estado\"]),\n                int(proj[\"tensao_conexao_kv\"]),\n            )\n            iter_dc_load += p_demanda\n            iter_active_count += 1\n            iter_sub_load[sub_key] += p_demanda\n\n        total_dc_loads.append(iter_dc_load)\n        active_projects_counts.append(iter_active_count)\n        for sub_key in sub_keys:\n            substation_loads[sub_key].append(iter_sub_load[sub_key])\n\n        block_idx = int(rng.integers(0, n_blocks))\n        start_h = block_idx * block_size_hours\n        end_h = start_h + block_size_hours\n\n        cf_block = cf_array[start_h:end_h]\n        load_block = base_load_array[start_h:end_h] * structural_growth\n        solar_block = solar_array[start_h:end_h] * (1.0 + 0.045 * years_from_2025)\n\n        sim_base_load = load_block * rng.normal(1.0, 0.032)\n        sim_wind_completion = rng.uniform(0.86, 1.02)\n        sim_wind_regime = rng.uniform(0.76, 1.24)\n        sim_wind_gen = np.clip(cf_block * sim_wind_regime, 0.0, 1.0) * (wind_capacity_mw * sim_wind_completion)\n\n        hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(sim_base_load, sim_wind_gen, solar_block)\n        total_gen = sim_wind_gen + solar_block + hydro_thermal_mw\n        margin_with_dc = total_gen - (sim_base_load + iter_dc_load)\n\n        import_needed = np.maximum(0.0, -margin_with_dc)\n        max_import = float(np.max(import_needed))\n        peak_imports.append(max_import)\n\n        if max_import > INTERCHANGE_IMPORT_LIMIT_MW:\n            critical_import_count += 1\n\n        export_threshold = INTERCHANGE_EXPORT_LIMIT_MW - 0.18 * solar_block\n        curt_dc = np.sum(np.maximum(0.0, margin_with_dc - export_threshold))\n        curtailment_dc_mwh.append(curt_dc * 52.0)\n\n    p50_dc = float(np.percentile(total_dc_loads, 50))\n    p90_dc = float(np.percentile(total_dc_loads, 90))\n    p95_dc = float(np.percentile(total_dc_loads, 95))\n    p50_import = float(np.percentile(peak_imports, 50))\n    p95_import = float(np.percentile(peak_imports, 95))\n    prob_critical = float((critical_import_count / n_iterations) * 100.0)\n\n    excess_import = max(0.0, p95_import - INTERCHANGE_IMPORT_LIMIT_MW)\n    req_extra_wind_mw = excess_import / 0.21\n\n    bottom_up_summary = {\n        \"target_year\": target_year,\n        \"n_iterations\": n_iterations,\n        \"projetos_ativos_media\": round(float(np.mean(active_projects_counts)), 1),\n        \"dc_load_p50_mw\": round(p50_dc, 1),\n        \"dc_load_p90_mw\": round(p90_dc, 1),\n        \"dc_load_p95_mw\": round(p95_dc, 1),\n        \"prob_exceder_intercambio_pct\": round(prob_critical, 2),\n        \"importacao_p50_mw\": round(p50_import, 1),\n        \"importacao_p95_mw\": round(p95_import, 1),\n        \"curtailment_com_dc_twh_ano\": round(float(np.mean(curtailment_dc_mwh) / 1e6), 2),\n        \"expansao_eolica_compensatoria_gw\": round(req_extra_wind_mw / 1000.0, 2),\n    }\n\n    grouped_meta = pipeline_df.groupby(\n        [\"subestacao_conexao\", \"estado\", \"tensao_conexao_kv\"], as_index=False\n    ).agg(n_projetos=(\"id_projeto\", \"count\"))\n    n_proj_map: Dict[Tuple[str, str, int], int] = {\n        (str(r[\"subestacao_conexao\"]), str(r[\"estado\"]), int(r[\"tensao_conexao_kv\"])): int(r[\"n_projetos\"])\n        for _, r in grouped_meta.iterrows()\n    }\n\n    sub_records = []\n    for (sub, estado, tensao_kv), loads in substation_loads.items():\n        arr = np.array(loads)\n        sub_records.append({\n            \"subestacao\": sub,\n            \"estado\": estado,\n            \"tensao_kv\": tensao_kv,\n            \"n_projetos\": n_proj_map[(sub, estado, tensao_kv)],\n            \"carga_media_mw\": round(float(np.mean(arr)), 1),\n            \"carga_p50_mw\": round(float(np.percentile(arr, 50)), 1),\n            \"carga_p95_mw\": round(float(np.percentile(arr, 95)), 1),\n            \"fracao_carga_total_pct\": round(float(np.mean(arr) / max(1.0, np.mean(total_dc_loads)) * 100.0), 1),\n        })\n\n    df_substations_risk = pd.DataFrame(sub_records).sort_values(\"carga_p95_mw\", ascending=False)\n    df_summary = pd.DataFrame([bottom_up_summary])\n    return bottom_up_summary, df_summary, df_substations_risk\n\n\ndef main():\n    print(\"=\" * 72)\n    print(\"Script 06 (Passo 4): Simulação Estocástica de Monte Carlo 2026-2035 (Multiprocessing)\")\n    print(\"=\" * 72)\n\n    input_master = PROCESSED_DATA_DIR / \"ne_hourly_master.csv\"\n    if not input_master.exists():\n        print(f\"[ERRO] Base mestre não encontrada: {input_master}\")\n        sys.exit(1)\n\n    df_base = pd.read_csv(input_master)\n    arrays = _prepare_seasonal_blocks(df_base)\n    n_workers = max(1, min(6, os.cpu_count() or 2))\n\n    scenario_matrix_path = SCENARIOS_DATA_DIR / \"matriz_cenarios_dc_eolica_2026_2035.csv\"\n    if not scenario_matrix_path.exists():\n        print(f\"[ERRO] Matriz de cenários da Etapa 02 não encontrada: {scenario_matrix_path}\")\n        sys.exit(1)\n\n    df_scen_matrix = pd.read_csv(scenario_matrix_path)\n    df_scen_2035 = df_scen_matrix[df_scen_matrix[\"ano\"] == 2035].copy()\n\n    def _format_dc_label(dc_id: str, dc_mw: float) -> str:\n        mw_str = f\"{round(dc_mw):,.0f}\".replace(\",\", \".\")\n        if dc_id == \"none\":\n            return \"Sem Data Centers (Controle)\"\n        if dc_id == \"conservative\":\n            return f\"DC Conservador ({mw_str} MW rede)\"\n        if dc_id == \"central\":\n            return f\"DC Central Ponderado ({mw_str} MW rede)\"\n        return f\"DC Stress Test / IA ({mw_str} MW rede)\"\n\n    def _format_wind_label(w_id: str, w_tot_mw: float) -> str:\n        gw_str = f\"{w_tot_mw / 1000.0:.1f}\".replace(\".\", \",\")\n        if w_id == \"base\":\n            return f\"Eólica Base ({gw_str} GW Onshore)\"\n        if w_id == \"intermediate\":\n            return f\"Eólica Intermediária SIGA ({gw_str} GW)\"\n        return f\"Eólica Alta + Offshore IBAMA ({gw_str} GW)\"\n\n    # 1. Matriz Completa dos 12 Cenários Cruzados em 2035 (4 DCs x 3 Eólicas lidos da Etapa 02)\n    dc_order = [\"none\", \"conservative\", \"central\", \"high\"]\n    wind_order = [\"base\", \"intermediate\", \"high\"]\n    tasks_12 = []\n    for dc_id in dc_order:\n        for w_id in wind_order:\n            match = df_scen_2035[\n                (df_scen_2035[\"cenario_dc\"] == dc_id) & (df_scen_2035[\"cenario_eolica\"] == w_id)\n            ]\n            if match.empty:\n                raise ValueError(f\"Cenário ({dc_id}, {w_id}) ausente em {scenario_matrix_path.name}\")\n            row = match.iloc[0]\n            dc_mw = float(row[\"carga_efetiva_dc_mw\"])\n            w_on = float(row[\"eolica_onshore_mw\"])\n            w_off = float(row[\"eolica_offshore_mw\"])\n            w_tot = float(row[\"eolica_total_mw\"])\n            # Usar mesma semente base (42) para emparelhar os sorteios climáticos (Common Random Numbers)\n            tasks_12.append((\n                f\"{_format_dc_label(dc_id, dc_mw)} × {_format_wind_label(w_id, w_tot)}\",\n                dc_id,\n                2035,\n                dc_mw,\n                w_on,\n                w_off,\n                1000,\n                42,\n                arrays,\n            ))\n\n    print(f\"[MONTE CARLO 2035] Executando 12 cenários cruzados (12.000 simulações) em {n_workers} processos...\")\n    with mp.Pool(processes=n_workers) as pool:\n        res_12 = pool.map(_simulate_scenario_worker, tasks_12)\n\n    df_12 = pd.DataFrame(res_12)\n    report_12_path = REPORTS_DIR / \"matriz_cenarios_monte_carlo_2035.csv\"\n    df_12.to_csv(report_12_path, index=False)\n\n    print(\"\\nMatriz Completa de Risco e Curtailment em 2035 (12 Cenários):\")\n    print(\n        df_12[[\n            \"cenario_nome\", \"dc_load_mw\", \"wind_capacity_mw\",\n            \"prob_exceder_intercambio_pct\", \"importacao_p95_mw\",\n            \"curtailment_com_dc_twh_ano\", \"curtailment_evitado_gwh_ano\",\n            \"expansao_eolica_compensatoria_gw\",\n        ]].to_string(index=False)\n    )\n\n    # 2. Curva de Trade-Off de Expansão Eólica Compensatória em 2035 (Cenário Central DC da Etapa 02)\n    central_dc_2035_mw = float(df_scen_2035.loc[df_scen_2035[\"cenario_dc\"] == \"central\", \"carga_efetiva_dc_mw\"].iloc[0])\n    base_onshore_2035_mw = float(df_scen_2035.loc[df_scen_2035[\"cenario_eolica\"] == \"base\", \"eolica_onshore_mw\"].iloc[0])\n    high_onshore_2035_mw = float(df_scen_2035.loc[df_scen_2035[\"cenario_eolica\"] == \"high\", \"eolica_onshore_mw\"].iloc[0])\n    max_onshore_add_mw = max(0.0, high_onshore_2035_mw - base_onshore_2035_mw)\n    interm_wind_2035_mw = float(df_scen_2035.loc[df_scen_2035[\"cenario_eolica\"] == \"intermediate\", \"eolica_total_mw\"].iloc[0])\n\n    extra_gw_grid = [0.0, 2.0, 4.0, 6.8, 10.0, 14.8, 18.4]\n    comp_tasks = []\n    for extra_gw in extra_gw_grid:\n        extra_mw = extra_gw * 1000.0\n        w_on = base_onshore_2035_mw + min(max_onshore_add_mw, extra_mw)\n        w_off = max(0.0, extra_mw - max_onshore_add_mw)\n        comp_tasks.append((\n            f\"+{extra_gw:.1f} GW Eólicos Extras\",\n            \"central\",\n            2035,\n            central_dc_2035_mw,\n            w_on,\n            w_off,\n            1000,\n            42,\n            arrays,\n        ))\n\n    with mp.Pool(processes=n_workers) as pool:\n        comp_res = pool.map(_simulate_scenario_worker, comp_tasks)\n    df_comp = pd.DataFrame(comp_res)\n    df_comp[\"expansao_adicional_gw\"] = extra_gw_grid\n    df_comp.to_csv(REPORTS_DIR / \"curva_expansao_eolica_compensatoria_2035.csv\", index=False)\n\n    # 3. Evolução Temporal Anual do Risco 2026 a 2035 (Trajetória Rampa DC Central vs Eólica Intermediária da Etapa 02)\n    df_scen_timeline = df_scen_matrix[\n        (df_scen_matrix[\"cenario_dc\"] == \"central\") & (df_scen_matrix[\"cenario_eolica\"] == \"intermediate\")\n    ].sort_values(\"ano\")\n    timeline_tasks = []\n    for _, r in df_scen_timeline.iterrows():\n        y = int(r[\"ano\"])\n        timeline_tasks.append((\n            f\"Trajetória Central {y}\",\n            \"central\",\n            y,\n            float(r[\"carga_efetiva_dc_mw\"]),\n            float(r[\"eolica_onshore_mw\"]),\n            float(r[\"eolica_offshore_mw\"]),\n            800,\n            42,\n            arrays,\n        ))\n\n    with mp.Pool(processes=n_workers) as pool:\n        timeline_res = pool.map(_simulate_scenario_worker, timeline_tasks)\n    df_timeline = pd.DataFrame(timeline_res)\n    df_timeline.to_csv(REPORTS_DIR / \"evolucao_anual_risco_2026_2035.csv\", index=False)\n\n    # 4. Simulação Bottom-Up Projeto a Projeto e Risco por Subestação (14 Projetos Nominais)\n    pipeline_file = RAW_DATA_DIR / \"data_centers_pipeline_ne.csv\"\n    if pipeline_file.exists():\n        df_pipeline = pd.read_csv(pipeline_file)\n        _, bu_summary_df, bu_subs_df = run_bottom_up_project_monte_carlo(\n            base_df=df_base,\n            pipeline_df=df_pipeline,\n            target_year=2035,\n            wind_capacity_mw=interm_wind_2035_mw,\n            n_iterations=1000,\n            seed=42,\n        )\n        bu_summary_df.to_csv(REPORTS_DIR / \"relatorio_monte_carlo_bottom_up_projetos_2035.csv\", index=False)\n        bu_subs_df.to_csv(REPORTS_DIR / \"risco_subestacoes_rede_basica_2035.csv\", index=False)\n        print(\"\\nResumo Monte Carlo Bottom-Up (14 Projetos Nominais em 2035):\")\n        print(bu_summary_df.to_string(index=False))\n\n    print(f\"\\n[SUCESSO] Passo 4 concluído! Todos os 5 relatórios de Monte Carlo exportados em: {REPORTS_DIR}\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
@@ -2215,8 +2215,8 @@
         "src/data/generated/pipelineSsot.ts"
       ],
       "keyDecisionsForGroup": [
-        "Expansão da transmissão (TX-04 (Expansão 500 kV NE–SE/CO Planejada)): reduz expansão eólica compensatória para +2.20 GW e derruba curtailment para 15.48 TWh/ano.",
-        "H2V 2,0 GW flexível absorve 13.16 TWh/ano com risco de 10.87% (contra 28.23% no regime inflexível)."
+        "Expansão da transmissão (TX-04 (Expansão 500 kV NE–SE/CO Planejada)): reduz expansão eólica compensatória para +2.09 GW e derruba curtailment para 7.26 TWh/ano.",
+        "H2V 2,0 GW flexível absorve 6.97 TWh/ano com risco de 9.90% (contra 18.00% no regime inflexível)."
       ],
       "starterCode": "\"\"\"\nEtapa 07 (Passo 5) — Análise de Sensibilidade Multidimensional (Transmissão SIN & Disputa/Sinergia\ncom Hidrogênio Verde H2V em Pecém/Suape), Indicadores Separados ANEEL vs. ONS (2015–2035) e\nConsolidação do Relatório Executivo Final (PTC3567 - Grupo 6).\n\nAtende integralmente às Seções 6, 8, 9 e 10 do Plano Orientador e à Decisão 04 do Grupo 6:\n  1. Sensibilidade aos Limites de Intercâmbio do SIN (Importação 5.500–9.000 MW e Exportação\n     8.000–12.500 MW) executada diretamente via núcleo estocástico Block-Bootstrap do Script 06.\n  2. Sensibilidade e Disputa/Sinergia de Subestações entre Data Centers (carga firme 24/7 inflexível)\n     e Hubs de Hidrogênio Verde (H2V) na ZPE do Pecém (CE) e Suape (PE), comparando operação\n     baseload vs. operação flexível interruptível pelo mesmo motor estocástico em blocos de 168 h.\n  3. Indicadores Separados da Seção 6 do Plano Orientador (2015–2035):\n     - Participação Eólica na Capacidade Instalada Total do NE (ANEEL/SIGA, %)\n     - Participação Eólica na Geração Efetiva Verificada/Projetada do NE (ONS, %)\n     - Gap de Aproveitamento Operacional devido ao Constrained-Off / Curtailment.\n  4. Geração 100% parametrizada do Relatório Técnico Consolidado Final\n     (`reports/relatorio_final_consolidado_ptc3567_grupo6.md`) a partir dos DataFrames do pipeline.\n\nBibliotecas utilizadas: apenas Python stdlib + numpy, pandas.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport importlib\nimport logging\nimport sys\nfrom pathlib import Path\nfrom typing import Any, Dict, List, Optional\n\nimport numpy as np\nimport pandas as pd\n\nSCRIPTS_DIR = Path(__file__).resolve().parent\nif str(SCRIPTS_DIR) not in sys.path:\n    sys.path.insert(0, str(SCRIPTS_DIR))\n\nfrom config import (\n    INTERCHANGE_EXPORT_LIMIT_MW,\n    INTERCHANGE_IMPORT_LIMIT_MW,\n    PROCESSED_DATA_DIR,\n    RAW_DATA_DIR,\n    REPORTS_DIR,\n    SCENARIOS_DATA_DIR,\n)\n\n_mc_mod = importlib.import_module(\"06_monte_carlo_balance_2035\")\n_prepare_seasonal_blocks = _mc_mod._prepare_seasonal_blocks\n_compute_chesf_hydro_thermal_dispatch = _mc_mod._compute_chesf_hydro_thermal_dispatch\nsimulate_block_bootstrap = _mc_mod.simulate_block_bootstrap\n\nlogging.basicConfig(level=logging.INFO, format=\"[%(levelname)s] %(message)s\")\nlogger = logging.getLogger(__name__)\n\n# Repartição geográfica de referência dos eletrolisadores entre ZPE Pecém (75%) e Suape (25%)\nPECEM_H2V_HUB_SHARE = 0.75\n\n\ndef _fmt_pt(value: float, decimals: int = 1) -> str:\n    \"\"\"Formata número float no padrão PT-BR (ponto de milhar e vírgula decimal).\"\"\"\n    raw = f\"{float(value):,.{decimals}f}\"\n    return raw.replace(\",\", \"X\").replace(\".\", \",\").replace(\"X\", \".\")\n\n\ndef _fmt_int_pt(value: int) -> str:\n    \"\"\"Formata inteiro com separador de milhar PT-BR.\"\"\"\n    return f\"{int(value):,}\".replace(\",\", \".\")\n\n\ndef _load_required_csv(path: Path, label: str) -> pd.DataFrame:\n    if not path.exists():\n        raise FileNotFoundError(\n            f\"Artefato obrigatório '{label}' não encontrado em {path}. \"\n            \"Execute as etapas anteriores (01 a 06) primeiro.\"\n        )\n    return pd.read_csv(path)\n\n\ndef _extract_central_interm_2035(df_scen_matrix: pd.DataFrame) -> tuple[float, float, float]:\n    \"\"\"Lê carga DC Central e capacidade eólica Intermediária em 2035 da Etapa 02.\"\"\"\n    sub = df_scen_matrix[\n        (df_scen_matrix[\"ano\"] == 2035)\n        & (df_scen_matrix[\"cenario_dc\"] == \"central\")\n        & (df_scen_matrix[\"cenario_eolica\"] == \"intermediate\")\n    ]\n    if sub.empty:\n        raise ValueError(\"Cenário (ano=2035, central, intermediate) ausente em matriz_cenarios_dc_eolica_2026_2035.csv\")\n    row = sub.iloc[0]\n    return (\n        float(row[\"carga_efetiva_dc_mw\"]),\n        float(row[\"eolica_onshore_mw\"]),\n        float(row[\"eolica_offshore_mw\"]),\n    )\n\n\ndef load_pipeline_inputs() -> Dict[str, pd.DataFrame]:\n    \"\"\"Carrega todos os datasets mestre, cenários e relatórios das Etapas 01–06.\"\"\"\n    return {\n        \"df_master\": _load_required_csv(PROCESSED_DATA_DIR / \"ne_hourly_master.csv\", \"ne_hourly_master.csv\"),\n        \"df_test2025\": _load_required_csv(PROCESSED_DATA_DIR / \"test_features_2025.csv\", \"test_features_2025.csv\"),\n        \"df_dc_raw\": _load_required_csv(RAW_DATA_DIR / \"data_centers_pipeline_ne.csv\", \"data_centers_pipeline_ne.csv\"),\n        \"df_subs\": _load_required_csv(\n            SCENARIOS_DATA_DIR / \"dc_substation_load_concentration.csv\",\n            \"dc_substation_load_concentration.csv\",\n        ),\n        \"df_scen_matrix\": _load_required_csv(\n            SCENARIOS_DATA_DIR / \"matriz_cenarios_dc_eolica_2026_2035.csv\",\n            \"matriz_cenarios_dc_eolica_2026_2035.csv\",\n        ),\n        \"df_anova\": _load_required_csv(REPORTS_DIR / \"relatorio_anova_significancia.csv\", \"relatorio_anova_significancia.csv\"),\n        \"df_monthly\": _load_required_csv(\n            REPORTS_DIR / \"perfil_mensal_sazonalidade_eolica_ne.csv\",\n            \"perfil_mensal_sazonalidade_eolica_ne.csv\",\n        ),\n        \"df_model_a\": _load_required_csv(REPORTS_DIR / \"metricas_modelo_a_demanda.csv\", \"metricas_modelo_a_demanda.csv\"),\n        \"df_model_bc\": _load_required_csv(\n            REPORTS_DIR / \"metricas_modelos_b_c_eolica_curtailment.csv\",\n            \"metricas_modelos_b_c_eolica_curtailment.csv\",\n        ),\n        \"df_mc_12\": _load_required_csv(\n            REPORTS_DIR / \"matriz_cenarios_monte_carlo_2035.csv\",\n            \"matriz_cenarios_monte_carlo_2035.csv\",\n        ),\n        \"df_timeline\": _load_required_csv(\n            REPORTS_DIR / \"evolucao_anual_risco_2026_2035.csv\",\n            \"evolucao_anual_risco_2026_2035.csv\",\n        ),\n    }\n\n\ndef run_transmission_sensitivity_2035(\n    df_master: pd.DataFrame,\n    df_scen_matrix: pd.DataFrame,\n    n_iterations: int = 1000,\n    seed: int = 42,\n) -> pd.DataFrame:\n    \"\"\"\n    Executa a análise de sensibilidade 2035 (Cenário Central DC × Eólica SIGA Intermediária)\n    reutilizando exatamente o motor Block-Bootstrap do Script 06 para TX-01..TX-05.\n    TX-03 usa INTERCHANGE_IMPORT_LIMIT_MW / INTERCHANGE_EXPORT_LIMIT_MW e deve reproduzir\n    exatamente os resultados da linha Central × Intermediária de matriz_cenarios_monte_carlo_2035.csv.\n    \"\"\"\n    logger.info(\"1. Executando Análise de Sensibilidade de Transmissão SIN via Motor Monte Carlo (2035)...\")\n\n    arrays = _prepare_seasonal_blocks(df_master)\n    central_dc_mw, interm_onshore_mw, interm_offshore_mw = _extract_central_interm_2035(df_scen_matrix)\n\n    tx_specs = [\n        (\n            \"TX-01 (Restrição Severa / Atraso de Obras)\",\n            5500.0,\n            8000.0,\n            \"Malha atual sob contingência N-1 sem novos reforços de 500 kV\",\n        ),\n        (\n            \"TX-02 (Limite Conservador Operativo)\",\n            6250.0,\n            8750.0,\n            \"Reforços parciais de compensação síncrona/estática sem novas LTs\",\n        ),\n        (\n            \"TX-03 (Referência Base PDE / ONS 2035)\",\n            float(INTERCHANGE_IMPORT_LIMIT_MW),\n            float(INTERCHANGE_EXPORT_LIMIT_MW),\n            (\n                f\"Malha de referência do estudo \"\n                f\"(Import {INTERCHANGE_IMPORT_LIMIT_MW / 1000.0:.1f} GW / Export {INTERCHANGE_EXPORT_LIMIT_MW / 1000.0:.1f} GW)\"\n            ).replace(\".\", \",\"),\n        ),\n        (\n            \"TX-04 (Expansão 500 kV NE–SE/CO Planejada)\",\n            8000.0,\n            11000.0,\n            \"Entrada das novas LTs 500 kV Graça Aranha–Silvânia e reforços Chesf\",\n        ),\n        (\n            \"TX-05 (Bipolo HVDC + Malha 500 kV Completa)\",\n            9000.0,\n            12500.0,\n            \"Expansão plena HVDC Bipolo Nordeste–Sudeste + escoamento de 12,5 GW\",\n        ),\n    ]\n\n    rows: List[Dict[str, Any]] = []\n    for cfg_id, imp_lim, exp_lim, desc in tx_specs:\n        res = simulate_block_bootstrap(\n            cenario_nome=cfg_id,\n            cenario_dc_id=\"central\",\n            target_year=2035,\n            dc_load_mw=central_dc_mw,\n            wind_onshore_mw=interm_onshore_mw,\n            wind_offshore_mw=interm_offshore_mw,\n            n_iterations=n_iterations,\n            seed=seed,\n            arrays=arrays,\n            import_limit_mw=imp_lim,\n            export_limit_mw=exp_lim,\n        )\n        rows.append(\n            {\n                \"id_config\": cfg_id,\n                \"import_limit_mw\": imp_lim,\n                \"export_limit_mw\": exp_lim,\n                \"descricao_infraestrutura\": desc,\n                \"prob_import_critica_pct\": res[\"prob_exceder_intercambio_pct\"],\n                \"lole_horas_ano\": res[\"lole_horas_criticas_ano\"],\n                \"import_p95_mw\": res[\"importacao_p95_mw\"],\n                \"curtailment_com_dc_twh\": res[\"curtailment_com_dc_twh_ano\"],\n                \"curtailment_sem_dc_twh\": res[\"curtailment_sem_dc_twh_ano\"],\n                \"curtailment_evitado_dc_gwh\": res[\"curtailment_evitado_gwh_ano\"],\n                \"expansao_eolica_compensatoria_gw\": res[\"expansao_eolica_compensatoria_gw\"],\n            }\n        )\n\n    df_tx = pd.DataFrame(rows)\n    out_path = REPORTS_DIR / \"sensibilidade_transmissao_intercambio_2035.csv\"\n    df_tx.to_csv(out_path, index=False)\n    logger.info(\"   -> Salvo: %s\", out_path)\n    return df_tx\n\n\ndef run_h2v_and_datacenter_synergy_2035(\n    df_master: pd.DataFrame,\n    df_scen_matrix: pd.DataFrame,\n    df_subs: pd.DataFrame,\n    n_iterations: int = 1000,\n    seed: int = 42,\n) -> pd.DataFrame:\n    \"\"\"\n    Executa a análise da Seção 10 do Plano Orientador e Decisão 04 do Grupo 6 via núcleo\n    estocástico Block-Bootstrap do Script 06:\n      - H2V operando em Baseload Inflexível (92% contínuo) vs.\n      - H2V operando com Modulação Flexível Grid-Following (12% na calmaria/ponta noturna,\n        55% em faixa intermediária e 100% no excedente eólico/solar).\n    H2V-01 (h2v_nominal_mw = 0) coincide numericamente com TX-03 e Central × Intermediária.\n    \"\"\"\n    logger.info(\"2. Executando Análise H2V vs. Data Centers 24/7 via Motor Monte Carlo (2035)...\")\n\n    arrays = _prepare_seasonal_blocks(df_master)\n    central_dc_mw, interm_onshore_mw, interm_offshore_mw = _extract_central_interm_2035(df_scen_matrix)\n\n    pecem_rows = df_subs[df_subs[\"subestacao_conexao\"] == \"SE Pecém II\"]\n    if pecem_rows.empty:\n        raise ValueError(\"Subestação 'SE Pecém II' ausente em dc_substation_load_concentration.csv\")\n    pecem_dc_base_mw = float(pecem_rows[\"demanda_efetiva_2035_mw\"].sum())\n\n    h2v_configs = [\n        (\n            \"H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6)\",\n            0.0,\n            False,\n            \"Sem H2V (Isolamento de Data Centers)\",\n        ),\n        (\n            \"H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)\",\n            1000.0,\n            False,\n            \"Baseload Inflexível (92% contínuo)\",\n        ),\n        (\n            \"H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)\",\n            1000.0,\n            True,\n            \"Modulação Dinâmica (12% na calmaria / 100% no excedente)\",\n        ),\n        (\n            \"H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)\",\n            2000.0,\n            False,\n            \"Baseload Inflexível (92% contínuo)\",\n        ),\n        (\n            \"H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)\",\n            2000.0,\n            True,\n            \"Modulação Dinâmica (12% na calmaria / 100% no excedente)\",\n        ),\n    ]\n\n    rows: List[Dict[str, Any]] = []\n    for scen_id, h2v_nom_mw, is_flex, regime_desc in h2v_configs:\n        res = simulate_block_bootstrap(\n            cenario_nome=scen_id,\n            cenario_dc_id=\"central\",\n            target_year=2035,\n            dc_load_mw=central_dc_mw,\n            wind_onshore_mw=interm_onshore_mw,\n            wind_offshore_mw=interm_offshore_mw,\n            n_iterations=n_iterations,\n            seed=seed,\n            arrays=arrays,\n            import_limit_mw=float(INTERCHANGE_IMPORT_LIMIT_MW),\n            export_limit_mw=float(INTERCHANGE_EXPORT_LIMIT_MW),\n            h2v_nominal_mw=h2v_nom_mw,\n            h2v_flexible=is_flex,\n        )\n        h2v_avg_mw = float(res[\"h2v_avg_mw\"])\n        absorbed_total_twh = round(float(res[\"curtailment_evitado_gwh_ano\"]) / 1000.0, 2)\n        pecem_pressure_mw = round(pecem_dc_base_mw + h2v_avg_mw * PECEM_H2V_HUB_SHARE, 1)\n\n        rows.append(\n            {\n                \"cenario_id\": scen_id,\n                \"carga_dc_mw\": round(central_dc_mw, 1),\n                \"carga_h2v_nominal_mw\": h2v_nom_mw,\n                \"carga_h2v_media_efetiva_mw\": round(h2v_avg_mw, 1),\n                \"regime_operacional_h2v\": regime_desc,\n                \"prob_import_critica_pct\": res[\"prob_exceder_intercambio_pct\"],\n                \"import_p95_mw\": res[\"importacao_p95_mw\"],\n                \"curtailment_restante_twh\": res[\"curtailment_com_dc_twh_ano\"],\n                \"curtailment_absorvido_total_twh\": absorbed_total_twh,\n                \"pressao_se_pecem_ii_mw\": pecem_pressure_mw,\n                \"expansao_eolica_compensatoria_gw\": res[\"expansao_eolica_compensatoria_gw\"],\n            }\n        )\n\n    df_h2v = pd.DataFrame(rows)\n    out_path = REPORTS_DIR / \"sensibilidade_h2v_eletrointensivos_2035.csv\"\n    df_h2v.to_csv(out_path, index=False)\n    logger.info(\"   -> Salvo: %s\", out_path)\n    return df_h2v\n\n\ndef build_aneel_vs_ons_wind_indicators_2015_2035(\n    df_master: pd.DataFrame,\n    df_scen_matrix: pd.DataFrame,\n    df_timeline: pd.DataFrame,\n) -> pd.DataFrame:\n    \"\"\"\n    Constrói a tabela histórica (2015–2025) e projetada (2028, 2030, 2032, 2035) exigida na\n    Seção 6 do Plano Orientador:\n      - Participação eólica na capacidade instalada total (ANEEL)\n      - Participação eólica na geração efetiva (ONS).\n    As linhas projetadas são derivadas diretamente de matriz_cenarios_dc_eolica_2026_2035.csv,\n    evolucao_anual_risco_2026_2035.csv e do baseline empírico de df_master.\n    \"\"\"\n    logger.info(\"3. Calculando Indicadores Separados ANEEL (Capacidade) vs. ONS (Geração Efetiva) 2015–2035...\")\n\n    df_hist_base = df_master.copy()\n    df_hist_base[\"year\"] = pd.to_datetime(df_hist_base[\"ts\"]).dt.year\n    annual_hist = (\n        df_hist_base.groupby(\"year\", as_index=False)\n        .agg(\n            cap_eolica_mw=(\"cap_eolica_instalada_mw\", \"mean\"),\n            gen_eolica_verificada_mw=(\"g_eolica_verificada_mw\", \"mean\"),\n            curtailment_mw=(\"curtailment_mw\", \"mean\"),\n            gen_solar_mw=(\"g_solar_mw\", \"mean\"),\n            gen_hidro_mw=(\"g_hidraulica_mw\", \"mean\"),\n            gen_termica_mw=(\"g_termica_mw\", \"mean\"),\n            carga_base_mw=(\"l_base_mw\", \"mean\"),\n            cf_eolica_pot=(\"cf_eolica\", \"mean\"),\n        )\n        .sort_values(\"year\")\n    )\n\n    hydro_therm_cap = 15350.0  # Parque Chesf + UTEs NE (capacidade firme instalada)\n    rows: List[Dict[str, Any]] = []\n\n    for _, r in annual_hist.iterrows():\n        yr = int(r[\"year\"])\n        wind_cap = float(r[\"cap_eolica_mw\"])\n        solar_cap_est = max(120.0, float(r[\"gen_solar_mw\"]) * 3.85)\n        total_installed_cap_ne = wind_cap + solar_cap_est + hydro_therm_cap\n\n        wind_gen = float(r[\"gen_eolica_verificada_mw\"])\n        total_gen_ne = wind_gen + float(r[\"gen_solar_mw\"]) + float(r[\"gen_hidro_mw\"]) + float(r[\"gen_termica_mw\"])\n        curt_twh = float(r[\"curtailment_mw\"]) * 8760.0 / 1e6\n\n        share_cap_aneel_pct = round((wind_cap / total_installed_cap_ne) * 100.0, 2)\n        share_gen_ons_pct = round((wind_gen / max(1.0, total_gen_ne)) * 100.0, 2)\n        cf_efetivo_ons_pct = round((wind_gen / max(1.0, wind_cap)) * 100.0, 2)\n        cf_potencial_pct = round(((wind_gen + float(r[\"curtailment_mw\"])) / max(1.0, wind_cap)) * 100.0, 2)\n\n        rows.append(\n            {\n                \"ano\": yr,\n                \"periodo\": \"Histórico Verificado (ONS/ANEEL)\",\n                \"cap_eolica_instalada_gw\": round(wind_cap / 1000.0, 2),\n                \"cap_total_subsistema_ne_gw\": round(total_installed_cap_ne / 1000.0, 2),\n                \"participacao_capacidade_aneel_pct\": share_cap_aneel_pct,\n                \"participacao_geracao_efetiva_ons_pct\": share_gen_ons_pct,\n                \"cf_eolico_efetivo_ons_pct\": cf_efetivo_ons_pct,\n                \"cf_eolico_potencial_sem_corte_pct\": cf_potencial_pct,\n                \"perda_curtailment_anual_twh\": round(curt_twh, 2),\n            }\n        )\n\n    # Parâmetros empíricos da janela moderna (2022–2025) e de 2025 para derivação das projeções 2028–2035\n    df_2025 = df_hist_base[df_hist_base[\"year\"] == 2025].copy()\n    if df_2025.empty:\n        max_yr = int(df_hist_base[\"year\"].max())\n        df_2025 = df_hist_base[df_hist_base[\"year\"] == max_yr].copy()\n\n    df_modern = df_hist_base[df_hist_base[\"year\"] >= 2022]\n    if df_modern.empty:\n        df_modern = df_hist_base\n    cf_pot_ref = float(df_modern[\"cf_eolica\"].mean())\n\n    load_2025_arr = df_2025[\"l_base_mw\"].to_numpy(dtype=float)\n    cf_2025_arr = df_2025[\"cf_eolica\"].to_numpy(dtype=float)\n    solar_2025_arr = df_2025[\"g_solar_mw\"].fillna(0.0).to_numpy(dtype=float)\n    solar_2025_mean_mw = float(np.mean(solar_2025_arr))\n    solar_2025_cap_mw = max(120.0, solar_2025_mean_mw * 3.85)\n\n    for yr in [2028, 2030, 2032, 2035]:\n        scen_row = df_scen_matrix[\n            (df_scen_matrix[\"ano\"] == yr)\n            & (df_scen_matrix[\"cenario_dc\"] == \"central\")\n            & (df_scen_matrix[\"cenario_eolica\"] == \"intermediate\")\n        ]\n        tl_row = df_timeline[df_timeline[\"target_year\"] == yr]\n        if scen_row.empty or tl_row.empty:\n            raise ValueError(\n                f\"Dados projetados ausentes para o ano {yr} em matriz_cenarios_dc_eolica_2026_2035.csv \"\n                \"ou evolucao_anual_risco_2026_2035.csv\"\n            )\n\n        w_mw = float(scen_row.iloc[0][\"eolica_total_mw\"])\n        curt_twh = round(float(tl_row.iloc[0][\"curtailment_com_dc_twh_ano\"]), 2)\n        years_ahead = max(0, yr - 2025)\n        solar_growth = 1.0 + 0.045 * years_ahead\n        load_growth = 1.031 ** years_ahead\n\n        proj_solar_cap_mw = solar_2025_cap_mw * solar_growth\n        total_cap_mw = w_mw + proj_solar_cap_mw + hydro_therm_cap\n        share_cap = round((w_mw / total_cap_mw) * 100.0, 2)\n\n        wind_pot_gen_mw = w_mw * cf_pot_ref\n        curt_mw_avg = (curt_twh * 1e6) / 8760.0\n        wind_eff_gen_mw = max(0.0, wind_pot_gen_mw - curt_mw_avg)\n\n        proj_solar_gen_arr = solar_2025_arr * solar_growth\n        proj_hydro_therm_arr = _compute_chesf_hydro_thermal_dispatch(\n            load_2025_arr * load_growth,\n            cf_2025_arr * w_mw,\n            proj_solar_gen_arr,\n        )\n        total_gen_mw = wind_eff_gen_mw + float(np.mean(proj_solar_gen_arr)) + float(np.mean(proj_hydro_therm_arr))\n        share_gen = round((wind_eff_gen_mw / max(1.0, total_gen_mw)) * 100.0, 2)\n\n        cf_pot_pct = round(cf_pot_ref * 100.0, 2)\n        cf_eff_pct = round((wind_eff_gen_mw / max(1.0, w_mw)) * 100.0, 2)\n\n        rows.append(\n            {\n                \"ano\": yr,\n                \"periodo\": \"Projeção Cenário Central DC + SIGA Interm.\",\n                \"cap_eolica_instalada_gw\": round(w_mw / 1000.0, 2),\n                \"cap_total_subsistema_ne_gw\": round(total_cap_mw / 1000.0, 2),\n                \"participacao_capacidade_aneel_pct\": share_cap,\n                \"participacao_geracao_efetiva_ons_pct\": share_gen,\n                \"cf_eolico_efetivo_ons_pct\": cf_eff_pct,\n                \"cf_eolico_potencial_sem_corte_pct\": cf_pot_pct,\n                \"perda_curtailment_anual_twh\": curt_twh,\n            }\n        )\n\n    df_ind = pd.DataFrame(rows)\n    out_path = REPORTS_DIR / \"indicadores_participacao_eolica_aneel_vs_ons_2015_2035.csv\"\n    df_ind.to_csv(out_path, index=False)\n    logger.info(\"   -> Salvo: %s\", out_path)\n    return df_ind\n\n\ndef write_final_consolidated_markdown_report(\n    df_tx: pd.DataFrame,\n    df_h2v: pd.DataFrame,\n    df_ind: pd.DataFrame,\n    df_model_a: Optional[pd.DataFrame] = None,\n    df_model_bc: Optional[pd.DataFrame] = None,\n    df_mc_12: Optional[pd.DataFrame] = None,\n    df_anova: Optional[pd.DataFrame] = None,\n    df_monthly: Optional[pd.DataFrame] = None,\n    df_dc_raw: Optional[pd.DataFrame] = None,\n    df_subs: Optional[pd.DataFrame] = None,\n    df_test2025: Optional[pd.DataFrame] = None,\n    df_scen_matrix: Optional[pd.DataFrame] = None,\n) -> Path:\n    \"\"\"\n    Gera o Relatório Executivo Consolidado Final em Markdown com 100% dos indicadores\n    e citações em prosa interpolados diretamente dos DataFrames reais do pipeline.\n    \"\"\"\n    if df_model_a is None:\n        df_model_a = _load_required_csv(REPORTS_DIR / \"metricas_modelo_a_demanda.csv\", \"metricas_modelo_a_demanda.csv\")\n    if df_model_bc is None:\n        df_model_bc = _load_required_csv(\n            REPORTS_DIR / \"metricas_modelos_b_c_eolica_curtailment.csv\",\n            \"metricas_modelos_b_c_eolica_curtailment.csv\",\n        )\n    if df_mc_12 is None:\n        df_mc_12 = _load_required_csv(\n            REPORTS_DIR / \"matriz_cenarios_monte_carlo_2035.csv\",\n            \"matriz_cenarios_monte_carlo_2035.csv\",\n        )\n    if df_anova is None:\n        df_anova = _load_required_csv(\n            REPORTS_DIR / \"relatorio_anova_significancia.csv\",\n            \"relatorio_anova_significancia.csv\",\n        )\n    if df_monthly is None:\n        df_monthly = _load_required_csv(\n            REPORTS_DIR / \"perfil_mensal_sazonalidade_eolica_ne.csv\",\n            \"perfil_mensal_sazonalidade_eolica_ne.csv\",\n        )\n    if df_dc_raw is None:\n        df_dc_raw = _load_required_csv(\n            RAW_DATA_DIR / \"data_centers_pipeline_ne.csv\",\n            \"data_centers_pipeline_ne.csv\",\n        )\n    if df_subs is None:\n        df_subs = _load_required_csv(\n            SCENARIOS_DATA_DIR / \"dc_substation_load_concentration.csv\",\n            \"dc_substation_load_concentration.csv\",\n        )\n    if df_test2025 is None:\n        df_test2025 = _load_required_csv(\n            PROCESSED_DATA_DIR / \"test_features_2025.csv\",\n            \"test_features_2025.csv\",\n        )\n    if df_scen_matrix is None:\n        df_scen_matrix = _load_required_csv(\n            SCENARIOS_DATA_DIR / \"matriz_cenarios_dc_eolica_2026_2035.csv\",\n            \"matriz_cenarios_dc_eolica_2026_2035.csv\",\n        )\n\n    # --- Extração dinâmica de métricas-chave ---\n    train_hours = int(df_model_a[\"treino_horas\"].iloc[0])\n    test_hours = int(df_model_a[\"teste_2025_horas\"].iloc[0])\n\n    base_load_2025_mw = float(df_test2025[\"l_base_mw\"].mean())\n    base_load_2035_mw = base_load_2025_mw * (1.031 ** 10)\n\n    n_dc_projects = int(len(df_dc_raw))\n    total_it_mw = float(df_dc_raw[\"potencia_it_mw\"].sum())\n    grid_powers = np.where(\n        df_dc_raw[\"tipo_publicacao\"].astype(str) == \"potencia_total_rede\",\n        df_dc_raw[\"potencia_total_rede_mw\"].astype(float),\n        df_dc_raw[\"potencia_it_mw\"].astype(float) * df_dc_raw[\"pue_estimado\"].astype(float),\n    )\n    total_max_grid_mw = float(np.sum(grid_powers))\n    pue_min = float(df_dc_raw[\"pue_estimado\"].min())\n    pue_max = float(df_dc_raw[\"pue_estimado\"].max())\n\n    # Linhas de referência na matriz de 12 cenários Monte Carlo 2035\n    mc_sorted = df_mc_12.sort_values(\"wind_capacity_mw\")\n    base_wind_mw = float(mc_sorted[\"wind_capacity_mw\"].min())\n    high_wind_mw = float(mc_sorted[\"wind_capacity_mw\"].max())\n    interm_row_scen = df_scen_matrix[\n        (df_scen_matrix[\"ano\"] == 2035) & (df_scen_matrix[\"cenario_eolica\"] == \"intermediate\")\n    ].iloc[0]\n    interm_wind_mw = float(interm_row_scen[\"eolica_total_mw\"])\n\n    def _find_mc(dc_id: str, w_mw: float) -> pd.Series:\n        sub = df_mc_12[(df_mc_12[\"cenario_dc\"] == dc_id) & (np.abs(df_mc_12[\"wind_capacity_mw\"] - w_mw) < 150.0)]\n        if sub.empty:\n            raise ValueError(f\"Cenário ({dc_id}, wind={w_mw}) não encontrado em matriz_cenarios_monte_carlo_2035.csv\")\n        return sub.iloc[0]\n\n    mc_none_base = _find_mc(\"none\", base_wind_mw)\n    mc_central_base = _find_mc(\"central\", base_wind_mw)\n    mc_central_interm = _find_mc(\"central\", interm_wind_mw)\n    mc_central_high = _find_mc(\"central\", high_wind_mw)\n    mc_high_interm = _find_mc(\"high\", interm_wind_mw)\n\n    central_dc_mw = float(mc_central_base[\"dc_load_mw\"])\n    base_wind_gw = base_wind_mw / 1000.0\n    interm_wind_gw = interm_wind_mw / 1000.0\n    interm_add_gw = (interm_wind_mw - base_wind_mw) / 1000.0\n    high_wind_gw = high_wind_mw / 1000.0\n\n    # Razão empírica MW eólicos compensatórios por MW de DC nos cenários com déficit compensatório > 0 sob eólica base\n    comp_ratios = [\n        (float(r[\"expansao_eolica_compensatoria_gw\"]) * 1000.0) / float(r[\"dc_load_mw\"])\n        for _, r in df_mc_12.iterrows()\n        if abs(float(r[\"wind_capacity_mw\"]) - base_wind_mw) < 150.0\n        and float(r[\"dc_load_mw\"]) > 0.0\n        and float(r[\"expansao_eolica_compensatoria_gw\"]) > 0.0\n    ]\n    ratio_min = min(comp_ratios) if comp_ratios else 0.0\n    ratio_max = max(comp_ratios) if comp_ratios else 0.0\n    central_ratio = (float(mc_central_interm[\"expansao_eolica_compensatoria_gw\"]) * 1000.0) / max(1.0, central_dc_mw)\n\n    # ANOVA & Sazonalidade mensal\n    wind_anova = df_anova[df_anova[\"variavel_analisada\"].str.contains(\"cf_eolica\", case=False)].iloc[0]\n    anova_f = float(wind_anova[\"estatistica_f\"])\n    mar_p10_pct = float(df_monthly[df_monthly[\"mes\"] == 3][\"cf_p10\"].iloc[0]) * 100.0\n    sep_p10_pct = float(df_monthly[df_monthly[\"mes\"] == 9][\"cf_p10\"].iloc[0]) * 100.0\n\n    # Benchmarks Modelos A, B, C\n    a_1h_mlp = df_model_a[\n        df_model_a[\"horizonte\"].str.contains(\"1h\") & df_model_a[\"arquitetura\"].str.contains(\"ResMLP\")\n    ].iloc[0]\n    a_1h_lin = df_model_a[\n        df_model_a[\"horizonte\"].str.contains(\"1h\") & df_model_a[\"familia\"].eq(\"Linear\")\n    ].iloc[0]\n    a_1h_gain_pct = (1.0 - float(a_1h_mlp[\"mae_mw\"]) / max(1e-6, float(a_1h_lin[\"mae_mw\"]))) * 100.0\n\n    a_24h_mlp = df_model_a[\n        df_model_a[\"horizonte\"].str.contains(\"24h\") & df_model_a[\"arquitetura\"].str.contains(\"ResMLP\")\n    ].iloc[0]\n\n    b_1h_mlp = df_model_bc[\n        df_model_bc[\"etapa\"].str.startswith(\"Modelo B\")\n        & df_model_bc[\"horizonte\"].str.contains(\"1h\")\n        & df_model_bc[\"arquitetura\"].str.contains(\"ResMLP\")\n    ].iloc[0]\n\n    c_lin = df_model_bc[\n        df_model_bc[\"etapa\"].str.startswith(\"Modelo C\") & df_model_bc[\"familia\"].eq(\"Linear\")\n    ].iloc[0]\n    c_nl_df = df_model_bc[\n        df_model_bc[\"etapa\"].str.startswith(\"Modelo C\") & ~df_model_bc[\"familia\"].eq(\"Linear\")\n    ]\n    c_nl = c_nl_df[c_nl_df[\"arquitetura\"].str.contains(\"ResMLP\")].iloc[0] if (\n        c_nl_df[\"arquitetura\"].str.contains(\"ResMLP\").any()\n    ) else c_nl_df.iloc[0]\n\n    # Concentração em SE Pecém II e comparativo H2V 2,0 GW\n    pecem_share_pct = float(df_subs[df_subs[\"subestacao_conexao\"] == \"SE Pecém II\"][\"participacao_pct\"].sum())\n    h2v_base = df_h2v[df_h2v[\"carga_h2v_nominal_mw\"] == 0.0].iloc[0]\n    h2v_2gw_inflex = df_h2v[\n        (df_h2v[\"carga_h2v_nominal_mw\"] == 2000.0) & df_h2v[\"cenario_id\"].str.contains(\"Inflexível\")\n    ].iloc[0]\n    h2v_2gw_flex = df_h2v[\n        (df_h2v[\"carga_h2v_nominal_mw\"] == 2000.0) & df_h2v[\"cenario_id\"].str.contains(\"Flexível\")\n    ].iloc[0]\n\n    imp_limit_str = _fmt_int_pt(int(round(INTERCHANGE_IMPORT_LIMIT_MW)))\n    imp_limit_gw_str = _fmt_pt(INTERCHANGE_IMPORT_LIMIT_MW / 1000.0, 1)\n\n    report_path = REPORTS_DIR / \"relatorio_final_consolidado_ptc3567_grupo6.md\"\n\n    md_content = f\"\"\"# Relatório Técnico Consolidado Final — PTC3567 (Grupo 6)\n## Impacto da Expansão de Data Centers e Demanda Elétrica sobre a Geração Eólica no Nordeste (2026–2035)\n\n**Disciplina:** PTC3567 — Ciência dos Dados em Automação e Engenharia (Escola Politécnica da USP)  \n**Subsistema Analisado:** Subsistema Nordeste (SIN — ONS / ANEEL / EPE)  \n**Janela Empírica de Treino e Validação:** 2015–2024 (Treino: {_fmt_int_pt(train_hours)} horas) e 2025 (Validação Out-of-Time Cega: {_fmt_int_pt(test_hours)} horas)  \n**Horizonte Estocástico de Planejamento:** 2026–2035 (Monte Carlo em Blocos Sazonais — {len(df_mc_12)} Cenários + Sensibilidades)\n\n---\n\n### 1. Resposta Direta à Pergunta Central de Pesquisa\n\n> **Pergunta Central (Seção 1 do Plano Orientador):** *\"Qual o impacto do crescimento da demanda elétrica associado à expansão de data centers sobre a suficiência da geração eólica no Nordeste até 2035, e quanto de expansão eólica seria necessário para compensar esse aumento estrutural de carga?\"*\n\n1. **Impacto Estrutural da Carga Base + Data Centers até 2035:**\n   - A demanda base vegetativa do Subsistema Nordeste cresce de **{_fmt_pt(base_load_2025_mw, 1)} MW médios em 2025** para **{_fmt_pt(base_load_2035_mw, 1)} MW médios em 2035** (+3,1% a.a. conforme PDE/EPE).\n   - O pipeline mapeado de **{n_dc_projects} projetos nominais de Data Centers no Nordeste** totaliza **{_fmt_int_pt(int(round(total_it_mw)))} MW de potência de TI** (**{_fmt_int_pt(int(round(total_max_grid_mw)))} MW de carga máxima contratada na rede**, com PUE entre {_fmt_pt(pue_min, 2)} e {_fmt_pt(pue_max, 2)} e regra de não-duplicação quando publicado em potência total de rede).\n   - No **Cenário Central probabilístico ({_fmt_pt(central_dc_mw, 1)} MW médios contínuos na rede em 2035)**, os Data Centers elevam a probabilidade anual de importação crítica acima do limite de intercâmbio ($P(\\\\text{{Import}} > {imp_limit_str}\\\\text{{ MW}})$) de **{_fmt_pt(float(mc_none_base['prob_exceder_intercambio_pct']), 1)}% para {_fmt_pt(float(mc_central_base['prob_exceder_intercambio_pct']), 1)}%** caso o parque eólico permaneça congelado em {_fmt_pt(base_wind_gw, 1)} GW.\n\n2. **Expansão Eólica Compensatória Exigida ($\\\\Delta C_{{\\\\text{{eólica}}}}$):**\n   - Devido à **assimetria sazonal severa do vento nordestino** (comprovada via ANOVA com $F = {_fmt_pt(anova_f, 2)}, p < 10^{{-16}}$, onde o fator de capacidade P10 cai de **{_fmt_pt(sep_p10_pct, 1)}% em setembro** para **{_fmt_pt(mar_p10_pct, 1)}% em março**) e ao perfil noturno de carga, cada **1,0 MW de carga firme 24/7 de Data Center** exige entre **{_fmt_pt(ratio_min, 2)} MW e {_fmt_pt(ratio_max, 2)} MW de capacidade eólica onshore adicional** sob o parque base para compensar a perda de margem no P95 em períodos de baixa geração.\n   - **No Cenário Central de Data Centers ({_fmt_pt(central_dc_mw, 1)} MW):**\n     - Com **Eólica Base ({_fmt_pt(base_wind_gw, 1)} GW)**: são necessários **+{_fmt_pt(float(mc_central_base['expansao_eolica_compensatoria_gw']), 2)} GW eólicos adicionais** (levando o parque a {_fmt_pt(base_wind_gw + float(mc_central_base['expansao_eolica_compensatoria_gw']), 2)} GW).\n     - Com **Expansão SIGA Intermediária ({_fmt_pt(interm_wind_gw, 1)} GW, já somando +{_fmt_pt(interm_add_gw, 1)} GW em construção)**: restam **+{_fmt_pt(float(mc_central_interm['expansao_eolica_compensatoria_gw']), 2)} GW eólicos adicionais** para neutralizar o risco operacional no P95.\n     - Com **Expansão Alta + Offshore IBAMA pós-2031 ({_fmt_pt(high_wind_gw, 1)} GW)**: o requisito adicional cai para **{_fmt_pt(float(mc_central_high['expansao_eolica_compensatoria_gw']), 2)} GW** ($P(\\\\text{{Import}} > {imp_limit_gw_str}\\\\text{{ GW}}) = {_fmt_pt(float(mc_central_high['prob_exceder_intercambio_pct']), 1)}\\\\%$), atingindo autossuficiência estatística.\n\n3. **Sinergia Positiva Diurna e Noturna (Absorção de *Constrained-Off* / *Curtailment*):**\n   - Em contrapartida ao estresse nas horas de calmaria, a carga 24/7 dos Data Centers atua como **âncora de absorção local de excedentes renováveis**, evitando o desperdício (*curtailment*) de **{_fmt_int_pt(int(round(float(mc_central_interm['curtailment_evitado_gwh_ano']))))} GWh/ano ({_fmt_pt(float(mc_central_interm['curtailment_evitado_gwh_ano']) / 1000.0, 2)} TWh/ano)** no Cenário Central e até **{_fmt_int_pt(int(round(float(mc_high_interm['curtailment_evitado_gwh_ano']))))} GWh/ano ({_fmt_pt(float(mc_high_interm['curtailment_evitado_gwh_ano']) / 1000.0, 2)} TWh/ano)** no Cenário Alto de Data Centers sob expansão SIGA Intermediária.\n\n---\n\n### 2. Síntese da Validação Cega Out-of-Time em 2025 (Passo 3 — Modelos A, B e C)\n\nTodos os modelos foram implementados em Python utilizando exclusivamente `numpy`, `scipy` e `pandas` (`scripts/ml_models_numpy.py`), comparando arquiteturas **Lineares (Ridge / Logística)** contra arquiteturas **Não-Lineares (`ResidualMLPRegressor` L-BFGS-B e `HistogramGBDT`)**:\n\n| Bloco de Modelagem | Variável Alvo | Melhor Modelo Não-Linear | Baseline Linear | Métrica Principal (Teste Cego 2025 - {_fmt_int_pt(test_hours)} h) | Ganho Não-Linear |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| **Modelo A (Script 04)** | Demanda Base $L_{{\\\\text{{base}}}}(t)$ (1h-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = {_fmt_pt(float(a_1h_mlp['mae_mw']), 1)} MW** · **MAPE = {_fmt_pt(float(a_1h_mlp['mape_pct']), 2)}%** · $R^2 = {_fmt_pt(float(a_1h_mlp['r2_score']), 4)}$ | Redução de **{_fmt_pt(a_1h_gain_pct, 1)}%** no erro MAE |\n| **Modelo A (Script 04)** | Demanda Base $L_{{\\\\text{{base}}}}(t)$ (24h Day-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = {_fmt_pt(float(a_24h_mlp['mae_mw']), 1)} MW** · **MAPE = {_fmt_pt(float(a_24h_mlp['mape_pct']), 2)}%** · $R^2 = {_fmt_pt(float(a_24h_mlp['r2_score']), 4)}$ | Captura interação térmica × dia útil |\n| **Modelo B (Script 05)** | Fator de Capacidade Potencial $CF_{{\\\\text{{pot}}}}(t)$ (1h) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = {_fmt_pt(float(b_1h_mlp['mae_cf']), 4)}** ({_fmt_pt(float(b_1h_mlp['mae_potencia_equiv_mw']), 1)} MW) · **$R^2 = {_fmt_pt(float(b_1h_mlp['r2_score']), 4)}$** | Captura potência cúbica $v^3$ de Betz |\n| **Modelo C (Script 05)** | *Curtailment* Eólico Real ONS (Hurdle 2 Estágios) | `HistogramGBDT` + `ResMLP` | `Logistic` + `Ridge` | **ROC-AUC = {_fmt_pt(float(c_nl['roc_auc']), 4)}** · **Brier = {_fmt_pt(float(c_nl['brier_score']), 4)}** · **F1 = {_fmt_pt(float(c_nl['f1_score']), 4)}** | **$R^2$ Volume = {_fmt_pt(float(c_nl['r2_volume']), 4)}** (vs {_fmt_pt(float(c_lin['r2_volume']), 4)} linear) |\n\n---\n\n### 3. Passo 5 · Análise de Sensibilidade à Expansão da Transmissão (Limites de Intercâmbio SIN)\n\nA tabela abaixo demonstra como a expansão das linhas de interligação Nordeste–Sudeste/Centro-Oeste (novas LTs 500 kV e Bipolo HVDC) altera o risco de suprimento e o *curtailment* em 2035 sob o Cenário Central de Data Centers ({_fmt_pt(central_dc_mw, 1)} MW) e Eólica SIGA Intermediária ({_fmt_pt(interm_wind_gw, 1)} GW), simulados diretamente pelo motor Block-Bootstrap:\n\n| Configuração de Malha de Transmissão (2035) | Limite Importação (MW) | Limite Exportação (MW) | $P(\\\\text{{Import}} > \\\\text{{Limite}})$ | Importação P95 (MW) | Curtailment Restante (TWh/ano) | Eólica Extra Req. (GW) |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n\"\"\"\n\n    for _, r in df_tx.iterrows():\n        md_content += (\n            f\"| **{r['id_config']}** | {r['import_limit_mw']:,.0f} MW | {r['export_limit_mw']:,.0f} MW | \"\n            f\"**{r['prob_import_critica_pct']:.2f}%** | {r['import_p95_mw']:,.1f} MW | \"\n            f\"{r['curtailment_com_dc_twh']:.2f} TWh | **+{r['expansao_eolica_compensatoria_gw']:.2f} GW** |\\n\"\n        )\n\n    md_content += f\"\"\"\n---\n\n### 4. Passo 5 · Disputa vs. Sinergia de Rede: Data Centers 24/7 vs. Hidrogênio Verde (H2V) em Pecém e Suape\n\nAtendendo à Seção 10 do Plano Orientador e à Decisão 04 do Grupo 6, avaliamos o efeito da entrada simultânea de eletrolisadores de **Hidrogênio Verde (H2V)** na ZPE do Pecém (CE) e Suape (PE) competindo pelos mesmos barramentos de 500 kV (**SE Pecém II** concentra **{_fmt_pt(pecem_share_pct, 1)}%** da carga de Data Centers do NE):\n\n| Cenário de Cargas Eletrointensivas (2035) | Carga DC 24/7 (MW) | Carga H2V Nominal (MW) | Carga H2V Média Efetiva (MW) | $P(\\\\text{{Import}} > {imp_limit_gw_str}\\\\text{{ GW}})$ | Curtailment Absorvido Total (TWh/ano) | Pressão na SE Pecém II 500 kV (MW) | Eólica Extra Req. (GW) |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n\"\"\"\n\n    for _, r in df_h2v.iterrows():\n        md_content += (\n            f\"| **{r['cenario_id']}** | {r['carga_dc_mw']:,.1f} MW | {r['carga_h2v_nominal_mw']:,.0f} MW | \"\n            f\"{r['carga_h2v_media_efetiva_mw']:,.1f} MW | **{r['prob_import_critica_pct']:.2f}%** | \"\n            f\"**{r['curtailment_absorvido_total_twh']:.2f} TWh** | {r['pressao_se_pecem_ii_mw']:,.1f} MW | \"\n            f\"**+{r['expansao_eolica_compensatoria_gw']:.2f} GW** |\\n\"\n        )\n\n    md_content += f\"\"\"\n**Conclusão Operacional sobre H2V vs. Data Centers:**\n- Enquanto os **Data Centers de IA/Cloud** possuem carga estritamente inflexível 24/7 (UPS/SLA Tier III/IV), os **eletrolisadores de H2V** podem e devem ser contratados sob modalidade **flexível / interruptível (*grid-following*)**.\n- Quando 2,0 GW de H2V operam de forma **inflexível 24/7**, o risco de importação crítica salta de **{_fmt_pt(float(h2v_base['prob_import_critica_pct']), 2)}% para {_fmt_pt(float(h2v_2gw_inflex['prob_import_critica_pct']), 2)}%** e exige **+{_fmt_pt(float(h2v_2gw_inflex['expansao_eolica_compensatoria_gw']), 2)} GW eólicos extras**. Porém, quando o mesmo H2V de 2,0 GW opera com **modulação dinâmica** (reduzindo a 12% na calmaria noturna e operando a 100% nas horas de vento/sol abundante), ele absorve **{_fmt_pt(float(h2v_2gw_flex['curtailment_absorvido_total_twh']), 2)} TWh/ano de *curtailment*** com impacto mitigado sobre o risco de importação na calmaria (**{_fmt_pt(float(h2v_2gw_flex['prob_import_critica_pct']), 2)}%** e **+{_fmt_pt(float(h2v_2gw_flex['expansao_eolica_compensatoria_gw']), 2)} GW extras**).\n\n---\n\n### 5. Indicadores Separados (Seção 6 do PDF): Capacidade Instalada (ANEEL) vs. Geração Efetiva (ONS)\n\n| Ano | Período / Cenário | Cap. Eólica NE (GW) | Part. na Capacidade Instalada NE (ANEEL %) | Part. na Geração Efetiva NE (ONS %) | CF Potencial s/ Corte (%) | CF Efetivo Verificado ONS (%) | Perda por Curtailment (TWh/ano) |\n| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n\"\"\"\n\n    selected_years = [2015, 2018, 2021, 2023, 2024, 2025, 2028, 2030, 2032, 2035]\n    for _, r in df_ind[df_ind[\"ano\"].isin(selected_years)].iterrows():\n        md_content += (\n            f\"| **{int(r['ano'])}** | {r['periodo']} | {r['cap_eolica_instalada_gw']:.2f} GW | \"\n            f\"**{r['participacao_capacidade_aneel_pct']:.2f}%** | **{r['participacao_geracao_efetiva_ons_pct']:.2f}%** | \"\n            f\"{r['cf_eolico_potencial_sem_corte_pct']:.2f}% | {r['cf_eolico_efetivo_ons_pct']:.2f}% | \"\n            f\"{r['perda_curtailment_anual_twh']:.2f} TWh |\\n\"\n        )\n\n    md_content += f\"\"\"\n---\n\n### 6. Recomendações Finais de Engenharia e Política Energética (Grupo 6)\n\n1. **Contratação Híbrida associada a Armazenamento/Subestações:** A expansão apenas de capacidade eólica onshore apresenta retorno decrescente na ponta noturna de março–maio (no Cenário Central × SIGA Intermediária, cada 1 MW de Data Center ainda requer ~{_fmt_pt(central_ratio, 2)} MW eólicos adicionais para zerar o déficit no P95). A combinação da trajetória **SIGA Intermediária (+{_fmt_pt(interm_add_gw, 1)} GW onshore)** com **baterias BESS de 4 horas nas subestações de Pecém II e Suape II** ou **eólicas offshore pós-2031** reduz substancialmente a necessidade de sobre-expansão eólica.\n2. **Desacoplamento Tarifário/Operativo entre Data Centers (Firme 24/7) e H2V (Flexível):** Novos acessos de Data Centers na SE Pecém II 500 kV (que já concentra {_fmt_pt(pecem_share_pct, 1)}% da demanda efetiva projetada em 2035) devem ser coordenados com PPAs que remunerem a absorção de *constrained-off* diurno/noturno, enquanto plantas de H2V devem atuar como reserva interruptível para não agravar o déficit nas noites úmidas de fevereiro a maio.\n\"\"\"\n\n    report_path.write_text(md_content, encoding=\"utf-8\")\n    logger.info(\"4. Relatório Executivo Final Consolidado gerado em: %s\", report_path)\n    return report_path\n\n\ndef main() -> None:\n    inputs = load_pipeline_inputs()\n    df_tx = run_transmission_sensitivity_2035(inputs[\"df_master\"], inputs[\"df_scen_matrix\"])\n    df_h2v = run_h2v_and_datacenter_synergy_2035(\n        inputs[\"df_master\"], inputs[\"df_scen_matrix\"], inputs[\"df_subs\"]\n    )\n    df_ind = build_aneel_vs_ons_wind_indicators_2015_2035(\n        inputs[\"df_master\"], inputs[\"df_scen_matrix\"], inputs[\"df_timeline\"]\n    )\n    write_final_consolidated_markdown_report(\n        df_tx=df_tx,\n        df_h2v=df_h2v,\n        df_ind=df_ind,\n        df_model_a=inputs[\"df_model_a\"],\n        df_model_bc=inputs[\"df_model_bc\"],\n        df_mc_12=inputs[\"df_mc_12\"],\n        df_anova=inputs[\"df_anova\"],\n        df_monthly=inputs[\"df_monthly\"],\n        df_dc_raw=inputs[\"df_dc_raw\"],\n        df_subs=inputs[\"df_subs\"],\n        df_test2025=inputs[\"df_test2025\"],\n        df_scen_matrix=inputs[\"df_scen_matrix\"],\n    )\n\n    from sync_frontend_ssot import sync_frontend_ssot\n\n    sync_frontend_ssot()\n    logger.info(\"Passo 5 (Script 07) concluído e SSOT do Frontend sincronizado com sucesso.\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
     }
