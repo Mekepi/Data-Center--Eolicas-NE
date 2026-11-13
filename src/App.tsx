@@ -7,30 +7,47 @@ import { DecisionsAndPdfView, GROUP_DECISIONS } from './components/DecisionsAndP
 import { ObjectiveAndSimulatorView } from './components/ObjectiveAndSimulatorView';
 import { ScriptsPipelineView } from './components/ScriptsPipelineView';
 import { type SimulationConfig } from './utils/energyModel';
-import { PIPELINE_SSOT } from './data/generated/pipelineSsot';
+import { downloadDelimitedCsv } from './utils/csvExport';
+import { usePipelineSsot } from './data/pipelineSsotContext';
+import type { PipelineConfigSnapshot } from './data/pipelineTypes';
 
 type ActiveTab = 'objetivo' | 'pipeline-dc' | 'features-anova' | 'bancos' | 'scripts' | 'decisoes';
 
 const STORAGE_KEY_CHECKED = 'ne_grid_2035_checked_dbs_v1';
 const STORAGE_KEY_DECISIONS = 'ne_grid_2035_group_decisions_v1';
 
-const DEFAULT_SIM_CONFIG: SimulationConfig = {
-  targetYear: 2035,
-  dcScenario: 'central',
-  windScenario: 'intermediate',
-  includeOffshorePost2031: false,
-  seasonalRegime: 'annual_blend',
-  pue: PIPELINE_SSOT.config.defaultPue,
-  dcUtilization: PIPELINE_SSOT.config.defaultUtilization,
-  isPublishedPowerTotalGrid: false,
-  interchangeImportLimitMW: PIPELINE_SSOT.config.interchangeImportLimitMW,
-  interchangeExportLimitMW: PIPELINE_SSOT.config.interchangeExportLimitMW,
-};
+function buildDefaultSimConfig(cfg: PipelineConfigSnapshot): SimulationConfig {
+  return {
+    targetYear: 2035,
+    dcScenario: 'central',
+    windScenario: 'intermediate',
+    includeOffshorePost2031: false,
+    seasonalRegime: 'annual_blend',
+    pue: cfg.defaultPue,
+    dcUtilization: cfg.defaultUtilization,
+    isPublishedPowerTotalGrid: false,
+    interchangeImportLimitMW: cfg.interchangeImportLimitMW,
+    interchangeExportLimitMW: cfg.interchangeExportLimitMW,
+  };
+}
 
 export function App() {
+  const { ssot, runtimeSource } = usePipelineSsot();
   const [activeTab, setActiveTab] = useState<ActiveTab>('objetivo');
-  const [simConfig, setSimConfig] = useState<SimulationConfig>(DEFAULT_SIM_CONFIG);
+  const [simConfig, setSimConfig] = useState<SimulationConfig>(() => buildDefaultSimConfig(ssot.config));
+  const [hasCustomSimConfig, setHasCustomSimConfig] = useState<boolean>(false);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (runtimeSource === 'runtime-json' && !hasCustomSimConfig) {
+      setSimConfig(buildDefaultSimConfig(ssot.config));
+    }
+  }, [runtimeSource, hasCustomSimConfig, ssot.config]);
+
+  const handleChangeSimConfig = (next: SimulationConfig) => {
+    setHasCustomSimConfig(true);
+    setSimConfig(next);
+  };
 
   const [checkedDbs, setCheckedDbs] = useState<Record<string, boolean>>(() => {
     try {
@@ -85,40 +102,29 @@ export function App() {
   };
 
   const handleExportDatabasesCsv = () => {
-    const headers = [
-      'ID',
-      'Eixo',
-      'Instituicao',
-      'Base_de_Dados',
-      'Granularidade',
-      'Prioridade',
-      'Papel_no_Modelo',
-      'Coletada_Grupo6',
-    ];
-    const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
-    const rows = OFFICIAL_DATABASES.map((db) =>
+    downloadDelimitedCsv(
+      'mapeamento_bancos_dados_eolica_datacenters_ne.csv',
       [
-        escapeCsv(db.id),
-        escapeCsv(db.pillarLabel),
-        escapeCsv(db.institution),
-        escapeCsv(db.datasetName),
-        escapeCsv(db.granularity),
-        escapeCsv(db.priority),
-        escapeCsv(db.targetModelRole),
-        escapeCsv(checkedDbs[db.id] ? 'Sim' : 'Pendente'),
-      ].join(';')
+        'ID',
+        'Eixo',
+        'Instituicao',
+        'Base_de_Dados',
+        'Granularidade',
+        'Prioridade',
+        'Papel_no_Modelo',
+        'Coletada_Grupo6',
+      ],
+      OFFICIAL_DATABASES.map((db) => [
+        db.id,
+        db.pillarLabel,
+        db.institution,
+        db.datasetName,
+        db.granularity,
+        db.priority,
+        db.targetModelRole,
+        checkedDbs[db.id] ? 'Sim' : 'Pendente',
+      ])
     );
-
-    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'mapeamento_bancos_dados_eolica_datacenters_ne.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
 
     setExportFeedback('CSV exportado');
     window.setTimeout(() => setExportFeedback(null), 2200);
@@ -243,7 +249,7 @@ export function App() {
         {activeTab === 'objetivo' && (
           <ObjectiveAndSimulatorView
             config={simConfig}
-            onChangeConfig={setSimConfig}
+            onChangeConfig={handleChangeSimConfig}
             onNavigateToDatabases={() => setActiveTab('bancos')}
             onNavigateToScripts={() => setActiveTab('scripts')}
             onNavigateToModels={() => setActiveTab('features-anova')}

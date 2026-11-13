@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { usePipelineSsot } from '../data/pipelineSsotContext';
+import { downloadDelimitedCsv } from '../utils/csvExport';
 
 export const DataCentersPipelineView: React.FC = () => {
   const { ssot } = usePipelineSsot();
@@ -36,7 +37,12 @@ export const DataCentersPipelineView: React.FC = () => {
       count: pipeline.filter((p) => p.state === st).length,
     }));
     const uniqueSubstations = Array.from(
-      new Map(substations.map((s) => [s.substation, { substation: s.substation, state: s.state, voltageKV: s.voltageKV }])).values()
+      new Map(
+        substations.map((s) => [
+          `${s.substation}::${s.voltageKV}`,
+          { key: `${s.substation}::${s.voltageKV}`, substation: s.substation, state: s.state, voltageKV: s.voltageKV },
+        ])
+      ).values()
     );
 
     return {
@@ -64,7 +70,7 @@ export const DataCentersPipelineView: React.FC = () => {
     return pipeline.filter((proj) => {
       if (selectedState !== 'all' && proj.state !== selectedState) return false;
       if (selectedScenario !== 'all' && proj.scenario !== selectedScenario) return false;
-      if (selectedSubstation !== 'all' && proj.substation !== selectedSubstation) return false;
+      if (selectedSubstation !== 'all' && `${proj.substation}::${proj.voltageKV}` !== selectedSubstation) return false;
       if (!q) return true;
       return (
         proj.name.toLowerCase().includes(q) ||
@@ -96,97 +102,85 @@ export const DataCentersPipelineView: React.FC = () => {
 
   const handleExportCsv = (type: 'pipeline' | 'substations' | 'ramp') => {
     let filename = '';
-    let content = '';
 
     if (type === 'pipeline') {
       filename = 'data_centers_pipeline_ne.csv';
-      const headers = [
-        'id_projeto',
-        'nome_projeto',
-        'estado',
-        'municipio',
-        'subestacao_conexao',
-        'tensao_conexao_kv',
-        'potencia_it_mw',
-        'potencia_total_rede_mw',
-        'pue_estimado',
-        'tipo_publicacao',
-        'ano_inicio_previsto',
-        'rampa_meses',
-        'estagio_maturidade',
-        'cenario_enquadramento',
-        'probabilidade_concretizacao',
-        'atraso_esperado_anos',
-        'fonte_oficial',
-      ];
-      const escape = (val: string | number) => `"${String(val).replace(/"/g, '""')}"`;
-      const rows = pipeline.map((p) =>
+      downloadDelimitedCsv(
+        filename,
         [
-          escape(p.id),
-          escape(p.name),
-          escape(p.state),
-          escape(p.municipality),
-          escape(p.substation),
+          'id_projeto',
+          'nome_projeto',
+          'estado',
+          'municipio',
+          'subestacao_conexao',
+          'tensao_conexao_kv',
+          'potencia_it_mw',
+          'potencia_total_rede_mw',
+          'pue_estimado',
+          'tipo_publicacao',
+          'ano_inicio_previsto',
+          'rampa_meses',
+          'estagio_maturidade',
+          'cenario_enquadramento',
+          'probabilidade_concretizacao',
+          'atraso_esperado_anos',
+          'fonte_oficial',
+        ],
+        pipeline.map((p) => [
+          p.id,
+          p.name,
+          p.state,
+          p.municipality,
+          p.substation,
           p.voltageKV,
           p.itPowerMW,
           p.totalGridPowerMW,
           p.estimatedPUE,
-          escape(p.publicationType),
+          p.publicationType,
           p.expectedStartYear,
           p.rampMonths,
-          escape(p.maturityStage),
-          escape(p.scenario),
+          p.maturityStage,
+          p.scenario,
           p.realizationProbability,
           p.expectedDelayYears,
-          escape(p.officialSource),
-        ].join(';')
+          p.officialSource,
+        ])
       );
-      content = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
     } else if (type === 'substations') {
       filename = 'dc_substation_load_concentration.csv';
-      const headers = [
-        'subestacao',
-        'estado',
-        'tensao_kv',
-        'n_projetos',
-        'potencia_it_total_mw',
-        'demanda_efetiva_2035_mw',
-        'participacao_pct',
-        'p95_monte_carlo_mw',
-        'risco_congestionamento',
-      ];
-      const rows = substations.map((s) =>
+      downloadDelimitedCsv(
+        filename,
         [
-          `"${s.substation}"`,
-          `"${s.state}"`,
+          'subestacao',
+          'estado',
+          'tensao_kv',
+          'n_projetos',
+          'potencia_it_total_mw',
+          'demanda_efetiva_2035_mw',
+          'participacao_pct',
+          'p95_monte_carlo_mw',
+          'risco_congestionamento',
+        ],
+        substations.map((s) => [
+          s.substation,
+          s.state,
           s.voltageKV,
           s.projectCount,
           s.itPowerTotalMW,
           s.effectiveDemand2035MW,
           s.sharePct,
           s.p95MonteCarloMW,
-          `"${s.congestionRisk}"`,
-        ].join(';')
+          s.congestionRisk,
+        ])
       );
-      content = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
     } else {
       filename = 'trajetoria_rampa_anual_2026_2035.csv';
-      const headers = ['ano', 'cenario_conservador_mw', 'cenario_central_mw', 'cenario_alto_mw', 'projetos_ativos'];
-      const rows = annualRamp.map((r) =>
-        [r.year, r.conservativeMW, r.centralMW, r.highMW, r.activeProjectsHigh].join(';')
+      downloadDelimitedCsv(
+        filename,
+        ['ano', 'cenario_conservador_mw', 'cenario_central_mw', 'cenario_alto_mw', 'projetos_ativos'],
+        annualRamp.map((r) => [r.year, r.conservativeMW, r.centralMW, r.highMW, r.activeProjectsHigh])
       );
-      content = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
     }
-
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
 
     setDownloadFeedback(`Arquivo ${filename} baixado`);
     window.setTimeout(() => setDownloadFeedback(null), 2500);
@@ -339,14 +333,15 @@ export const DataCentersPipelineView: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              sub.sharePct > 40 ? 'bg-amber-600' : sub.sharePct > 15 ? 'bg-sky-600' : 'bg-slate-400'
-                            }`}
-                            style={{ width: `${Math.min(100, sub.sharePct * 1.8)}%` }}
+                        <svg viewBox="0 0 100 8" className="w-16 h-2 rounded-full overflow-hidden shrink-0" aria-hidden="true">
+                          <rect width="100" height="8" rx="4" fill="#f1f5f9" />
+                          <rect
+                            width={Math.max(0, Math.min(100, sub.sharePct * 1.8))}
+                            height="8"
+                            rx="4"
+                            fill={sub.sharePct > 40 ? '#d97706' : sub.sharePct > 15 ? '#0284c7' : '#94a3b8'}
                           />
-                        </div>
+                        </svg>
                         <span className="font-mono text-xs text-slate-700">{sub.sharePct}%</span>
                       </div>
                     </td>
@@ -608,7 +603,7 @@ export const DataCentersPipelineView: React.FC = () => {
             >
               <option value="all">Todas as Subestações</option>
               {pipelineKpis.uniqueSubstations.map((s) => (
-                <option key={s.substation} value={s.substation}>
+                <option key={s.key} value={s.key}>
                   {s.substation} ({s.voltageKV} kV) · {s.state}
                 </option>
               ))}

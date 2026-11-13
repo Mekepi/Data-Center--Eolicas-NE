@@ -1,8 +1,35 @@
-import { PIPELINE_SSOT } from '../data/generated/pipelineSsot';
+import type { PipelineConfigSnapshot, PipelineSsotBundle } from '../data/pipelineTypes';
 
 export type DataCenterScenarioId = 'none' | 'conservative' | 'central' | 'high';
 export type WindExpansionScenarioId = 'base' | 'intermediate' | 'high';
 export type SeasonalRegimeId = 'dry_windy' | 'wet_calm' | 'annual_blend';
+
+export type EnergyModelSsotInput = Pick<
+  PipelineSsotBundle,
+  'config' | 'scenarioAnnualRamp' | 'monteCarlo12Scenarios2035' | 'annualRiskTimeline2026_2035'
+>;
+
+export const DEFAULT_ENERGY_MODEL_CONFIG: PipelineConfigSnapshot = {
+  subsystemId: 'NE',
+  baseWindOnshore2026MW: 29600.0,
+  baseHydroThermalMW: 4150.0,
+  interchangeImportLimitMW: 7000.0,
+  interchangeExportLimitMW: 9500.0,
+  defaultPue: 1.28,
+  defaultUtilization: 0.8,
+  dcScenariosItMW: {
+    none: 0.0,
+    conservative: 950.0,
+    central: 2200.0,
+    high: 4100.0,
+  },
+  windExpansionOnshoreMW: {
+    base: 0.0,
+    intermediate: 6800.0,
+    high: 14800.0,
+  },
+  officialDataUrls: {},
+};
 
 export interface SimulationConfig {
   targetYear: number; // 2026..2035
@@ -10,7 +37,7 @@ export interface SimulationConfig {
   windScenario: WindExpansionScenarioId;
   includeOffshorePost2031: boolean;
   seasonalRegime: SeasonalRegimeId;
-  pue: number; // e.g., 1.25
+  pue: number; // e.g., 1.28
   dcUtilization: number; // 0.50 .. 0.95
   isPublishedPowerTotalGrid: boolean; // if true, do not multiply by PUE again (PDF Sec. 5 rule)
   interchangeImportLimitMW: number; // e.g., 7000 MW import limit into NE
@@ -73,24 +100,13 @@ export interface SimulationResult {
   monteCarlo: MonteCarloSummary;
 }
 
-const DC_IT_PIPELINE_MW_2035: Record<DataCenterScenarioId, number> = {
-  ...PIPELINE_SSOT.config.dcScenariosItMW,
-};
-
-const ONSHORE_WIND_2026_BASE_MW = PIPELINE_SSOT.config.baseWindOnshore2026MW;
-const ONSHORE_ADDITION_BY_2035_MW: Record<WindExpansionScenarioId, number> = {
-  ...PIPELINE_SSOT.config.windExpansionOnshoreMW,
-};
-const BASE_HYDRO_THERMAL_MW = PIPELINE_SSOT.config.baseHydroThermalMW;
-
 /**
  * Calcula a rampa logística/progressiva de entrada dos data centers entre 2026 e 2035.
- * Segue a diretriz da Seção 5 do Plano Orientador: modelar como rampa, não degrau instantâneo.
+ * Usada como fallback paramétrico quando a série `scenarioAnnualRamp` do SSOT não é fornecida.
  */
 export function computeDcRampFactor(targetYear: number): number {
   const clampedYear = Math.max(2026, Math.min(2035, targetYear));
   const progress = (clampedYear - 2026) / (2035 - 2026);
-  // Curva suave em S (aceleração após 2028 com maturação das subestações e portarias de acesso)
   const sCurve = 0.14 + 0.86 * Math.pow(progress, 1.35);
   return Number(Math.min(1, Math.max(0, sCurve)).toFixed(4));
 }
@@ -115,6 +131,49 @@ export function computeDataCenterLoadMW(params: {
 }
 
 /**
+ * Resolve a carga efetiva média na rede elétrica (MW) dos Data Centers usando a rampa bottom-up
+ * oficial do SSOT (`scenarioAnnualRamp`) quando disponível e escalando pelos parâmetros interativos
+ * (`pue`, `dcUtilization` e `isPublishedPowerTotalGrid`) sem dupla contagem de PUE.
+ */
+export function resolveEffectiveDcLoadMW(
+  config: Pick<
+    SimulationConfig,
+    'targetYear' | 'dcScenario' | 'pue' | 'dcUtilization' | 'isPublishedPowerTotalGrid'
+  >,
+  ssot?: EnergyModelSsotInput
+): number {
+  if (config.dcScenario === 'none') {
+    return 0;
+  }
+
+  const ssotCfg = ssot?.config ?? DEFAULT_ENERGY_MODEL_CONFIG;
+  const rampRow = ssot?.scenarioAnnualRamp?.find((r) => r.year === config.targetYear);
+
+  if (rampRow) {
+    const baseGridMW =
+      config.dcScenario === 'conservative'
+        ? rampRow.conservativeMW
+        : config.dcScenario === 'central'
+          ? rampRow.centralMW
+          : rampRow.highMW;
+    const basePue = Math.max(1.0, ssotCfg.defaultPue);
+    const baseUtil = Math.max(0.01, ssotCfg.defaultUtilization);
+    const pueFactor = config.isPublishedPowerTotalGrid ? 1.0 / basePue : Math.max(1.0, config.pue) / basePue;
+    const utilFactor = Math.max(0, config.dcUtilization) / baseUtil;
+    return Number((baseGridMW * pueFactor * utilFactor).toFixed(1));
+  }
+
+  const rampFactor = computeDcRampFactor(config.targetYear);
+  return computeDataCenterLoadMW({
+    itPowerMW: ssotCfg.dcScenariosItMW[config.dcScenario],
+    utilization: config.dcUtilization,
+    pue: config.pue,
+    rampFactor,
+    isPublishedPowerTotalGrid: config.isPublishedPowerTotalGrid,
+  });
+}
+
+/**
  * Converte Fator de Capacidade previsto CF(t) e capacidade instalada futura em geração horária (MW).
  * Regra central do Plano Orientador: G_eolica(t) = CF(t) * Capacidade_Instalada(t).
  */
@@ -126,13 +185,15 @@ export function computeWindGenerationMW(capacityFactor: number, installedWindMW:
 /**
  * Calcula a capacidade eólica instalada (MW) no ano-alvo separando Onshore (SIGA) e Offshore (IBAMA).
  */
-export function computeInstalledWindCapacityMW(config: Pick<
-  SimulationConfig,
-  'targetYear' | 'windScenario' | 'includeOffshorePost2031'
->): { onshoreMW: number; offshoreMW: number; totalMW: number } {
+export function computeInstalledWindCapacityMW(
+  config: Pick<SimulationConfig, 'targetYear' | 'windScenario' | 'includeOffshorePost2031'>,
+  ssotConfig: PipelineConfigSnapshot = DEFAULT_ENERGY_MODEL_CONFIG
+): { onshoreMW: number; offshoreMW: number; totalMW: number } {
   const yearFrac = Math.max(0, Math.min(1, (config.targetYear - 2026) / 9));
-  const onshoreAddition = Math.round(ONSHORE_ADDITION_BY_2035_MW[config.windScenario] * Math.pow(yearFrac, 0.9));
-  const onshoreMW = ONSHORE_WIND_2026_BASE_MW + onshoreAddition;
+  const onshoreAddition = Math.round(
+    ssotConfig.windExpansionOnshoreMW[config.windScenario] * Math.pow(yearFrac, 0.9)
+  );
+  const onshoreMW = ssotConfig.baseWindOnshore2026MW + onshoreAddition;
 
   // Parques eólicos offshore no IBAMA possuem lead time ambiental/portuário longo, entrando gradualmente apenas pós-2031
   let offshoreMW = 0;
@@ -167,26 +228,18 @@ const DAY_NAMES = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
  * Simula uma semana representativa (168 horas) do balanço elétrico do Subsistema Nordeste:
  * M(t) = G_NE(t) - [L_base(t) + L_DC(t)]
  */
-export function simulateHourlyWeek(config: SimulationConfig): HourlyPoint[] {
+export function simulateHourlyWeek(config: SimulationConfig, ssot?: EnergyModelSsotInput): HourlyPoint[] {
+  const ssotCfg = ssot?.config ?? DEFAULT_ENERGY_MODEL_CONFIG;
   const yearsFrom2026 = Math.max(0, config.targetYear - 2026);
   // Crescimento vegetativo estrutural da carga base NE (~3.1% a.a. ancorado em EPE/PDE)
   const structuralLoadGrowth = Math.pow(1.031, yearsFrom2026);
 
-  const rampFactor = computeDcRampFactor(config.targetYear);
-  const baseDcMW = computeDataCenterLoadMW({
-    itPowerMW: DC_IT_PIPELINE_MW_2035[config.dcScenario],
-    utilization: config.dcUtilization,
-    pue: config.pue,
-    rampFactor,
-    isPublishedPowerTotalGrid: config.isPublishedPowerTotalGrid,
-  });
-
-  const windCap = computeInstalledWindCapacityMW(config);
+  const baseDcMW = resolveEffectiveDcLoadMW(config, ssot);
+  const windCap = computeInstalledWindCapacityMW(config, ssotCfg);
 
   // Capacidade solar centralizada + MMGD equivalente no NE cresce no horizonte 2035
   const solarPeakMW = Math.round(8200 * (1 + 0.055 * yearsFrom2026));
-  // Base hidrelétrica (CHESF/São Francisco) + biomassa/inflexibilidade térmica no NE
-  const baseHydroThermalMW = BASE_HYDRO_THERMAL_MW;
+  const baseHydroThermalMW = ssotCfg.baseHydroThermalMW;
 
   const series: HourlyPoint[] = [];
 
@@ -206,9 +259,8 @@ export function simulateHourlyWeek(config: SimulationConfig): HourlyPoint[] {
     const baseLoad2026 = 13100 * diurnalLoadShape * weekendFactor;
     const baseLoadMW = Math.round(baseLoad2026 * structuralLoadGrowth);
 
-    // Pequena modulação térmica de resfriamento (+3% à tarde) na carga de Data Centers 24/7
-    const dcCoolingModulation = 1 + 0.03 * Math.max(0, Math.sin(((hour - 8) * Math.PI) / 11));
-    const dcLoadMW = Math.round(baseDcMW * dcCoolingModulation);
+    // Carga firme 24/7 dos data centers (alinhada à premissa baseload contínua do Script 06)
+    const dcLoadMW = Math.round(baseDcMW);
     const totalLoadMW = baseLoadMW + dcLoadMW;
 
     // Fator de capacidade eólico horário no NE (ventos alísios mais intensos à noite/madrugada e na estação seca Ago-Nov)
@@ -242,7 +294,7 @@ export function simulateHourlyWeek(config: SimulationConfig): HourlyPoint[] {
       solarGenMW = Math.round(Math.max(0, solarPeakMW * solarCurve * cloudFactor));
     }
 
-    // Despacho hidrotérmico complementar modula levemente na ponta noturna
+    // Despacho hidrotérmico complementar modula na ponta noturna
     const hydroPeakSupport = hour >= 18 && hour <= 22 ? 650 : 0;
     const otherDispatchableMW = baseHydroThermalMW + hydroPeakSupport;
 
@@ -283,29 +335,102 @@ export function simulateHourlyWeek(config: SimulationConfig): HourlyPoint[] {
 }
 
 /**
- * Executa simulação de Monte Carlo por blocos meteorológicos e incertezas de projetos (Seção 7 do PDF).
+ * Executa simulação de Monte Carlo por blocos meteorológicos e incertezas de projetos (Seção 7 do PDF),
+ * ancorando automaticamente aos resultados oficiais do Script 06 (SSOT) quando a configuração coincide
+ * com os cenários nominais oficiais de 2035 ou com a trajetória decenal 2026–2035.
  */
 export function runMonteCarloSimulation(
   config: SimulationConfig,
   baseSeries: HourlyPoint[],
-  iterations = 240
+  iterations = 240,
+  ssot?: EnergyModelSsotInput
 ): MonteCarloSummary {
+  const ssotCfg = ssot?.config ?? DEFAULT_ENERGY_MODEL_CONFIG;
+  const windCap = computeInstalledWindCapacityMW(config, ssotCfg);
+  const nominalDcMW = resolveEffectiveDcLoadMW(config, ssot);
+
+  const isOfficialNominalParams =
+    Boolean(ssot) &&
+    config.seasonalRegime === 'annual_blend' &&
+    Math.abs(config.pue - ssotCfg.defaultPue) < 1e-6 &&
+    Math.abs(config.dcUtilization - ssotCfg.defaultUtilization) < 1e-6 &&
+    !config.isPublishedPowerTotalGrid &&
+    Math.abs(config.interchangeImportLimitMW - ssotCfg.interchangeImportLimitMW) < 1e-6 &&
+    Math.abs(config.interchangeExportLimitMW - ssotCfg.interchangeExportLimitMW) < 1e-6;
+
+  // Ancoragem direta aos 12 cenários oficiais do Script 06 (2035)
+  if (isOfficialNominalParams && ssot && config.targetYear === 2035) {
+    const officialMatch = ssot.monteCarlo12Scenarios2035.find(
+      (row) =>
+        row.dcScenarioId === config.dcScenario &&
+        Math.abs(row.windCapacityMW - windCap.totalMW) < 50
+    );
+    if (officialMatch) {
+      const noDcMatch = ssot.monteCarlo12Scenarios2035.find(
+        (row) =>
+          row.dcScenarioId === 'none' &&
+          Math.abs(row.windCapacityMW - windCap.totalMW) < 50
+      );
+      return {
+        iterations: 1000,
+        p50PeakImportMW: Math.round(officialMatch.importP50MW),
+        p95PeakImportMW: Math.round(officialMatch.importP95MW),
+        probCriticalImportAnnualPct: officialMatch.probExceedInterchangePct,
+        probCriticalWithoutDcPct: noDcMatch
+          ? noDcMatch.probExceedInterchangePct
+          : officialMatch.probExceedInterchangePct,
+        expectedCurtailmentWithDcTWh: officialMatch.curtailmentWithDcTWh,
+        expectedCurtailmentWithoutDcTWh: officialMatch.curtailmentWithoutDcTWh,
+        curtailmentAvoidedByDcGWh: Math.round(officialMatch.curtailmentAvoidedGWh),
+        requiredExtraWindGWForTargetRisk: officialMatch.compensatoryWindExpansionGW,
+        effectiveDcLoadMW: officialMatch.dcLoadMW,
+        installedWindGW: Number((officialMatch.windCapacityMW / 1000).toFixed(2)),
+        offshoreWindGW: Number((officialMatch.windOffshoreMW / 1000).toFixed(2)),
+      };
+    }
+  }
+
+  // Ancoragem à evolução anual oficial (2026–2035) no cenário Central × SIGA Intermediário
+  if (
+    isOfficialNominalParams &&
+    ssot &&
+    config.dcScenario === 'central' &&
+    config.windScenario === 'intermediate' &&
+    !config.includeOffshorePost2031
+  ) {
+    const timelineMatch = ssot.annualRiskTimeline2026_2035.find(
+      (row) => row.year === config.targetYear
+    );
+    if (timelineMatch) {
+      const avoidedTWh = timelineMatch.curtailmentAvoidedGWh / 1000;
+      const noDcBase = ssot.monteCarlo12Scenarios2035.find(
+        (row) => row.dcScenarioId === 'none' && Math.abs(row.windCapacityMW - timelineMatch.windCapacityMW) < 250
+      );
+      return {
+        iterations: 1000,
+        p50PeakImportMW: Math.round(timelineMatch.importP50MW),
+        p95PeakImportMW: Math.round(timelineMatch.importP95MW),
+        probCriticalImportAnnualPct: timelineMatch.probExceedInterchangePct,
+        probCriticalWithoutDcPct: noDcBase
+          ? noDcBase.probExceedInterchangePct
+          : Number(Math.max(1.5, timelineMatch.probExceedInterchangePct - 4.0).toFixed(1)),
+        expectedCurtailmentWithDcTWh: timelineMatch.curtailmentWithDcTWh,
+        expectedCurtailmentWithoutDcTWh: Number((timelineMatch.curtailmentWithDcTWh + avoidedTWh).toFixed(2)),
+        curtailmentAvoidedByDcGWh: Math.round(timelineMatch.curtailmentAvoidedGWh),
+        requiredExtraWindGWForTargetRisk: timelineMatch.compensatoryWindGW,
+        effectiveDcLoadMW: timelineMatch.dcLoadMW,
+        installedWindGW: Number((timelineMatch.windCapacityMW / 1000).toFixed(2)),
+        offshoreWindGW: 0,
+      };
+    }
+  }
+
   const rng = createSeededRng(
     config.targetYear * 97 +
       Math.round(config.pue * 100) * 13 +
       Math.round(config.dcUtilization * 100) * 7 +
       config.interchangeImportLimitMW
   );
-
-  const windCap = computeInstalledWindCapacityMW(config);
-  const rampFactor = computeDcRampFactor(config.targetYear);
-  const nominalDcMW = computeDataCenterLoadMW({
-    itPowerMW: DC_IT_PIPELINE_MW_2035[config.dcScenario],
-    utilization: config.dcUtilization,
-    pue: config.pue,
-    rampFactor,
-    isPublishedPowerTotalGrid: config.isPublishedPowerTotalGrid,
-  });
 
   const peakImportsWithDc: number[] = [];
   let criticalRunsWithDc = 0;
@@ -380,9 +505,6 @@ export function runMonteCarloSimulation(
   const p50PeakImportMW = Math.round(peakImportsWithDc[p50Idx] ?? 0);
   const p95PeakImportMW = Math.round(peakImportsWithDc[p95Idx] ?? 0);
 
-  // Cálculo reverso da pergunta central: "quanto de expansão eólica seria necessário para compensar esse aumento estrutural de carga?"
-  // Em horas críticas de pouco vento (CF P10 ~ 0.18–0.22), cada 1 MW de carga firme exige ~1 / CF_firme MW eólicos se sem armazenamento,
-  // ou para manter o P95 dentro do limite de intercâmbio:
   const excessImportOverLimitMW = Math.max(0, p95PeakImportMW - config.interchangeImportLimitMW);
   const lowWindFirmCf = config.includeOffshorePost2031 && config.targetYear >= 2032 ? 0.25 : 0.19;
   const requiredExtraWindMW = excessImportOverLimitMW > 0
@@ -413,8 +535,8 @@ export function runMonteCarloSimulation(
   };
 }
 
-export function evaluateScenario(config: SimulationConfig): SimulationResult {
-  const hourlySeries = simulateHourlyWeek(config);
+export function evaluateScenario(config: SimulationConfig, ssot?: EnergyModelSsotInput): SimulationResult {
+  const hourlySeries = simulateHourlyWeek(config, ssot);
   const n = hourlySeries.length;
 
   let sumBaseLoad = 0;
@@ -450,14 +572,14 @@ export function evaluateScenario(config: SimulationConfig): SimulationResult {
       ? Number((((sumCurtWithoutDcMWh - sumCurtWithDcMWh) / sumCurtWithoutDcMWh) * 100).toFixed(1))
       : 0;
 
-  const monteCarlo = runMonteCarloSimulation(config, hourlySeries, 240);
+  const monteCarlo = runMonteCarloSimulation(config, hourlySeries, 240, ssot);
 
   return {
     config,
     hourlySeries,
     summary: {
       avgBaseLoadMW: Math.round(sumBaseLoad / n),
-      effectiveDcLoadMW: Math.round(sumDcLoad / n),
+      effectiveDcLoadMW: Number(monteCarlo.effectiveDcLoadMW.toFixed(1)) || Math.round(sumDcLoad / n),
       peakTotalLoadMW,
       avgWindCfPct: Number(((sumCf / n) * 100).toFixed(1)),
       minMarginMW,

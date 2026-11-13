@@ -6,6 +6,7 @@ import {
   computeInstalledWindCapacityMW,
   computeWindGenerationMW,
   evaluateScenario,
+  resolveEffectiveDcLoadMW,
   type SimulationConfig,
 } from './energyModel';
 
@@ -326,6 +327,108 @@ test('SSOT parity: public/data/pipeline-ssot.json, generated TS bundle, live Pyt
   });
   assert.equal(wind2026.onshoreMW, PIPELINE_SSOT.config.baseWindOnshore2026MW);
 });
+
+test('Passo 4 convergence: evaluateScenario(BASE_CONFIG, PIPELINE_SSOT) converges to official 2035 Central x Intermediate metrics', async () => {
+  const { PIPELINE_SSOT } = await import('../data/generated/pipelineSsot');
+  const result = evaluateScenario(BASE_CONFIG, PIPELINE_SSOT);
+
+  assert.equal(result.summary.effectiveDcLoadMW, 1596.8);
+  assert.equal(result.monteCarlo.effectiveDcLoadMW, 1596.8);
+  assert.equal(result.monteCarlo.probCriticalImportAnnualPct, 9.3);
+  assert.equal(result.monteCarlo.p95PeakImportMW, 8440);
+  assert.equal(result.monteCarlo.expectedCurtailmentWithDcTWh, 9.93);
+  assert.equal(result.monteCarlo.curtailmentAvoidedByDcGWh, 3578);
+  assert.equal(result.monteCarlo.requiredExtraWindGWForTargetRisk, 6.85);
+});
+
+test('Passo 4 dynamic SSOT scaling: resolveEffectiveDcLoadMW matches scenarioAnnualRamp, scales with PUE/utilization without double PUE, and computeInstalledWindCapacityMW honors injected config', async () => {
+  const { PIPELINE_SSOT } = await import('../data/generated/pipelineSsot');
+
+  // At default PUE (1.28) and utilization (0.80), resolveEffectiveDcLoadMW equals official scenarioAnnualRamp
+  for (const row of PIPELINE_SSOT.scenarioAnnualRamp) {
+    const resolved = resolveEffectiveDcLoadMW(
+      {
+        targetYear: row.year,
+        dcScenario: 'central',
+        pue: PIPELINE_SSOT.config.defaultPue,
+        dcUtilization: PIPELINE_SSOT.config.defaultUtilization,
+        isPublishedPowerTotalGrid: false,
+      },
+      PIPELINE_SSOT
+    );
+    assert.equal(resolved, Number(row.centralMW.toFixed(1)), `Year ${row.year} must match scenarioAnnualRamp centralMW`);
+  }
+
+  // Avoiding double-PUE: setting isPublishedPowerTotalGrid=true removes default PUE multiplier
+  const loadItWithPue = resolveEffectiveDcLoadMW(BASE_CONFIG, PIPELINE_SSOT);
+  const loadTotalGrid = resolveEffectiveDcLoadMW(
+    { ...BASE_CONFIG, isPublishedPowerTotalGrid: true },
+    PIPELINE_SSOT
+  );
+  assert.ok(loadTotalGrid < loadItWithPue, 'Total-grid published load must be strictly lower than IT load * PUE');
+  assert.equal(loadTotalGrid, Number((loadItWithPue / PIPELINE_SSOT.config.defaultPue).toFixed(1)));
+
+  // Lower utilization proportionally lowers effective load
+  const loadHalfUtil = resolveEffectiveDcLoadMW(
+    { ...BASE_CONFIG, dcUtilization: 0.4 },
+    PIPELINE_SSOT
+  );
+  assert.equal(loadHalfUtil, Number((loadItWithPue * 0.5).toFixed(1)));
+
+  // Injected ssotConfig overrides defaults in computeInstalledWindCapacityMW
+  const customCfg = {
+    ...PIPELINE_SSOT.config,
+    baseWindOnshore2026MW: 31000,
+    windExpansionOnshoreMW: { base: 0, intermediate: 5000, high: 12000 },
+  };
+  const customWind = computeInstalledWindCapacityMW(
+    { targetYear: 2035, windScenario: 'intermediate', includeOffshorePost2031: false },
+    customCfg
+  );
+  assert.equal(customWind.onshoreMW, 36000);
+  assert.equal(customWind.totalMW, 36000);
+});
+
+test('Passo 5 csvExport helpers escape quotes, preserve nullish blanks, and prepend UTF-8 BOM with semicolon delimiter', async () => {
+  const { escapeCsvCell, buildDelimitedCsvContent } = await import('./csvExport');
+
+  assert.equal(escapeCsvCell('SE Pecém "II"'), '"SE Pecém ""II"""');
+  assert.equal(escapeCsvCell(1596.8), '1596.8');
+  assert.equal(escapeCsvCell(true), 'true');
+  assert.equal(escapeCsvCell(null), '');
+  assert.equal(escapeCsvCell(undefined), '');
+
+  const csv = buildDelimitedCsvContent(
+    ['id', 'subestacao;zona', 'valor'],
+    [
+      ['DC-01', 'SE Pecém "II"', 700],
+      ['DC-02', null, 300.5],
+    ]
+  );
+
+  assert.ok(csv.startsWith('\uFEFF'), 'CSV output must start with UTF-8 BOM');
+  const lines = csv.slice(1).split('\n');
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], 'id;"subestacao;zona";valor');
+  assert.equal(lines[1], '"DC-01";"SE Pecém ""II""";700');
+  assert.equal(lines[2], '"DC-02";;300.5');
+});
+
+test('Passo 5 computeFeaturesAnovaKpis derives consistent SSOT KPIs for panel subcomponents', async () => {
+  const { PIPELINE_SSOT } = await import('../data/generated/pipelineSsot');
+  const { computeFeaturesAnovaKpis } = await import('../components/featuresAnovaKpis');
+
+  const kpis = computeFeaturesAnovaKpis(PIPELINE_SSOT);
+  assert.ok(kpis.a1h && kpis.a1h.mapePct < 1.5);
+  assert.ok(kpis.b1h && kpis.b1h.r2Score > 0.98);
+  assert.ok(kpis.cBest && kpis.cBest.realCurtailed2025TWh === 25.7);
+  assert.ok(kpis.mcCentral && kpis.mcCentral.compensatoryWindExpansionGW === 6.85);
+  assert.equal(kpis.baseWind2026GW, 29.6);
+  assert.equal(kpis.importLimitGW, 7);
+  assert.ok(kpis.projPde2035LoadMW > 16000);
+});
+
+
 
 
 

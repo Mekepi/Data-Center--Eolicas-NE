@@ -34,6 +34,11 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
     const intermWindMW = ssot.config.baseWindOnshore2026MW + ssot.config.windExpansionOnshoreMW.intermediate;
     const mcInterm = ssot.monteCarlo12Scenarios2035.filter((s) => Math.abs(s.windCapacityMW - intermWindMW) < 100);
     const mcCentral = mcInterm.find((s) => s.dcScenarioId === 'central');
+    const centralAvoidedTWhList = ssot.monteCarlo12Scenarios2035
+      .filter((s) => s.dcScenarioId === 'central' && s.curtailmentAvoidedGWh > 0)
+      .map((s) => s.curtailmentAvoidedGWh / 1000);
+    const minCentralAvoidedTWh = centralAvoidedTWhList.length > 0 ? Math.min(...centralAvoidedTWhList) : null;
+    const maxCentralAvoidedTWh = centralAvoidedTWhList.length > 0 ? Math.max(...centralAvoidedTWhList) : null;
     const a1h = ssot.modelABenchmark2025.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
     const a24h = ssot.modelABenchmark2025.find((r) => r.horizon.includes('24h') && r.architecture.includes('ResMLP'));
     const b1h = ssot.modelBBenchmark2025.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
@@ -48,6 +53,8 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
       intermWindMW,
       mcInterm,
       mcCentral,
+      minCentralAvoidedTWh,
+      maxCentralAvoidedTWh,
       a1h,
       a24h,
       b1h,
@@ -61,7 +68,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
     };
   }, [ssot]);
 
-  const result = useMemo(() => evaluateScenario(config), [config]);
+  const result = useMemo(() => evaluateScenario(config, ssot), [config, ssot]);
   const activePoint: HourlyPoint = result.hourlySeries[inspectedHour] ?? result.hourlySeries[0];
 
   // Escalas SVG para 168 horas
@@ -139,7 +146,8 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               Uma margem negativa (<span className="font-mono">M(t) &lt; 0</span>) em horas de calmaria eólica{' '}
               <strong>não significa blecaute imediato</strong>: indica necessidade de importar energia do restante do
               SIN. O <strong>evento crítico</strong> que o modelo mede é a probabilidade de essa importação superar o
-              limite físico de intercâmbio das linhas de transmissão (7.000 MW).
+              limite físico de intercâmbio das linhas de transmissão (
+              {ssot.config.interchangeImportLimitMW.toLocaleString('pt-BR')} MW).
             </p>
           </div>
 
@@ -149,8 +157,21 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             </h2>
             <p className="text-sm text-slate-600 leading-relaxed">
               O estudo avalia os <strong>dois lados</strong> do problema. Em horas de vento forte e sol alto (
-              <span className="font-mono">M(t) &gt;&gt; 0</span>), o Nordeste sofreu <strong>25,70 TWh de cortes eólicos em 2025</strong>{' '}
-              (<em>constrained-off</em> real ONS). A carga firme 24/7 dos data centers absorve até <strong>3,60 a 6,80 TWh/ano</strong>{' '}
+              <span className="font-mono">M(t) &gt;&gt; 0</span>), o Nordeste sofreu{' '}
+              <strong>
+                {ssotSummary.cBest
+                  ? `${ssotSummary.cBest.realCurtailed2025TWh.toFixed(2).replace('.', ',')} TWh`
+                  : ssotSummary.ind2025
+                    ? `${ssotSummary.ind2025.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh`
+                    : '—'}{' '}
+                de cortes eólicos em 2025
+              </strong>{' '}
+              (<em>constrained-off</em> real ONS). A carga firme 24/7 dos data centers (Cenário Central) absorve de{' '}
+              <strong>
+                {ssotSummary.minCentralAvoidedTWh !== null && ssotSummary.maxCentralAvoidedTWh !== null
+                  ? `${ssotSummary.minCentralAvoidedTWh.toFixed(2).replace('.', ',')} a ${ssotSummary.maxCentralAvoidedTWh.toFixed(2).replace('.', ',')} TWh/ano`
+                  : '—'}
+              </strong>{' '}
               desse excedente local, mas agrava o déficit nas madrugadas/meses de pouco vento.
             </p>
           </div>
@@ -163,7 +184,14 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               Não se compara MW eólico instalado diretamente com MW de data center. O modelo prevê o{' '}
               <strong>Fator de Capacidade horário</strong>{' '}
               <span className="font-mono">CF(t) = G_pot(t) / Cap(t)</span>, multiplica pela trajetória futura de GW
-              instalados e responde via Monte Carlo <strong>quantos GW eólicos extras (+6,85 GW no cenário Central)</strong>{' '}
+              instalados e responde via Monte Carlo{' '}
+              <strong>
+                quantos GW eólicos extras (
+                {ssotSummary.mcCentral
+                  ? `+${ssotSummary.mcCentral.compensatoryWindExpansionGW.toFixed(2).replace('.', ',')} GW`
+                  : '—'}{' '}
+                no cenário Central)
+              </strong>{' '}
               mantêm o risco de importação abaixo de 5%.
             </p>
           </div>
@@ -241,7 +269,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                   <td className="py-3 pr-4 font-medium text-slate-900 whitespace-nowrap">Modelo C · Curtailment</td>
                   <td className="py-3 px-4 font-mono text-xs">P(corte &gt; 50 MW) & MWh</td>
                   <td className="py-3 px-4 text-xs text-slate-600">
-                    Hurdle 2-Estágios: Histogram GBDT Classifier + ResMLP Regressor
+                    {ssotSummary.cBest?.architecture ?? 'Hurdle 2-Estágios Não-Linear (ResMLP C1+C2)'}
                   </td>
                   <td className="py-3 pl-4 font-mono text-xs font-semibold text-amber-800">
                     {ssotSummary.cBest
@@ -332,7 +360,13 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             </select>
             <p className="text-xs text-slate-500 tabular-nums">
               Carga efetiva em {config.targetYear}:{' '}
-              <strong className="text-slate-800">{result.summary.effectiveDcLoadMW.toLocaleString('pt-BR')} MW</strong>
+              <strong className="text-slate-800">
+                {result.summary.effectiveDcLoadMW.toLocaleString('pt-BR', {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}{' '}
+                MW
+              </strong>
             </p>
           </div>
 
@@ -871,7 +905,9 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               Síntese Monte Carlo 2035, Expansão da Transmissão & Sinergia com Hidrogênio Verde (H2V)
             </h2>
             <p className="text-sm text-slate-600 mt-1">
-              Comparativo direto em 2035 para a trajetória eólica Intermediária SIGA (36,4 GW instalados) frente aos 4 cenários de Data Centers e às sensibilidades de rede do Passo 5.
+              Comparativo direto em 2035 para a trajetória eólica Intermediária SIGA (
+              {(ssotSummary.intermWindMW / 1000).toFixed(1).replace('.', ',')} GW instalados) frente aos 4 cenários de
+              Data Centers e às sensibilidades de rede do Passo 5.
             </p>
           </div>
           {onNavigateToModels && (
@@ -950,18 +986,35 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
               A entrada das novas LTs 500 kV e Bipolo HVDC (elevando o limite de importação para{' '}
               <strong>
-                {((ssotSummary.tx04?.importLimitMW ?? 8000) / 1000).toFixed(1)}–
-                {((ssotSummary.tx05?.importLimitMW ?? 9000) / 1000).toFixed(1)} GW
+                {ssotSummary.tx04 && ssotSummary.tx05
+                  ? `${(ssotSummary.tx04.importLimitMW / 1000).toFixed(1).replace('.', ',')}–${(ssotSummary.tx05.importLimitMW / 1000).toFixed(1).replace('.', ',')} GW`
+                  : '—'}
               </strong>{' '}
               e exportação para{' '}
               <strong>
-                {((ssotSummary.tx04?.exportLimitMW ?? 11000) / 1000).toFixed(1)}–
-                {((ssotSummary.tx05?.exportLimitMW ?? 12500) / 1000).toFixed(1)} GW
+                {ssotSummary.tx04 && ssotSummary.tx05
+                  ? `${(ssotSummary.tx04.exportLimitMW / 1000).toFixed(1).replace('.', ',')}–${(ssotSummary.tx05.exportLimitMW / 1000).toFixed(1).replace('.', ',')} GW`
+                  : '—'}
               </strong>
               ) reduz o requisito de expansão eólica compensatória de{' '}
-              <strong>+{ssotSummary.mcCentral?.compensatoryWindExpansionGW.toFixed(2) ?? '6.85'} GW</strong> para{' '}
-              <strong>+{ssotSummary.tx04?.compensatoryWindGW.toFixed(2) ?? '2.20'} GW (TX-04)</strong> ou{' '}
-              <strong>{ssotSummary.tx05?.compensatoryWindGW.toFixed(2) ?? '0.00'} GW (TX-05)</strong>.
+              <strong>
+                {ssotSummary.mcCentral
+                  ? `+${ssotSummary.mcCentral.compensatoryWindExpansionGW.toFixed(2).replace('.', ',')} GW`
+                  : '—'}
+              </strong>{' '}
+              para{' '}
+              <strong>
+                {ssotSummary.tx04
+                  ? `+${ssotSummary.tx04.compensatoryWindGW.toFixed(2).replace('.', ',')} GW (TX-04)`
+                  : '—'}
+              </strong>{' '}
+              ou{' '}
+              <strong>
+                {ssotSummary.tx05
+                  ? `${ssotSummary.tx05.compensatoryWindGW.toFixed(2).replace('.', ',')} GW (TX-05)`
+                  : '—'}
+              </strong>
+              .
             </p>
           </div>
 
@@ -971,12 +1024,28 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             </span>
             <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
               Se 2,0 GW de H2V operarem inflexíveis 24/7 junto aos DCs, o risco crítico salta para{' '}
-              <strong>{ssotSummary.h2v2Inflex?.probCriticalImportPct.toFixed(2) ?? '28.23'}%</strong> (+
-              {ssotSummary.h2v2Inflex?.compensatoryWindGW.toFixed(2) ?? '15.41'} GW eólicos). Porém, com{' '}
-              <strong>modulação flexível (12% na calmaria)</strong>, o H2V absorve{' '}
-              <strong>{ssotSummary.h2v2Flex?.totalAbsorbedCurtailmentTWh.toFixed(2) ?? '13.16'} TWh/ano</strong> de{' '}
-              <em>curtailment</em> mantendo o risco em{' '}
-              <strong>{ssotSummary.h2v2Flex?.probCriticalImportPct.toFixed(2) ?? '10.87'}%</strong>.
+              <strong>
+                {ssotSummary.h2v2Inflex
+                  ? `${ssotSummary.h2v2Inflex.probCriticalImportPct.toFixed(2).replace('.', ',')}%`
+                  : '—'}
+              </strong>{' '}
+              (
+              {ssotSummary.h2v2Inflex
+                ? `+${ssotSummary.h2v2Inflex.compensatoryWindGW.toFixed(2).replace('.', ',')} GW`
+                : '—'}{' '}
+              eólicos). Porém, com <strong>modulação flexível (12% na calmaria)</strong>, o H2V absorve{' '}
+              <strong>
+                {ssotSummary.h2v2Flex
+                  ? `${ssotSummary.h2v2Flex.totalAbsorbedCurtailmentTWh.toFixed(2).replace('.', ',')} TWh/ano`
+                  : '—'}
+              </strong>{' '}
+              de <em>curtailment</em> mantendo o risco em{' '}
+              <strong>
+                {ssotSummary.h2v2Flex
+                  ? `${ssotSummary.h2v2Flex.probCriticalImportPct.toFixed(2).replace('.', ',')}%`
+                  : '—'}
+              </strong>
+              .
             </p>
           </div>
 
@@ -986,17 +1055,33 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             </span>
             <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
               Em 2025, a fonte eólica representou{' '}
-              <strong>{ssotSummary.ind2025?.aneelInstalledSharePct.toFixed(2) ?? '51.46'}% da capacidade instalada</strong>{' '}
+              <strong>
+                {ssotSummary.ind2025
+                  ? `${ssotSummary.ind2025.aneelInstalledSharePct.toFixed(2).replace('.', ',')}%`
+                  : '—'}{' '}
+                da capacidade instalada
+              </strong>{' '}
               no NE (ANEEL), mas entregou{' '}
-              <strong>{ssotSummary.ind2025?.onsEffectiveGenSharePct.toFixed(2) ?? '62.41'}% da geração elétrica efetiva</strong>{' '}
+              <strong>
+                {ssotSummary.ind2025
+                  ? `${ssotSummary.ind2025.onsEffectiveGenSharePct.toFixed(2).replace('.', ',')}%`
+                  : '—'}{' '}
+                da geração elétrica efetiva
+              </strong>{' '}
               (ONS), apesar da perda de{' '}
               <strong>
                 {ssotSummary.ind2025
-                  ? (ssotSummary.ind2025.potentialUnconstrainedCfPct - ssotSummary.ind2025.onsEffectiveCfPct).toFixed(2)
-                  : '9.80'}{' '}
+                  ? (ssotSummary.ind2025.potentialUnconstrainedCfPct - ssotSummary.ind2025.onsEffectiveCfPct)
+                      .toFixed(2)
+                      .replace('.', ',')
+                  : '—'}{' '}
                 p.p. de fator de capacidade
               </strong>{' '}
-              por <em>constrained-off</em> ({ssotSummary.ind2025?.annualCurtailmentLossTWh.toFixed(2) ?? '25.70'} TWh).
+              por <em>constrained-off</em> (
+              {ssotSummary.ind2025
+                ? `${ssotSummary.ind2025.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh`
+                : '—'}
+              ).
             </p>
           </div>
         </div>

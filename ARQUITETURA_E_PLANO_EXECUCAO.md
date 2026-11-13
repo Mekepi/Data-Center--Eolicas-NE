@@ -1,20 +1,20 @@
 # Documento Base de Arquitetura e Plano Sequencial de Execução
 
 **Projeto:** Balanço Eólico & Data Centers NE 2035 (PTC3567 · Grupo 6)  
-**Marco de Referência:** Pós-alteração `3.B` · Passos 1, 2, 3 e `3.B` (código + SSOT) concluídos em 2026-11-13  
+**Marco de Referência:** Pós-Passo 5 · Passos 1, 2, 3, `3.B` (código + SSOT), **Passo 4** e **Passo 5** concluídos em 2026-11-13  
 **Data da Última Atualização:** 2026-11-13  
-**Finalidade:** Servir como referência técnica fiel da estrutura atual do código, das fragilidades arquiteturais mapeadas e do roteiro sequencial (Passos 1 a 5 + `3.B`) para execução ordenada das correções.
+**Finalidade:** Servir como referência técnica fiel da estrutura final do código, da resolução das fragilidades arquiteturais mapeadas e do registro auditado do roteiro sequencial (Passos 1 a 5 + `3.B`).
 
 ---
 
-## 1. Mapa da Estrutura Atual do Projeto
+## 1. Mapa da Estrutura Final do Projeto
 
 ### 1.1 Raiz e Configuração
-- `package.json`: SPA React 19 + Vite 8 (`^8.3.0`) + Tailwind CSS v4 (`^4.3.3`) + TypeScript 7 (`^7.0.2`), com `esbuild ^0.28.0` e `tsx ^4.23.15` atualizados no pull (`dev` na porta 3000, `build`, `lint`, `sync:ssot`, `test`). Mantém dependências herdadas de template (`express`, `@types/express`, `dotenv`, `@google/genai`, `motion`) ainda não utilizadas.
+- `package.json`: SPA React 19 + Vite 8 (`^8.3.0`) + Tailwind CSS v4 (`^4.3.3`) + TypeScript 7 (`^7.0.2`), com `esbuild ^0.28.0` e `tsx ^4.23.15` (`dev` na porta 3000, `build`, `lint`, `sync:ssot`, `test`). Limpo no Passo 5 com remoção das dependências ociosas do template (`express`, `@types/express`, `dotenv`, `@google/genai`, `motion`, `lucide-react`).
 - `tsconfig.json`: compilação estrita sem emissão (`noEmit: true`), `target: ES2022`, `moduleResolution: bundler`.
 - `vite.config.ts`: configuração Vite padrão para SPA.
-- `metadata.json`: metadados do applet (`name`, `description`, `majorCapabilities`).
-- `.gitignore`: ignora `node_modules/`, `build/`, `dist/`, `coverage/`, `.DS_Store`, `*.log`, `.env*`.
+- `metadata.json`: metadados do applet (`name`, `description`, `majorCapabilities`), mantendo `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` em conformidade com o contrato de runtime do ambiente AI Studio Build.
+- `.gitignore`: ignora `node_modules/`, `build/`, `dist/`, `coverage/`, `.DS_Store`, `*.log`, `.env*` (exceto `.env.example`), `__pycache__/`, `*.py[cod]`, CSVs pesados de ingestão/processamento (`data/raw/ons_*.csv`, `data/processed/*.csv`) e `.playwright-cli/`.
 - `index.html` / `src/index.css` / `src/main.tsx`: ponto de entrada React com Tailwind (`@import "tailwindcss";`).
 
 ### 1.2 Esteira Analítica Python (`/scripts`)
@@ -45,18 +45,23 @@
 - `src/data/pipelineSsotContext.tsx`: `PipelineSsotProvider` (inicializa síncrono de `PIPELINE_SSOT` e atualiza via `fetch('/data/pipeline-ssot.json', { cache: 'no-store' })` com `isValidSsotBundle`).
 - `src/data/dataCentersPipelineCatalog.ts`, `src/data/featuresAnovaCatalog.ts`, `src/data/scriptsRoadmap.ts`: módulos *facade* tipados sobre `PIPELINE_SSOT`.
 - `src/data/databasesCatalog.ts`: catálogo estático das 10 bases oficiais (`OFFICIAL_DATABASES`).
-- `src/utils/energyModel.ts` e `src/utils/energyModel.test.ts`: simulador paramétrico horário/Monte Carlo em TypeScript e testes unitários/paridade SSOT via `node:test`.
-- `src/App.tsx` e `src/components/`:
-  - `ObjectiveAndSimulatorView.tsx` (1.007 linhas)
-  - `DataCentersPipelineView.tsx` (814 linhas)
-  - `FeaturesAndAnovaView.tsx` (1.512 linhas)
-  - `DatabasesExplorerView.tsx`
-  - `ScriptsPipelineView.tsx` (162 linhas)
-  - `DecisionsAndPdfView.tsx` (209 linhas)
+- `src/utils/energyModel.ts` (597 linhas) e `src/utils/energyModel.test.ts` (436 linhas · 15 subtestes via `node:test`): simulador paramétrico horário/Monte Carlo em TypeScript e testes unitários/paridade SSOT/exportadores CSV.
+- `src/utils/csvExport.ts` (54 linhas): utilitário unificado `escapeCsvCell`, `buildDelimitedCsvContent` (BOM UTF-8 + delimitador `;`), `downloadDelimitedCsv` e `downloadTextFile`.
+- `src/App.tsx` (332 linhas) e `src/components/`:
+  - `ObjectiveAndSimulatorView.tsx` (1.091 linhas)
+  - `DataCentersPipelineView.tsx` (808 linhas)
+  - `FeaturesAndAnovaView.tsx` (436 linhas — container orquestrador e faixa de KPIs) + `featuresAnovaKpis.ts` (72 linhas):
+    - `Validation2025Panel.tsx` (439 linhas)
+    - `MonteCarlo2035Panel.tsx` (258 linhas)
+    - `SensitivityPasso5Panel.tsx` (287 linhas)
+    - `AnovaCorrelationsPanel.tsx` (320 linhas)
+  - `DatabasesExplorerView.tsx` (341 linhas)
+  - `ScriptsPipelineView.tsx` (154 linhas)
+  - `DecisionsAndPdfView.tsx` (239 linhas)
 
 ---
 
-## 2. Parecer Arquitetural Atual (Pós-Pull GitHub · Passos 1–3 Executados)
+## 2. Parecer Arquitetural Final (Pós-Passo 5)
 
 ### 2.1 Pontos Sólidos
 1. **Fluxo SSOT Dual-Artifact bem estruturado e validado em dados reais:** `sync_frontend_ssot.py` garante mesma estrutura em `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts`, com `generatedAtUtc` determinístico. Pós-pull, todos os 8 testes Python (`unittest`) passaram sem *skip*, validando paridade exata `TX-03 == H2V-01 == Central × 36,4 GW` (`probCriticalImport = 9,3%`, `importP95 = 8439,5 MW`, `curtailmentWithDc = 9,93 TWh`, `compensatoryWind = 6,85 GW`), desambiguação de `SE Pici` (`230 kV` vs `69 kV`) e `.md` consolidado.
@@ -70,38 +75,39 @@
 1. **[RESOLVIDO E VERIFICADO PÓS-PULL] Simulações e Relatório Hardcoded (`scripts/07_sensitivity_and_final_report.py`):**
    - *(Resolvido no Passo 2 e regenerado no pull)* `simulate_block_bootstrap(...)` em `scripts/06_monte_carlo_balance_2035.py` alimenta diretamente `TX-01..TX-05` e `H2V-01..H2V-05` no Script 07; os indicadores ANEEL vs. ONS e o relatório `.md` foram regenerados em ambiente científico e validados por `test_live_report_cross_consistency_when_regenerated_post_passo_2` (**8/8 `unittest` OK, 0 skipped**).
 
-2. **[CRÍTICO] *Split-Brain* entre Simulador JS (`src/utils/energyModel.ts`) e Motor Python (`06_monte_carlo_balance_2035.py`):**
-   - `simulateHourlyWeek` e `runMonteCarloSimulation` operam com série sintética senoidal de 168h e usam `DC_IT_PIPELINE_MW_2035.central = 2200` com rampa própria (`0.14 + 0.86 * progress^1.35`), gerando em 2035 valores distintos dos resultados oficiais do Passo 4 exibidos na mesma página (`ObjectiveAndSimulatorView.tsx`), onde a carga efetiva central bottom-up é `1.596,8 MW`.
-   - `energyModel.ts` (linhas 1 e 76–84) lê `PIPELINE_SSOT.config` estaticamente na carga do módulo, ignorando atualizações em runtime fornecidas por `PipelineSsotProvider`.
+2. **[RESOLVIDO NO PASSO 4] *Split-Brain* entre Simulador JS (`src/utils/energyModel.ts`) e Motor Python (`06_monte_carlo_balance_2035.py`):**
+   - `energyModel.ts` passou a receber dinamicamente `ssot?: EnergyModelSsotInput` oriundo de `usePipelineSsot()`, eliminando o acoplamento estático em `PIPELINE_SSOT.config` e atualizando o `App.tsx` quando o `runtime-json` chega em runtime.
+   - `resolveEffectiveDcLoadMW` utiliza `ssot.scenarioAnnualRamp` (com escalonamento paramétrico sem dupla contagem de PUE) e `runMonteCarloSimulation` ancora aos cenários oficiais (`monteCarlo12Scenarios2035` e `annualRiskTimeline2026_2035`) nas premissas nominais, convergindo exatamente na configuração padrão (`1.596,8 MW`, `9,3%`, `8.440 MW`, `9,93 TWh`, `−3.578 GWh`, `+6,85 GW`).
 
-3. **[PARCIALMENTE RESOLVIDO NOS PASSOS 1 E 3] Quebra de Chave Composta em Subestações (`02` vs `06` vs `sync_frontend_ssot.py` vs UI):**
-   - `02_build_dc_and_offshore_scenarios.py:197` agrupa por `["subestacao_conexao", "estado", "tensao_conexao_kv"]` (9 registros; ex. `SE Pici` em `230 kV` e `69 kV`).
-   - *(Resolvido no Passo 1)* `06_monte_carlo_balance_2035.py` passou a agrupar por chave composta `(subestacao_conexao, estado, tensao_conexao_kv)` e a exportar `n_projetos` por barramento/tensão.
-   - *(Resolvido no Passo 3)* `sync_frontend_ssot.py` (`resolve_substations_with_p95`) passou a realizar o *join* de `p95MonteCarloMW` pela chave composta `(subestacao, estado, tensao_kv)` (com fallback seguro apenas se a coluna não existir).
-   - *(Pendente para Passo 4)* `DataCentersPipelineView.tsx:38-40,610-614` ainda deduplica o dropdown via `new Map(substations.map(s => [s.substation, ...]))`.
+3. **[RESOLVIDO NO PASSO 4] Quebra de Chave Composta em Subestações (`02` vs `06` vs `sync_frontend_ssot.py` vs UI):**
+   - Etapas `02` e `06` agrupam por `(subestacao_conexao, estado, tensao_conexao_kv)`; `sync_frontend_ssot.py` realiza o *join* pela chave composta; e `DataCentersPipelineView.tsx` agora preserva `${substation}::${voltageKV}` no seletor e no filtro (`SE Pici (230 kV) · CE` vs `SE Pici (69 kV) · CE`).
 
-4. **[PARCIALMENTE RESOLVIDO NOS PASSOS 1 E 3] Duplicações, Hardcodes Residuais na UI e Governança Desconectada:**
-   - *(Resolvido no Passo 1)* `06_monte_carlo_balance_2035.py` lê cenários, rampas anuais 2026–2035 e expansão eólica diretamente de `data/scenarios/matriz_cenarios_dc_eolica_2026_2035.csv`.
-   - *(Resolvido no Passo 3)* Metadados editoriais (`DC_PROJECT_NOTES`, `FEATURE_METADATA` e catálogo textual de scripts) movidos de `sync_frontend_ssot.py` para `scripts/pipeline_metadata.json`.
-   - *(Pendente para Passo 4)* `ObjectiveAndSimulatorView.tsx` e `FeaturesAndAnovaView.tsx` mantêm literais numéricos hardcoded em prosa e fallbacks; `FeaturesAndAnovaView.tsx:122-131` omite `modelCBenchmark` e `peakHourMaeMW` na exportação `benchmarks2025`; e `DecisionsAndPdfView.tsx:112-114` declara parametrização que ocorre apenas em `localStorage`.
+4. **[RESOLVIDO NO PASSO 4] Duplicações, Hardcodes Residuais na UI e Governança Desconectada:**
+   - `ObjectiveAndSimulatorView.tsx`, `FeaturesAndAnovaView.tsx` e `DecisionsAndPdfView.tsx` agora interpolam métricas, contagens de treino/teste, limites SIN, rampas DC 2035 e projeção PDE diretamente do `ssot` em runtime (sem fallbacks numéricos enganosos).
+   - `FeaturesAndAnovaView.tsx` passou a exportar `modelCBenchmark` e `peakHourMaeMW` no CSV `benchmarks2025`.
+   - `DecisionsAndPdfView.tsx` esclarece o escopo local em `localStorage` vs. pipeline Python/SSOT e oferece o botão `"Exportar Diretrizes (.json)"`.
 
-5. **[PARCIALMENTE RESOLVIDO NOS PASSOS 1 E 3] Higiene de Código, Orquestração e Dependências:**
+5. **[RESOLVIDO NO PASSO 5] Higiene de Código, Modularização, Exportadores e Dependências:**
    - *(Resolvido no Passo 1)* Bug em `01_ingest_ons_aneel_epe.py:106` corrigido para `"val_gertermica": "g_termica_mw"`.
    - *(Resolvido no Passo 3)* Criado o orquestrador único `scripts/run_pipeline.py` (`--skip-ingest`, `--only-from`, `--dry-run`).
-   - *(Pendente para Passo 5)* Monolitos na UI (`FeaturesAndAnovaView.tsx`, `ObjectiveAndSimulatorView.tsx`, `DataCentersPipelineView.tsx`), estilos inline (`style={{ width: ... }}`), dependências ociosas em `package.json`, `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` em `metadata.json` e `.gitignore` sem exclusão de CSVs pesados.
+   - *(Resolvido no Passo 5)* Extraído o utilitário único `src/utils/csvExport.ts` (`escapeCsvCell`, `buildDelimitedCsvContent`, `downloadDelimitedCsv`, `downloadTextFile`), eliminando duplicação de `Blob`/`URL.createObjectURL`/BOM UTF-8 entre `App.tsx`, `DataCentersPipelineView.tsx`, `FeaturesAndAnovaView.tsx`, `DecisionsAndPdfView.tsx` e `ScriptsPipelineView.tsx`.
+   - *(Resolvido no Passo 5)* Fatiado `FeaturesAndAnovaView.tsx` (de `1.632` para `436` linhas) em `featuresAnovaKpis.ts`, `Validation2025Panel.tsx`, `MonteCarlo2035Panel.tsx`, `SensitivityPasso5Panel.tsx` e `AnovaCorrelationsPanel.tsx`.
+   - *(Resolvido no Passo 5)* Substituídos os dois únicos usos de `style={{ width: ... }}` (`DataCentersPipelineView.tsx` e `AnovaCorrelationsPanel.tsx`) por barras `<svg viewBox="0 0 100 8">` proporcionais — auditoria `grep` e DOM (`[style]`) confirmam **0 estilos inline** em `src/`.
+   - *(Resolvido no Passo 5)* Removidas de `package.json` as 6 dependências não utilizadas (`@google/genai`, `dotenv`, `express`, `lucide-react`, `motion`, `@types/express`) e adicionadas exclusões para `data/raw/ons_*.csv`, `data/processed/*.csv`, `__pycache__/`, `*.py[cod]` e `.playwright-cli/` em `.gitignore`.
+   - *(Exceção deliberada de runtime em `metadata.json`)* O item `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` em `metadata.json` foi **mantido intencionalmente** porque as regras obrigatórias de ambiente do AI Studio Build exigem sua preservação. *(Observação de arquitetura: `ObjectiveAndSimulatorView.tsx` com 1.091 linhas mantém um módulo único coeso por abranger a síntese inicial e o simulador interativo, não apresentando estilos inline nem duplicação de lógica de negócio após o Passo 4).*
 
 6. **[CORRIGIDO EM CÓDIGO NO PASSO 3.B — AGUARDANDO REEXECUÇÃO `--only-from 05` EM AMBIENTE CIENTÍFICO] Ponto de Sela do Classificador C1 e Portabilidade Windows/TAP dos Testes:**
    - *(Diagnóstico pós-reexecução Windows)* Na primeira rodada do Passo 3.B, o Estágio C2 (`ResidualMLPRegressor`) evoluiu de `R² = 0,5790` para `0,6967`, mas o Estágio C1 (`ResidualMLPClassifier`) empatou em `roc_auc = 0,9289` / `brier_score = 0,1208` / `f1_score = 0,8863` com `LogisticLBFGSModel`: a penalidade L2 inicial de `W1` (`reg_l2=5e-3`) superou o ganho inicial de `w2 ~ N(0, 0,02²)`, levando o `L-BFGS-B` ao ponto de sela `(W1 = 0, w2 = 0)`.
    - *(Correção cirúrgica aplicada no Passo 3.B)* Em `scripts/ml_models_numpy.py`, `ResidualMLPClassifier` recebeu quebra de simetria (`b1_0 ~ U(-0,6, 0,6)`), *warm-start* Newton-Ridge amortecido em `w2` (`solve` sobre os resíduos logísticos garantindo `obj(theta0) < obj_linear`), escalonamento `0,15 * reg_l2` em `W1` e seleção cronológica interna 80/20 de `reg_l2 ∈ {2e-4, 8e-4, 2,5e-3}` sem qualquer vazamento de 2025; `05_forecast_wind_cf_and_curtailment.py` passou a usar `reg_l2=8e-4, max_iter=180`.
    - *(Resolvido no Passo 3.B)* Normalização `\r\n -> \n` e asserção concisa em `src/utils/energyModel.test.ts` e `scripts/sync_frontend_ssot.py`, eliminando `ERR_TAP_LEXER_ERROR` no Windows (Subteste 11 verde em Windows e Linux).
    - *(Resolvido no Passo 3.B)* Adicionados `scripts/__init__.py` e *bootstrap* de `sys.path` em `test_sync_frontend_ssot.py`, `sync_frontend_ssot.py` e `run_pipeline.py` (`9/9 unittest` aprovados mesmo sem `PYTHONPATH`).
-   - *(Pendência de ambiente)* Como o container atual não possui `numpy`/`pandas`/`scipy`, o Subteste 8 (`npm run test`) ainda lê o CSV anterior (`0,9289`) até a execução de `py scripts/run_pipeline.py --only-from 05` em ambiente científico.
+   - *(Única pendência externa de ambiente científico)* Como o container Linux atual não possui `numpy`/`pandas`/`scipy`, o Subteste 8 (`npm run test`) ainda lê o CSV anterior (`0,9289`) até a execução de `py scripts/run_pipeline.py --only-from 05` em ambiente Python científico (ajuste fino posterior conforme aprovado pelo usuário).
 
 ---
 
 ## 3. Plano Sequencial Passo a Passo de Execução
 
-> **Status de Execução:** Passos 1, 2, 3 e **3.B (código + SSOT)** concluídos (`9/9 unittest` passando sem `PYTHONPATH`; `tsc --noEmit` e `vite build` verdes; `10/11` `npm run test` verdes, restando apenas rodar `--only-from 05` em ambiente com `numpy`/`pandas`/`scipy` para atualizar os CSVs do Modelo C). **Próximo passo de código:** **Passo 4** (mediante aprovação).
+> **Status de Execução:** **Todos os Passos 1, 2, 3, `3.B` (código + SSOT), 4 e 5 concluídos** (`9/9 unittest` aprovados; `tsc --noEmit` e `vite build` verdes; `14/15` subtestes de `energyModel.test.ts` aprovados — restando apenas o Subteste 8 de reexecução científica do Estágio C1 em ambiente com `numpy`/`pandas`/`scipy`, conforme alinhado; verificação ponta a ponta em navegador real com 0 erros de console e 0 atributos `style`).
 
 ### Passo 1 — Unificar Fonte de Cenários e Chave Composta entre Etapa 02 e Etapa 06
 - [x] **Status:** Concluído em 2026-11-13
@@ -177,9 +183,9 @@
 ---
 
 ### Passo 4 — Alinhar `src/utils/energyModel.ts` ao SSOT Dinâmico e Remover Hardcodes na UI
-- [ ] **Status:** Pendente
+- [x] **Status:** Concluído e verificado em 2026-11-13
 - **Objetivo:** Eliminar o *split-brain* entre o simulador interativo e o motor Python de referência, além de parametrizar textos e governança no frontend.
-- **Arquivos afetados:**
+- **Arquivos modificados:**
   - `src/utils/energyModel.ts`
   - `src/utils/energyModel.test.ts`
   - `src/App.tsx`
@@ -187,27 +193,40 @@
   - `src/components/FeaturesAndAnovaView.tsx`
   - `src/components/DataCentersPipelineView.tsx`
   - `src/components/DecisionsAndPdfView.tsx`
-- **Ações:**
-  1. Em `energyModel.ts`, substituir o import estático de `PIPELINE_SSOT` por parâmetro `ssotConfig: PipelineConfigSnapshot` e incorporar a rampa real `scenarioAnnualRamp` / pesos de realização de `ssot` no cálculo de `dcLoadMW` (ou ancorar diretamente ao resultado oficial SSOT quando os parâmetros coincidirem com um dos 12 cenários oficiais e recalcular deltas a partir dele).
-  2. Em `ObjectiveAndSimulatorView.tsx` e `FeaturesAndAnovaView.tsx`, substituir os números literais em textos e legendas (`7.000 MW`, `25,70 TWh`, `+6,85 GW`, `MAPE 1,22%`, `R² = 0,9853`, `87.476 h`, `18.003,4 MW`, `1.596,8 MW`) por interpolação direta de `ssot`, removendo fallbacks numéricos enganosos.
-  3. Em `FeaturesAndAnovaView.tsx:122-131`, incluir `modelCBenchmark` e `peakHourMaeMW` na exportação `benchmarks2025`.
-  4. Em `DataCentersPipelineView.tsx:38-40,610-614`, preservar a chave composta `(substation, voltageKV)` no seletor e no filtro de subestações.
-  5. Em `DecisionsAndPdfView.tsx:112-114`, ajustar a cópia para refletir que se trata de um registro local de governança (ou disponibilizar exportação JSON de parâmetros para o pipeline Python), removendo a afirmação de que os rádios alteram automaticamente os scripts `.py`.
-- **Critério de validação:** Na tela inicial com configuração padrão (`2035`, `central`, `intermediate`), a carga efetiva DC e os indicadores do simulador devem convergir com a tabela do Passo 4 exibida na mesma página; `npm run test` e `npm run lint` devem passar sem erros.
+- **Ações realizadas:**
+  1. Em `src/utils/energyModel.ts`, removido o import estático em runtime de `PIPELINE_SSOT`; introduzidos `DEFAULT_ENERGY_MODEL_CONFIG`, `EnergyModelSsotInput` e `resolveEffectiveDcLoadMW(config, ssot?)` usando `ssot.scenarioAnnualRamp` com escalonamento por `pue`, `dcUtilization` e `isPublishedPowerTotalGrid` (sem dupla contagem de PUE). `runMonteCarloSimulation` e `evaluateScenario` agora recebem `ssot` e ancoram nos cenários oficiais (`monteCarlo12Scenarios2035` e `annualRiskTimeline2026_2035`), convergindo na configuração padrão (`1.596,8 MW`, `9,3%`, `8.440 MW`, `9,93 TWh`, `−3.578 GWh`, `+6,85 GW`).
+  2. Em `src/App.tsx`, `buildDefaultSimConfig(ssot.config)` passou a inicializar o estado do simulador a partir do contexto `usePipelineSsot()`, sincronizando automaticamente quando `runtime-json` é carregado caso o usuário ainda não tenha editado parâmetros.
+  3. Em `ObjectiveAndSimulatorView.tsx`, `FeaturesAndAnovaView.tsx` e `DecisionsAndPdfView.tsx`, eliminados números literais, rótulos defasados e fallbacks numéricos enganosos (passando a interpolar `ssot` / `'—'`), incluindo cálculo dinâmico da projeção PDE 2035 e limites de transmissão.
+  4. Em `FeaturesAndAnovaView.tsx`, exportação `benchmarks2025` expandida para incluir `peakHourMaeMW` (Modelo A) e todos os registros de `modelCBenchmark` (`roc_auc`, `brier_score`, `f1_score`, `mae`, `r2`, `curtailment_real_2025_twh`, `curtailment_pred_2025_twh`).
+  5. Em `DataCentersPipelineView.tsx`, o seletor e filtro de subestações passou a utilizar chave composta `${substation}::${voltageKV}`, mantendo `SE Pici (230 kV) · CE` e `SE Pici (69 kV) · CE` distintos.
+  6. Em `DecisionsAndPdfView.tsx`, ajustada a redação sobre persistência em `localStorage` vs. esteira Python/SSOT e adicionado o botão `"Exportar Diretrizes (.json)"`.
+  7. Em `src/utils/energyModel.test.ts`, adicionados 2 novos testes cobrindo convergência do Passo 4 (`evaluateScenario`) e escalonamento dinâmico (`resolveEffectiveDcLoadMW` + `ssotConfig`).
+- **Validação realizada:** `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) aprovados sem erros; `python3 -m unittest -v` (`9/9 OK`); `npx tsx --test src/utils/energyModel.test.ts` com **12/13 aprovados** (incluindo os novos testes de Passo 4; apenas Subteste 8 segue pendente para ajuste fino posterior do Estágio C1); verificação visual e funcional em Chromium (`playwright-cli` 1440×900) confirmando convergência do simulador na tela inicial, filtro `SE Pici::69` (`1 de 14 projetos`), navegação nas abas de `Modelos & Monte Carlo`, novo botão `.json` em `Decisões & Plano PDF` e **0 erros de console**.
 
 ---
 
 ### Passo 5 — Modularização de Componentes, Exportadores e Higiene de Build
-- [ ] **Status:** Pendente
-- **Objetivo:** Reduzir dívida técnica de manutenibilidade, remover dependências ociosas do template e padronizar estilos.
-- **Arquivos afetados:**
-  - `src/components/FeaturesAndAnovaView.tsx` → dividir em `Validation2025Panel.tsx`, `MonteCarlo2035Panel.tsx`, `SensitivityPasso5Panel.tsx`, `AnovaCorrelationsPanel.tsx`
-  - `src/utils/csvExport.ts` (novo)
-  - `src/App.tsx`, `src/components/DataCentersPipelineView.tsx`
-  - `package.json`, `metadata.json`, `.gitignore`
-- **Ações:**
-  1. Extrair helper único `downloadDelimitedCsv` / `downloadTextFile` para `src/utils/csvExport.ts`, eliminando duplicação entre `App.tsx`, `DataCentersPipelineView.tsx` e `FeaturesAndAnovaView.tsx`.
-  2. Fatiar `FeaturesAndAnovaView.tsx` (1.512 linhas) em subcomponentes coesos por aba.
-  3. Substituir `style={{ width: ... }}` inline em `DataCentersPipelineView.tsx:347` e `FeaturesAndAnovaView.tsx:1352` por elementos sem estilo inline (ex.: barra SVG proporcional).
-  4. Remover de `package.json` as dependências não utilizadas (`express`, `@types/express`, `dotenv`, `@google/genai`, `motion`), atualizar `metadata.json` removendo `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` e adicionar regras de exclusão para CSVs pesados (`data/raw/ons_*.csv`, `data/processed/*.csv`) e `__pycache__/` no `.gitignore`.
-- **Critério de validação:** `npm run lint`, `npm run build`, `npm run test` e `python3 -m unittest scripts/test_sync_frontend_ssot.py` executando limpos com bundle final enxuto.
+- [x] **Status:** Concluído e verificado em 2026-11-13
+- **Objetivo:** Reduzir dívida técnica de manutenibilidade, centralizar exportadores, remover dependências ociosas do template e eliminar estilos inline.
+- **Arquivos criados/modificados:**
+  - `src/utils/csvExport.ts` (criado)
+  - `src/components/featuresAnovaKpis.ts` (criado)
+  - `src/components/Validation2025Panel.tsx` (criado)
+  - `src/components/MonteCarlo2035Panel.tsx` (criado)
+  - `src/components/SensitivityPasso5Panel.tsx` (criado)
+  - `src/components/AnovaCorrelationsPanel.tsx` (criado)
+  - `src/components/FeaturesAndAnovaView.tsx`
+  - `src/components/DataCentersPipelineView.tsx`
+  - `src/components/DecisionsAndPdfView.tsx`
+  - `src/components/ScriptsPipelineView.tsx`
+  - `src/App.tsx`
+  - `src/utils/energyModel.test.ts`
+  - `package.json`, `.gitignore`
+- **Ações realizadas:**
+  1. Criado o módulo `src/utils/csvExport.ts` com `escapeCsvCell`, `buildDelimitedCsvContent`, `downloadDelimitedCsv` e `downloadTextFile`, unificando todos os downloads (CSV com BOM UTF-8 + `;`, `.md`, `.json` e `.py`) em `App.tsx`, `DataCentersPipelineView.tsx`, `FeaturesAndAnovaView.tsx`, `DecisionsAndPdfView.tsx` e `ScriptsPipelineView.tsx`.
+  2. Fatiado o monólito `FeaturesAndAnovaView.tsx` (1.632 → 436 linhas) em `featuresAnovaKpis.ts` (72L) e quatro painéis coesos por aba (`Validation2025Panel.tsx`, `MonteCarlo2035Panel.tsx`, `SensitivityPasso5Panel.tsx`, `AnovaCorrelationsPanel.tsx`).
+  3. Eliminados todos os atributos `style={{ width: ... }}` remanescentes em `DataCentersPipelineView.tsx` e `AnovaCorrelationsPanel.tsx`, substituídos por barras `<svg viewBox="0 0 100 8">` proporcionais.
+  4. Removidas de `package.json` as dependências não utilizadas (`@google/genai`, `dotenv`, `express`, `lucide-react`, `motion`, `@types/express`) e incluídas regras de exclusão em `.gitignore` para `__pycache__/`, `*.py[cod]`, `data/raw/ons_*.csv`, `data/processed/*.csv` e `.playwright-cli/`. Mantido `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` em `metadata.json` por exigência do ambiente AI Studio Build.
+  5. Adicionados 2 testes unitários em `src/utils/energyModel.test.ts` cobrindo `escapeCsvCell`, `buildDelimitedCsvContent` e `computeFeaturesAnovaKpis`.
+- **Validação realizada:** `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) aprovados sem erros; `python3 -m unittest -v` (`9/9 OK`); `npx tsx --test src/utils/energyModel.test.ts` com **14/15 aprovados** (Subtestes 14 e 15 do Passo 5 verdes; apenas Subteste 8 aguarda reexecução científica `--only-from 05` já acordada); auditoria `grep` e inspeção em Chromium (`playwright-cli` 1440×900) confirmando `0` elementos com atributo `[style]`, funcionamento das 4 sub-abas de `Modelos & Monte Carlo`, renderização das barras SVG e **0 erros de console**.
+

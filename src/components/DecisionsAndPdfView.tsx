@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { usePipelineSsot } from '../data/pipelineSsotContext';
+import { downloadTextFile } from '../utils/csvExport';
 
 export interface GroupDecisionItem {
   id: string;
@@ -17,7 +19,7 @@ export const GROUP_DECISIONS: GroupDecisionItem[] = [
         value: '2015_2025',
         label: '2015–2024 (Treino) e 2025 (Teste Out-of-Time) — Executado no Pipeline',
         rationale:
-          'Recorte completo de 11 anos adotado na esteira oficial (87.476 h de treino e 8.760 h de validação cega em 2025), capturando ciclos El Niño/La Niña e constrained-off 2023–2025.',
+          'Recorte completo de 11 anos adotado na esteira oficial, capturando ciclos El Niño/La Niña e constrained-off 2023–2025.',
       },
       {
         value: '2019_2025',
@@ -94,26 +96,55 @@ export const DecisionsAndPdfView: React.FC<DecisionsAndPdfViewProps> = ({
   selectedDecisions,
   onSelectDecision,
 }) => {
+  const { ssot } = usePipelineSsot();
+  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
   const pdfPath = '/assets/aistudio/Plano_Orientador_Projeto_Data_Centers_Eolica_NE_5d71e355.pdf';
+
+  const handleExportDecisionsJson = () => {
+    const payload = {
+      exportedAtUtc: new Date().toISOString(),
+      ssotWindow: ssot.lineage.windowLabel,
+      trainHours: ssot.lineage.trainHours,
+      testHours: ssot.lineage.testHours,
+      decisions: selectedDecisions,
+    };
+    downloadTextFile(
+      JSON.stringify(payload, null, 2),
+      'governanca_decisoes_grupo6.json',
+      'application/json;charset=utf-8;'
+    );
+    setExportFeedback('JSON exportado');
+    window.setTimeout(() => setExportFeedback(null), 2200);
+  };
 
   return (
     <div className="space-y-8">
       {/* Pauta de Tomada de Decisão do Grupo 6 */}
       <section aria-labelledby="heading-decisoes" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
-        <div className="pb-6 border-b border-slate-200">
+        <div className="pb-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div className="max-w-3xl space-y-2">
             <p className="text-xs font-medium text-sky-800">
-              Alinhamento de Escopo · Governança Técnica antes da Codificação
+              Alinhamento de Escopo · Registro Local de Governança ({ssot.lineage.trainHours.toLocaleString('pt-BR')} h
+              treino · {ssot.lineage.testHours.toLocaleString('pt-BR')} h teste 2025)
             </p>
             <h1 id="heading-decisoes" className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
               Matriz de Tomadas de Decisão do Grupo 6
             </h1>
             <p className="text-sm lg:text-base text-slate-600 leading-relaxed">
-              Selecione abaixo as diretrizes preferidas pela equipe. Essas escolhas parametrizam diretamente os filtros
-              dos scripts <span className="font-mono text-xs">01_ingest</span> e{' '}
-              <span className="font-mono text-xs">02_scenarios</span>.
+              Registro local das diretrizes metodológicas do grupo (salvo no navegador em{' '}
+              <span className="font-mono text-xs">localStorage</span>). Alterações de premissa nos scripts{' '}
+              <span className="font-mono text-xs">01_ingest</span> a{' '}
+              <span className="font-mono text-xs">07_sensitivity</span> são executadas via pipeline Python e
+              propagadas para o painel pelo sincronizador SSOT.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={handleExportDecisionsJson}
+            className="px-4 py-2 text-xs font-medium text-slate-900 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
+          >
+            {exportFeedback ?? 'Exportar Diretrizes (.json)'}
+          </button>
         </div>
 
         <div className="divide-y divide-slate-200">

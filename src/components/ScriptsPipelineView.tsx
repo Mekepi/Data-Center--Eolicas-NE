@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePipelineSsot } from '../data/pipelineSsotContext';
 import type { ScriptSpec } from '../data/pipelineTypes';
+import { downloadTextFile } from '../utils/csvExport';
 
 export const ScriptsPipelineView: React.FC = () => {
   const { ssot } = usePipelineSsot();
@@ -26,15 +27,7 @@ export const ScriptsPipelineView: React.FC = () => {
   };
 
   const handleDownloadPython = () => {
-    const blob = new Blob([activeScript.starterCode], { type: 'text/x-python;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = activeScript.filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadTextFile(activeScript.starterCode, activeScript.filename, 'text/x-python;charset=utf-8');
   };
 
   return (

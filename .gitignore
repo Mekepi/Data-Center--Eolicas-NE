@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+__pycache__/
+*.py[cod]
+data/raw/ons_*.csv
+data/processed/*.csv
+.playwright-cli/
+
