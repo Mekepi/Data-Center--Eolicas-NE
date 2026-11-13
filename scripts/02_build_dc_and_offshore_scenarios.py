@@ -220,7 +220,9 @@ def generate_full_scenario_matrix(df_dc_scenarios: pd.DataFrame) -> pd.DataFrame
         n_proj = int(row["projetos_ativos"])
 
         for w_scen in wind_scenarios:
-            w_cap = compute_wind_installed_trajectory(ano, w_scen, include_offshore_post_2031=True)
+            w_cap = compute_wind_installed_trajectory(
+                ano, w_scen, include_offshore_post_2031=(w_scen == "high")
+            )
             records.append({
                 "ano": ano,
                 "cenario_dc": dc_scen,

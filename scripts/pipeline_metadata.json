@@ -1,0 +1,329 @@
+{
+  "dcProjectNotes": {
+    "DC-CE-01": {
+      "developer": "Scala Data Centers",
+      "notes": "Conexão em 230 kV na SE Caucaia com derivação dedicada para o parque industrial da ZPE."
+    },
+    "DC-CE-02": {
+      "developer": "V.tal",
+      "notes": "Ponto de interconexão direta com os 18 cabos submarinos internacionais que chegam à Praia do Futuro."
+    },
+    "DC-CE-03": {
+      "developer": "V.tal",
+      "notes": "Campus de hiperescala adjacente ao anel metropolitano de Fortaleza."
+    },
+    "DC-PE-01": {
+      "developer": "Ascenty / Digital Realty",
+      "notes": "Primeiro campus de grande porte no polo logístico e portuário de Suape."
+    },
+    "DC-CE-04": {
+      "developer": "Elea Digital",
+      "notes": "Instalação de borda metropolitana com conexão em 69 kV para distribuição local."
+    },
+    "DC-PB-01": {
+      "developer": "HostDime Global",
+      "notes": "Hub regional de alta disponibilidade em operação contínua na Paraíba."
+    },
+    "DC-CE-05": {
+      "developer": "Scala Data Centers",
+      "notes": "Conexão troncal em 500 kV na SE Pecém II para alimentar cargas massivas de treinamento de IA."
+    },
+    "DC-PE-02": {
+      "developer": "Ascenty / Digital Realty",
+      "notes": "Expansão em Ipojuca/Suape com linha dedicada de 230 kV até o barramento de Suape II."
+    },
+    "DC-CE-06": {
+      "developer": "ODATA / Aligned Data Centers",
+      "notes": "Campus modular com tecnologia Delta Cube para refrigeração de alta densidade."
+    },
+    "DC-RN-01": {
+      "developer": "Consórcio Nordeste Cloud",
+      "notes": "Aproveita o cabo submarino EllaLink (Brasil-Europa) que ancora no litoral potiguar."
+    },
+    "DC-BA-01": {
+      "developer": "Grupo Energia Limpa BA",
+      "notes": "Conectado à SE Camaçari no polo petroquímico/industrial, próximo a parques solares e eólicos do Recôncavo."
+    },
+    "DC-CE-07": {
+      "developer": "MegaTech Global / Hub H2V Pecém",
+      "notes": "Primeiro gigawatt cluster do Nordeste desenhado especificamente para IA generativa e supercomputação."
+    },
+    "DC-CE-08": {
+      "developer": "MegaTech Global / Hub H2V Pecém",
+      "notes": "Segunda fase de expansão com refrigeração líquida direta (Direct-to-Chip) e PUE de 1.18."
+    },
+    "DC-PE-03": {
+      "developer": "Consórcio Suape Tech",
+      "notes": "Expansão de grande porte integrada ao complexo industrial de Suape para nuvem soberana e IA."
+    }
+  },
+  "featureMetadata": {
+    "cf_eolica_lag_1h": {
+      "description": "Fator de capacidade potencial observado na hora anterior (t-1h)",
+      "role": "Autoregressiva (Lag)"
+    },
+    "l_base_mw_lag_1h": {
+      "description": "Demanda de carga base observada na hora anterior (t-1h)",
+      "role": "Autoregressiva (Lag)"
+    },
+    "l_base_mw_lag_168h": {
+      "description": "Demanda no mesmo dia e hora da semana anterior (t-168h)",
+      "role": "Autoregressiva (Lag)"
+    },
+    "l_base_mw_lag_24h": {
+      "description": "Demanda de carga no mesmo horário do dia anterior (t-24h)",
+      "role": "Autoregressiva (Lag)"
+    },
+    "cf_eolica_lag_24h": {
+      "description": "Fator de capacidade potencial no mesmo horário do dia anterior (t-24h)",
+      "role": "Autoregressiva (Lag)"
+    },
+    "razao_renovavel_carga": {
+      "description": "Razão física (G_eólica_pot + G_solar) / L_base no instante t",
+      "role": "Balanço Físico Exógeno"
+    },
+    "excedente_renovavel_mw": {
+      "description": "Saldo renovável instantâneo (G_eólica_pot + G_solar - L_base) em MW",
+      "role": "Balanço Físico Exógeno"
+    },
+    "month_sin": {
+      "description": "Harmônico anual senoidal de Fourier do mês do ano",
+      "role": "Harmônica (Fourier)"
+    },
+    "hour_cos": {
+      "description": "Harmônico diurno cossenoidal da hora do dia (24h)",
+      "role": "Harmônica (Fourier)"
+    },
+    "hour_sin": {
+      "description": "Harmônico diurno senoidal da hora do dia (24h)",
+      "role": "Harmônica (Fourier)"
+    },
+    "is_weekend": {
+      "description": "Indicador binário de fim de semana (sábado/domingo)",
+      "role": "Calendário"
+    },
+    "faixa_solar_pico": {
+      "description": "Janela diurna de radiação solar máxima (10h às 15h)",
+      "role": "Calendário"
+    },
+    "wind_speed_lag1_approx": {
+      "description": "Velocidade cúbica equivalente causal v_eq(t-1) ~ cbrt(CF_t-1)",
+      "role": "Não-Linearidade Aerodinâmica"
+    },
+    "cf_lag1_squared": {
+      "description": "Termo quadrático causal de Fator de Capacidade CF²(t-1)",
+      "role": "Não-Linearidade Aerodinâmica"
+    }
+  },
+  "scriptsCatalog": [
+    {
+      "id": "script-01",
+      "order": "01",
+      "filename": "01_ingest_ons_aneel_epe.py",
+      "title": "Ingestão Paralela e Harmonização Temporal (ONS + ANEEL + EPE)",
+      "stageLabel": "Coleta & ETL Paralelo",
+      "purpose": "Baixar via urllib3 em pool paralelo e consolidar em base horária única (UTC-3) a carga do NE, geração por fonte, constrained-off semi-horário (2023–2025) e capacidade eólica histórica instalada.",
+      "approvedLibraries": ["multiprocessing", "urllib3", "pandas", "numpy", "os", "pathlib"],
+      "multiprocessingStrategy": "multiprocessing.Pool processando em paralelo as competências mensais de RESTRICAO_COFF_EOLICA do S3 oficial do ONS e convertendo potência semi-horária em MWmed.",
+      "inputs": [
+        "ONS S3 Open Data: CURVA_CARGA_{2015..2025}.csv",
+        "ONS S3 Open Data: BALANCO_ENERGIA_SUBSISTEMA_{2015..2025}.csv",
+        "ONS S3 Open Data: CAPACIDADE_GERACAO.csv & RESTRICAO_COFF_EOLICA_{2023..2025}_{01..12}.csv"
+      ],
+      "outputs": [
+        "data/processed/ne_hourly_master_2015_2025.csv",
+        "data/processed/ne_hourly_master.csv",
+        "data/raw/ons_constrained_off_ne_hourly_2023_2025.csv"
+      ],
+      "keyDecisions": [
+        {"template": "Usar urllib3 com PoolManager e retry exponencial nativo, sem bibliotecas externas de scraping."},
+        {"template": "Reconstituir a geração eólica potencial somando geração verificada + energia cortada (constrained-off) para não subestimar o Fator de Capacidade."},
+        {"template": "Partição formal alinhada: {train_hours_pt} horas de treino (2015–2024) e {test_hours_pt} horas de teste cego (2025)."}
+      ]
+    },
+    {
+      "id": "script-02",
+      "order": "02",
+      "filename": "02_build_dc_and_offshore_scenarios.py",
+      "title": "Modelagem Bottom-Up de Data Centers e Eólicas Onshore/Offshore",
+      "stageLabel": "Engenharia de Cenários",
+      "purpose": "Transformar o cadastro nominal de 14 projetos de Data Centers (MME/EPE/SEMACE/CPRH), trajetórias SIGA/ANEEL e processos offshore IBAMA pós-2031 em curvas anuais e concentração por subestação da Rede Básica.",
+      "approvedLibraries": ["numpy", "pandas", "pathlib", "config"],
+      "multiprocessingStrategy": "Agregação vetorizada em pandas/NumPy por projeto, ano (2026–2035), cenário e barramento SIN.",
+      "inputs": [
+        "data/raw/data_centers_pipeline_ne.csv (14 projetos nominais no NE)",
+        "scripts/config.py (parâmetros DC_SCENARIOS_IT_MW e WIND_EXPANSION_ONSHORE_MW)"
+      ],
+      "outputs": [
+        "data/scenarios/dc_pipeline_project_summary.csv",
+        "data/scenarios/dc_substation_load_concentration.csv",
+        "data/scenarios/matriz_cenarios_dc_eolica_2026_2035.csv"
+      ],
+      "keyDecisions": [
+        {"template": "Regra da Seção 5 do PDF: se a potência publicada já for carga total na rede, não aplicar PUE novamente."},
+        {"template": "Modelar a entrada dos projetos como rampa temporal progressiva (12 a 36 meses), nunca em degrau instantâneo."}
+      ]
+    },
+    {
+      "id": "script-03",
+      "order": "03",
+      "filename": "03_feature_engineering_anova.py",
+      "title": "Feature Engineering Causal e Significância Estatística ANOVA (SciPy)",
+      "stageLabel": "Features & Estatística",
+      "purpose": "Construir lags causais (1h, 24h, 168h), janelas móveis deslocadas (shift 1h/24h), harmônicos de Fourier, curva cúbica de Betz e testes F de ANOVA (scipy.stats.f_oneway) separando treino 2015–2024 e teste 2025.",
+      "approvedLibraries": ["numpy", "scipy", "pandas", "sys"],
+      "multiprocessingStrategy": "Vetorização matricial em NumPy/pandas para janelas móveis causais e cálculo exato de Eta-squared (η²).",
+      "inputs": [
+        "data/processed/ne_hourly_master.csv"
+      ],
+      "outputs": [
+        "data/processed/ne_features_matrix.csv",
+        "data/processed/train_features_2015_2024.csv ({train_hours_pt} h)",
+        "data/processed/test_features_2025.csv ({test_hours_pt} h)",
+        "reports/relatorio_anova_significancia.csv",
+        "reports/perfil_mensal_sazonalidade_eolica_ne.csv",
+        "reports/matriz_correlacao_features.csv"
+      ],
+      "keyDecisions": [
+        {"template": "ANOVA (scipy.stats.f_oneway) atua na seleção e validação estatística de features sazonais, não como modelo preditivo."},
+        {"template": "Janelas móveis e termos aerodinâmicos usam exclusivamente defasagens t-1h / t-24h para garantir zero data leakage."}
+      ]
+    },
+    {
+      "id": "script-04",
+      "order": "04",
+      "filename": "04_forecast_demanda_base.py",
+      "title": "Modelo A: Previsão de Demanda Base NE (Linear Ridge vs. ResMLP & GBDT)",
+      "stageLabel": "Modelagem · Demanda (Passo 3)",
+      "purpose": "Treinar em 2015–2024 ({train_hours_pt} h) e validar às cegas em 2025 ({test_hours_pt} h) os modelos de carga base L_base(t) em 1h-Ahead e 24h Day-Ahead, acoplando a tendência PDE 2035 da EPE (~3,1% a.a.).",
+      "approvedLibraries": ["numpy", "pandas", "scipy", "multiprocessing", "ml_models_numpy"],
+      "multiprocessingStrategy": "multiprocessing.Pool avaliando em paralelo os 4 folds de Expanding-Window TimeSeriesSplit dentro de 2015–2024.",
+      "inputs": [
+        "data/processed/train_features_2015_2024.csv",
+        "data/processed/test_features_2025.csv",
+        "scripts/ml_models_numpy.py"
+      ],
+      "outputs": [
+        "reports/backtest_folds_modelo_a_2015_2024.csv",
+        "reports/metricas_modelo_a_demanda.csv",
+        "data/processed/predicoes_2025_modelo_a.csv"
+      ],
+      "keyDecisions": [
+        {
+          "requires": ["best_a_1h"],
+          "template": "ResMLP (L-BFGS-B) alcançou MAE = {best_a_1h_mae} MW, MAPE = {best_a_1h_mape}% e R² = {best_a_1h_r2} em 1h-Ahead (2025).",
+          "fallback": "ResMLP superou o baseline linear Ridge L2 no horizonte 1h-Ahead."
+        },
+        {
+          "requires": ["best_a_24h"],
+          "template": "No horizonte Day-Ahead 24h sem lags recentes, o ResMLP alcançou MAPE = {best_a_24h_mape}% (MAE = {best_a_24h_mae} MW, R² = {best_a_24h_r2}).",
+          "fallback": "Modelo 24h Day-Ahead validado às cegas em 2025."
+        }
+      ]
+    },
+    {
+      "id": "script-05",
+      "order": "05",
+      "filename": "05_forecast_wind_cf_and_curtailment.py",
+      "title": "Modelos B & C: Fator de Capacidade CF_pot(t) e Curtailment Hurdle 2 Estágios",
+      "stageLabel": "Modelagem · Eólica & Cortes (Passo 3)",
+      "purpose": "Prever o Fator de Capacidade Eólico Potencial CF(t) (Modelo B) sem viés de corte e treinar o modelo Hurdle em 2 estágios (Modelo C: Probabilidade P(Corte > 50 MW) + Volume Cortado MWh) em 2023–2024 com teste cego 2025.",
+      "approvedLibraries": ["numpy", "scipy", "pandas", "ml_models_numpy"],
+      "multiprocessingStrategy": "Vetorização matricial em NumPy + otimização L-BFGS-B em SciPy e cálculo exato de ROC-AUC O(N log N).",
+      "inputs": [
+        "data/processed/train_features_2015_2024.csv",
+        "data/processed/test_features_2025.csv",
+        "data/processed/predicoes_2025_modelo_a.csv"
+      ],
+      "outputs": [
+        "reports/metricas_modelos_b_c_eolica_curtailment.csv",
+        "reports/comparativo_mensal_2025_real_vs_predito.csv",
+        "reports/perfil_horario_2025_real_vs_predito.csv"
+      ],
+      "keyDecisions": [
+        {
+          "requires": ["best_b_1h"],
+          "template": "Modelo B (ResMLP 1h): R² = {best_b_1h_r2} e MAE = {best_b_1h_mae_cf} ({best_b_1h_equiv_mw} MW equiv.).",
+          "fallback": "Modelo B valida CF potencial sem viés de corte."
+        },
+        {
+          "requires": ["best_c_nl"],
+          "template": "Modelo C Hurdle Não-Linear (GBDT + ResMLP): ROC-AUC = {best_c_nl_roc_auc}, Brier = {best_c_nl_brier}, F1 = {best_c_nl_f1} e R² Volume = {best_c_nl_r2_vol}.",
+          "fallback": "Modelo C Hurdle em 2 estágios validado no teste cego de 2025."
+        }
+      ]
+    },
+    {
+      "id": "script-06",
+      "order": "06",
+      "filename": "06_monte_carlo_balance_2035.py",
+      "title": "Simulação Estocástica de Monte Carlo 2026–2035 (12 Cenários + Subestações)",
+      "stageLabel": "Monte Carlo 2035 (Passo 4)",
+      "purpose": "Executar Block-Bootstrap Monte Carlo em multiprocessing para os 12 cenários (4 DC × 3 Eólica SIGA/IBAMA) com modulação hidrotérmica Chesf e amostragem bottom-up Bernoulli + atrasos nos 14 projetos.",
+      "approvedLibraries": ["multiprocessing", "numpy", "pandas", "config"],
+      "multiprocessingStrategy": "multiprocessing.Pool distribuindo os 12 cenários, curva compensatória e evolução anual com Common Random Numbers.",
+      "inputs": [
+        "data/processed/ne_hourly_master.csv",
+        "data/scenarios/matriz_cenarios_dc_eolica_2026_2035.csv",
+        "data/raw/data_centers_pipeline_ne.csv"
+      ],
+      "outputs": [
+        "reports/matriz_cenarios_monte_carlo_2035.csv",
+        "reports/curva_expansao_eolica_compensatoria_2035.csv",
+        "reports/evolucao_anual_risco_2026_2035.csv",
+        "reports/relatorio_monte_carlo_bottom_up_projetos_2035.csv",
+        "reports/risco_subestacoes_rede_basica_2035.csv"
+      ],
+      "keyDecisions": [
+        {
+          "requires": ["mc_central"],
+          "template": "Cenário Central DC ({mc_central_dc_mw} MW) × SIGA Intermediária (36,4 GW): absorve {mc_central_avoided_twh} TWh/ano de corte e exige +{mc_central_comp_gw} GW eólicos extras.",
+          "fallback": "Matriz de 12 cenários Monte Carlo 2035 gerada."
+        },
+        {
+          "requires": ["mc_high"],
+          "template": "Com Eólica Alta + Offshore IBAMA (48,0 GW) no Cenário Central/Alto, a pressão líquida sobre o SIN cai drasticamente (P95 = {mc_high_p95_mw} MW no Stress Test).",
+          "fallback": "Cenários com Offshore IBAMA pós-2031 avaliados."
+        }
+      ]
+    },
+    {
+      "id": "script-07",
+      "order": "07",
+      "filename": "07_sensitivity_and_final_report.py",
+      "title": "Passo 5: Sensibilidade (Transmissão & H2V), ANEEL vs. ONS e Sync SSOT",
+      "stageLabel": "Sensibilidade & Consolidação (Passo 5)",
+      "purpose": "Avaliar sensibilidade aos limites de intercâmbio SIN (TX-01..TX-05) e disputa/sinergia com H2V via Block-Bootstrap do Script 06, calcular indicadores ANEEL vs. ONS (2015–2035), consolidar o relatório final parametrizado e sincronizar o SSOT do Frontend.",
+      "approvedLibraries": ["numpy", "pandas", "pathlib", "importlib", "config", "06_monte_carlo_balance_2035", "sync_frontend_ssot"],
+      "multiprocessingStrategy": "Reutilização do núcleo Block-Bootstrap em 168 h do Script 06 com emissão automática do bundle SSOT (JSON + TypeScript) ao final do pipeline.",
+      "inputs": [
+        "data/processed/ne_hourly_master.csv",
+        "data/processed/test_features_2025.csv",
+        "data/scenarios/matriz_cenarios_dc_eolica_2026_2035.csv",
+        "data/scenarios/dc_substation_load_concentration.csv",
+        "reports/matriz_cenarios_monte_carlo_2035.csv",
+        "reports/evolucao_anual_risco_2026_2035.csv"
+      ],
+      "outputs": [
+        "reports/sensibilidade_transmissao_intercambio_2035.csv",
+        "reports/sensibilidade_h2v_eletrointensivos_2035.csv",
+        "reports/indicadores_participacao_eolica_aneel_vs_ons_2015_2035.csv",
+        "reports/relatorio_final_consolidado_ptc3567_grupo6.md",
+        "public/data/pipeline-ssot.json",
+        "src/data/generated/pipelineSsot.ts"
+      ],
+      "keyDecisions": [
+        {
+          "requires": ["tx_04"],
+          "template": "Expansão da transmissão ({tx_04_id}): reduz expansão eólica compensatória para +{tx_04_comp_gw} GW e derruba curtailment para {tx_04_curt_twh} TWh/ano.",
+          "fallback": "Sensibilidade aos limites de intercâmbio SIN avaliada."
+        },
+        {
+          "requires": ["h2v_flex", "h2v_inflex"],
+          "template": "H2V 2,0 GW flexível absorve {h2v_flex_abs_twh} TWh/ano com risco de {h2v_flex_prob_pct}% (contra {h2v_inflex_prob_pct}% no regime inflexível).",
+          "fallback": "Disputa e sinergia entre Data Centers 24/7 e H2V modeladas."
+        }
+      ]
+    }
+  ]
+}

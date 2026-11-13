@@ -103,7 +103,7 @@ def load_ons_subsystem_generation(filepath: Path) -> pd.DataFrame:
         "val_gereolica": "g_eolica_verificada_mw",
         "val_gersolar": "g_solar_mw",
         "val_gerhidraulica": "g_hidraulica_mw",
-        "val_gertermica": "g_gertermica_mw" if "val_gertermica" not in df.columns else "g_termica_mw",
+        "val_gertermica": "g_termica_mw",
         "val_intercambio": "intercambio_liquido_mw",
     }
     df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})

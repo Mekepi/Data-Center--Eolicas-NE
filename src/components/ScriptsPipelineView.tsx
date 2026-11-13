@@ -1,12 +1,19 @@
 import React, { useState } from 'react';
-import { SCRIPTS_PIPELINE, type ScriptSpec } from '../data/scriptsRoadmap';
+import { usePipelineSsot } from '../data/pipelineSsotContext';
+import type { ScriptSpec } from '../data/pipelineTypes';
 
 export const ScriptsPipelineView: React.FC = () => {
-  const [selectedScriptId, setSelectedScriptId] = useState<string>(SCRIPTS_PIPELINE[0].id);
+  const { ssot } = usePipelineSsot();
+  const scripts = ssot.scriptsPipeline;
+  const [selectedScriptId, setSelectedScriptId] = useState<string>(scripts[0]?.id ?? 'script-01');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const activeScript: ScriptSpec =
-    SCRIPTS_PIPELINE.find((s) => s.id === selectedScriptId) ?? SCRIPTS_PIPELINE[0];
+  const activeScript: ScriptSpec | undefined =
+    scripts.find((s) => s.id === selectedScriptId) ?? scripts[0];
+
+  if (!activeScript) {
+    return null;
+  }
 
   const handleCopyCode = async () => {
     try {
@@ -34,25 +41,28 @@ export const ScriptsPipelineView: React.FC = () => {
     <div className="space-y-8">
       <section aria-labelledby="heading-scripts" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
         <div className="pb-6 border-b border-slate-200">
-          <div className="max-w-3xl space-y-2">
+          <div className="max-w-4xl space-y-2">
             <p className="text-xs font-medium text-sky-800">
-              Passos 01 a 05 Concluídos · Arquitetura Modular Executada em Python (numpy, scipy, pandas)
+              Single Source of Truth · Sincronizado diretamente de <span className="font-mono">scripts/*.py</span> ·{' '}
+              {ssot.lineage.windowLabel}
             </p>
             <h1 id="heading-scripts" className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
-              Esteira Completa de 7 Scripts Python do Projeto (Etapas 01 a 07)
+              Esteira Completa de {scripts.length} Scripts Python do Projeto (Etapas 01 a 07)
             </h1>
             <p className="text-sm lg:text-base text-slate-600 leading-relaxed">
-              Todos os <strong>7 scripts sequenciais</strong> (incluindo o motor matemático{' '}
-              <span className="font-mono">ml_models_numpy.py</span> e a consolidação de sensibilidade do Passo 5{' '}
-              <span className="font-mono">07_sensitivity_and_final_report.py</span>) foram executados sobre a série
-              histórica oficial 2015–2025 e exportaram seus relatórios em <span className="font-mono">/reports/</span>.
+              O código exibido abaixo é extraído literalmente dos arquivos executados em{' '}
+              <span className="font-mono">/scripts/</span> via{' '}
+              <span className="font-mono">sync_frontend_ssot.py</span> (sem templates estáticos divergentes), consolidando{' '}
+              <strong>{ssot.lineage.rawOnsFilesCount} bases oficiais ONS</strong> (
+              {ssot.lineage.rawDataTotalMb.toFixed(1)} MB) e <strong>{ssot.lineage.reportFilesCount} relatórios</strong>{' '}
+              em <span className="font-mono">/reports/</span>.
             </p>
           </div>
         </div>
 
-        {/* Seletor das 6 Etapas */}
+        {/* Seletor das Etapas */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 py-6 border-b border-slate-200">
-          {SCRIPTS_PIPELINE.map((script) => {
+          {scripts.map((script) => {
             const isActive = script.id === activeScript.id;
             return (
               <button
@@ -120,7 +130,7 @@ export const ScriptsPipelineView: React.FC = () => {
           <div className="lg:col-span-7 flex flex-col">
             <div className="flex items-center justify-between gap-3 pb-3">
               <span className="text-xs font-mono font-medium text-slate-700">
-                Esqueleto base · {activeScript.filename}
+                Código oficial executado · scripts/{activeScript.filename}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -128,7 +138,7 @@ export const ScriptsPipelineView: React.FC = () => {
                   onClick={handleCopyCode}
                   className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  {copiedId === activeScript.id ? 'Código copiado!' : 'Copiar template Python'}
+                  {copiedId === activeScript.id ? 'Código copiado!' : 'Copiar código (.py)'}
                 </button>
                 <button
                   type="button"
@@ -140,7 +150,7 @@ export const ScriptsPipelineView: React.FC = () => {
               </div>
             </div>
 
-            <pre className="flex-1 p-4 bg-slate-900 text-slate-100 rounded-lg overflow-x-auto text-xs font-mono leading-relaxed">
+            <pre className="flex-1 max-h-[680px] p-4 bg-slate-900 text-slate-100 rounded-lg overflow-auto text-xs font-mono leading-relaxed">
               <code>{activeScript.starterCode}</code>
             </pre>
           </div>

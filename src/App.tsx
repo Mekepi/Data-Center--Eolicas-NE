@@ -7,6 +7,7 @@ import { DecisionsAndPdfView, GROUP_DECISIONS } from './components/DecisionsAndP
 import { ObjectiveAndSimulatorView } from './components/ObjectiveAndSimulatorView';
 import { ScriptsPipelineView } from './components/ScriptsPipelineView';
 import { type SimulationConfig } from './utils/energyModel';
+import { PIPELINE_SSOT } from './data/generated/pipelineSsot';
 
 type ActiveTab = 'objetivo' | 'pipeline-dc' | 'features-anova' | 'bancos' | 'scripts' | 'decisoes';
 
@@ -19,11 +20,11 @@ const DEFAULT_SIM_CONFIG: SimulationConfig = {
   windScenario: 'intermediate',
   includeOffshorePost2031: false,
   seasonalRegime: 'annual_blend',
-  pue: 1.28,
-  dcUtilization: 0.8,
+  pue: PIPELINE_SSOT.config.defaultPue,
+  dcUtilization: PIPELINE_SSOT.config.defaultUtilization,
   isPublishedPowerTotalGrid: false,
-  interchangeImportLimitMW: 7000,
-  interchangeExportLimitMW: 9500,
+  interchangeImportLimitMW: PIPELINE_SSOT.config.interchangeImportLimitMW,
+  interchangeExportLimitMW: PIPELINE_SSOT.config.interchangeExportLimitMW,
 };
 
 export function App() {

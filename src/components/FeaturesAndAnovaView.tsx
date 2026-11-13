@@ -1,25 +1,26 @@
 import React, { useMemo, useState } from 'react';
-import {
-  ANEEL_VS_ONS_WIND_INDICATORS_2015_2035,
-  ANNUAL_RISK_TIMELINE_2026_2035,
-  ANOVA_TEST_RESULTS,
-  COMPENSATORY_WIND_CURVE_2035,
-  FEATURE_CORRELATIONS,
-  H2V_SYNERGY_SENSITIVITY_2035,
-  HOURLY_VALIDATION_2025_PROFILE,
-  MODEL_A_BENCHMARK_2025,
-  MODEL_B_BENCHMARK_2025,
-  MODEL_C_BENCHMARK_2025,
-  MONTHLY_WIND_PROFILES,
-  MONTE_CARLO_12_SCENARIOS_2035,
-  PASSO5_FINAL_EXECUTIVE_REPORT_MD,
-  TRANSMISSION_SENSITIVITY_2035,
-} from '../data/featuresAnovaCatalog';
+import { usePipelineSsot } from '../data/pipelineSsotContext';
 
 type SubViewMode = 'validation_2025' | 'monte_carlo_2035' | 'passo5_sensitivity' | 'features_anova';
 type ValidationChartMetric = 'load_mw' | 'wind_cf' | 'curtailment_mw';
 
 export const FeaturesAndAnovaView: React.FC = () => {
+  const { ssot } = usePipelineSsot();
+  const anovaResults = ssot.anovaTestResults;
+  const monthlyProfiles = ssot.monthlyWindProfiles;
+  const featureCorrelations = ssot.featureCorrelations;
+  const modelABenchmark = ssot.modelABenchmark2025;
+  const modelBBenchmark = ssot.modelBBenchmark2025;
+  const modelCBenchmark = ssot.modelCBenchmark2025;
+  const hourly2025 = ssot.hourlyValidation2025Profile;
+  const mc12Scenarios = ssot.monteCarlo12Scenarios2035;
+  const compWindCurve = ssot.compensatoryWindCurve2035;
+  const annualTimeline = ssot.annualRiskTimeline2026_2035;
+  const txSensitivity = ssot.transmissionSensitivity2035;
+  const h2vSensitivity = ssot.h2vSynergySensitivity2035;
+  const aneelVsOns = ssot.aneelVsOnsWindIndicators2015_2035;
+  const finalReportMd = ssot.passo5FinalExecutiveReportMd;
+
   const [subView, setSubView] = useState<SubViewMode>('validation_2025');
   const [valChartMetric, setValChartMetric] = useState<ValidationChartMetric>('load_mw');
   const [selectedDcFilter, setSelectedDcFilter] = useState<string>('all');
@@ -27,9 +28,23 @@ export const FeaturesAndAnovaView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
 
+  const kpis = useMemo(() => {
+    const a1h = modelABenchmark.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
+    const a24h = modelABenchmark.find((r) => r.horizon.includes('24h') && r.architecture.includes('ResMLP'));
+    const b1h = modelBBenchmark.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
+    const cBest = modelCBenchmark.find((r) => r.architecture.includes('ResMLP')) ?? modelCBenchmark[0];
+    const intermWindMW = ssot.config.baseWindOnshore2026MW + ssot.config.windExpansionOnshoreMW.intermediate;
+    const mcCentral = mc12Scenarios.find(
+      (s) => s.dcScenarioId === 'central' && Math.abs(s.windCapacityMW - intermWindMW) < 100
+    );
+    const ind2024 = aneelVsOns.find((r) => r.year === 2024);
+    const ind2025 = aneelVsOns.find((r) => r.year === 2025);
+    return { a1h, a24h, b1h, cBest, mcCentral, intermWindMW, ind2024, ind2025 };
+  }, [modelABenchmark, modelBBenchmark, modelCBenchmark, mc12Scenarios, aneelVsOns, ssot.config]);
+
   const filteredCorrelations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return FEATURE_CORRELATIONS.filter((item) => {
+    return featureCorrelations.filter((item) => {
       if (selectedCategory !== 'all' && item.roleInModel !== selectedCategory) return false;
       if (!q) return true;
       return (
@@ -38,12 +53,12 @@ export const FeaturesAndAnovaView: React.FC = () => {
         item.roleInModel.toLowerCase().includes(q)
       );
     });
-  }, [selectedCategory, searchQuery]);
+  }, [featureCorrelations, selectedCategory, searchQuery]);
 
   const filteredMcScenarios = useMemo(() => {
-    if (selectedDcFilter === 'all') return MONTE_CARLO_12_SCENARIOS_2035;
-    return MONTE_CARLO_12_SCENARIOS_2035.filter((s) => s.dcScenarioId === selectedDcFilter);
-  }, [selectedDcFilter]);
+    if (selectedDcFilter === 'all') return mc12Scenarios;
+    return mc12Scenarios.filter((s) => s.dcScenarioId === selectedDcFilter);
+  }, [mc12Scenarios, selectedDcFilter]);
 
   const handleExportCsv = (
     type: 'anova' | 'monthly' | 'correlation' | 'benchmarks2025' | 'mc2035' | 'passo5_csv' | 'passo5_md'
@@ -63,7 +78,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
         'significativo_alpha_01',
         'conclusao_tecnica',
       ];
-      const rows = ANOVA_TEST_RESULTS.map((r) =>
+      const rows = anovaResults.map((r) =>
         [
           escape(r.targetVariable),
           escape(r.groupingFactor),
@@ -89,7 +104,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
         'curtailment_medio_mw',
         'regime_sazonal',
       ];
-      const rows = MONTHLY_WIND_PROFILES.map((m) =>
+      const rows = monthlyProfiles.map((m) =>
         [
           m.month,
           escape(m.monthName),
@@ -107,10 +122,10 @@ export const FeaturesAndAnovaView: React.FC = () => {
     } else if (type === 'benchmarks2025') {
       filename = 'validacao_out_of_time_2025_modelos_a_b_c.csv';
       const headers = ['bloco', 'horizonte', 'arquitetura', 'familia', 'mae', 'rmse', 'r2'];
-      const rowsA = MODEL_A_BENCHMARK_2025.map((m) =>
+      const rowsA = modelABenchmark.map((m) =>
         ['Modelo A (Demanda MW)', escape(m.horizon), escape(m.architecture), escape(m.family), m.maeMW, m.rmseMW, m.r2Score].join(';')
       );
-      const rowsB = MODEL_B_BENCHMARK_2025.map((m) =>
+      const rowsB = modelBBenchmark.map((m) =>
         ['Modelo B (CF Eolico)', escape(m.horizon), escape(m.architecture), escape(m.family), m.maeCF, m.rmseCF, m.r2Score].join(';')
       );
       content = '\uFEFF' + [headers.join(';'), ...rowsA, ...rowsB].join('\n');
@@ -129,7 +144,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
         'curtailment_absorvido_dc_gwh',
         'gw_eolico_compensatorio',
       ];
-      const rows = MONTE_CARLO_12_SCENARIOS_2035.map((s) =>
+      const rows = mc12Scenarios.map((s) =>
         [
           escape(s.scenarioName),
           escape(s.dcScenarioId),
@@ -158,7 +173,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
         'curtailment_evitado_ou_absorvido',
         'eolica_extra_req_gw',
       ];
-      const txRows = TRANSMISSION_SENSITIVITY_2035.map((r) =>
+      const txRows = txSensitivity.map((r) =>
         [
           escape('Transmissao_SIN'),
           escape(r.configId),
@@ -171,7 +186,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
           r.compensatoryWindGW,
         ].join(';')
       );
-      const h2vRows = H2V_SYNERGY_SENSITIVITY_2035.map((r) =>
+      const h2vRows = h2vSensitivity.map((r) =>
         [
           escape('H2V_vs_DataCenters'),
           escape(r.scenarioId),
@@ -187,11 +202,11 @@ export const FeaturesAndAnovaView: React.FC = () => {
       content = '\uFEFF' + [txHeaders.join(';'), ...txRows, ...h2vRows].join('\n');
     } else if (type === 'passo5_md') {
       filename = 'relatorio_final_consolidado_ptc3567_grupo6.md';
-      content = PASSO5_FINAL_EXECUTIVE_REPORT_MD;
+      content = finalReportMd;
     } else {
       filename = 'matriz_correlacao_features.csv';
       const headers = ['feature', 'descricao', 'categoria', 'corr_carga_base', 'corr_cf_eolica', 'corr_curtailment'];
-      const rows = FEATURE_CORRELATIONS.map((c) =>
+      const rows = featureCorrelations.map((c) =>
         [
           escape(c.featureName),
           escape(c.featureDescription),
@@ -230,8 +245,8 @@ export const FeaturesAndAnovaView: React.FC = () => {
   const plotH = svgH - padT - padB;
   const xForH = (h: number) => padL + (h / 23) * plotW;
 
-  const buildHourlyPoints = (getter: (pt: (typeof HOURLY_VALIDATION_2025_PROFILE)[0]) => number, minV: number, maxV: number) =>
-    HOURLY_VALIDATION_2025_PROFILE.map((pt) => {
+  const buildHourlyPoints = (getter: (pt: (typeof hourly2025)[0]) => number, minV: number, maxV: number) =>
+    hourly2025.map((pt) => {
       const x = xForH(pt.hour);
       const y = padT + ((maxV - getter(pt)) / Math.max(1e-6, maxV - minV)) * plotH;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
@@ -252,8 +267,9 @@ export const FeaturesAndAnovaView: React.FC = () => {
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               Modelos lineares e não-lineares (<span className="font-mono">ResidualMLPRegressor</span> L-BFGS-B e{' '}
               <span className="font-mono">HistogramGBDT</span> em <span className="font-mono">numpy/scipy</span>)
-              treinados em <strong>2015–2024 (87.476 h)</strong>, validados às cegas nas{' '}
-              <strong>8.760 h de 2025</strong>, acoplados ao <strong>Monte Carlo 2035</strong> e à{' '}
+              treinados em <strong>2015–2024 ({ssot.lineage.trainHours.toLocaleString('pt-BR')} h)</strong>, validados às
+              cegas nas <strong>{ssot.lineage.testHours.toLocaleString('pt-BR')} h de 2025</strong>, acoplados ao{' '}
+              <strong>Monte Carlo 2035</strong> e à{' '}
               <strong>Análise de Sensibilidade de Intercâmbio e Hidrogênio Verde (Passo 5)</strong>.
             </p>
           </div>
@@ -311,37 +327,53 @@ export const FeaturesAndAnovaView: React.FC = () => {
           </div>
         </div>
 
-        {/* Faixa de 4 KPIs Consolidados dos Passos 3 e 4 */}
+        {/* Faixa de 4 KPIs Consolidados dos Passos 3 e 4 (calculados dinamicamente via SSOT) */}
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 tabular-nums">
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
             <span className="text-xs text-slate-500 block">Modelo A · Demanda 2025 (ResMLP)</span>
-            <span className="text-xl font-bold font-mono text-slate-900 mt-0.5 block">MAPE 1,22%</span>
+            <span className="text-xl font-bold font-mono text-slate-900 mt-0.5 block">
+              MAPE {kpis.a1h ? kpis.a1h.mapePct.toFixed(2).replace('.', ',') : '—'}%
+            </span>
             <span className="text-xs text-slate-600 mt-0.5 block">
-              MAE 158,9 MW (1h) e 2,37% (24h) · R² = 0,9719
+              {kpis.a1h && kpis.a24h
+                ? `MAE ${kpis.a1h.maeMW.toFixed(1).replace('.', ',')} MW (1h) e ${kpis.a24h.mapePct.toFixed(2).replace('.', ',')}% (24h) · R² = ${kpis.a1h.r2Score.toFixed(4).replace('.', ',')}`
+                : 'SSOT Model A'}
             </span>
           </div>
 
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
             <span className="text-xs text-slate-500 block">Modelo B · CF Eólico 2025 (ResMLP)</span>
-            <span className="text-xl font-bold font-mono text-sky-800 mt-0.5 block">R² = 0,9853</span>
+            <span className="text-xl font-bold font-mono text-sky-800 mt-0.5 block">
+              R² = {kpis.b1h ? kpis.b1h.r2Score.toFixed(4).replace('.', ',') : '—'}
+            </span>
             <span className="text-xs text-slate-600 mt-0.5 block">
-              MAE = 0,0173 (517,6 MW equiv.) sem viés de corte
+              {kpis.b1h
+                ? `MAE = ${kpis.b1h.maeCF.toFixed(4).replace('.', ',')} (${kpis.b1h.equivPowerMaeMW.toFixed(1).replace('.', ',')} MW equiv.) sem viés de corte`
+                : 'SSOT Model B'}
             </span>
           </div>
 
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
             <span className="text-xs text-slate-500 block">Modelo C · Curtailment Real 2025</span>
-            <span className="text-xl font-bold font-mono text-amber-700 mt-0.5 block">AUC = 0,9311</span>
+            <span className="text-xl font-bold font-mono text-amber-700 mt-0.5 block">
+              AUC = {kpis.cBest ? kpis.cBest.rocAuc.toFixed(4).replace('.', ',') : '—'}
+            </span>
             <span className="text-xs text-slate-600 mt-0.5 block">
-              Brier = 0,0990 · F1 = 0,9106 (25,70 TWh em 2025)
+              {kpis.cBest
+                ? `Brier = ${kpis.cBest.brierScore.toFixed(4).replace('.', ',')} · F1 = ${kpis.cBest.f1Score.toFixed(4).replace('.', ',')} (${kpis.cBest.realCurtailed2025TWh.toFixed(2).replace('.', ',')} TWh em 2025)`
+                : 'SSOT Model C'}
             </span>
           </div>
 
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
             <span className="text-xs text-slate-500 block">Passo 4 · Expansão Compensatória 2035</span>
-            <span className="text-xl font-bold font-mono text-emerald-800 mt-0.5 block">+6,85 GW</span>
+            <span className="text-xl font-bold font-mono text-emerald-800 mt-0.5 block">
+              +{kpis.mcCentral ? kpis.mcCentral.compensatoryWindExpansionGW.toFixed(2).replace('.', ',') : '—'} GW
+            </span>
             <span className="text-xs text-slate-600 mt-0.5 block">
-              Cenário Central DC (1,60 GW) + SIGA Interm. (−3,60 TWh)
+              {kpis.mcCentral
+                ? `Cenário Central DC (${(kpis.mcCentral.dcLoadMW / 1000).toFixed(2).replace('.', ',')} GW) + SIGA Interm. (−${(kpis.mcCentral.curtailmentAvoidedGWh / 1000).toFixed(2).replace('.', ',')} TWh)`
+                : 'SSOT Monte Carlo'}
             </span>
           </div>
         </div>
@@ -576,7 +608,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-slate-700">
-                    {MODEL_A_BENCHMARK_2025.map((row) => {
+                    {modelABenchmark.map((row) => {
                       const isBest = row.architecture.includes('ResMLP');
                       return (
                         <tr key={`${row.horizon}-${row.architecture}`} className={isBest ? 'bg-sky-50/50' : 'hover:bg-slate-50'}>
@@ -634,7 +666,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-slate-700">
-                    {MODEL_B_BENCHMARK_2025.map((row) => {
+                    {modelBBenchmark.map((row) => {
                       const isBest = row.architecture.includes('ResMLP');
                       return (
                         <tr key={`${row.horizon}-${row.architecture}`} className={isBest ? 'bg-emerald-50/40' : 'hover:bg-slate-50'}>
@@ -678,7 +710,8 @@ export const FeaturesAndAnovaView: React.FC = () => {
                 </h3>
               </div>
               <span className="text-xs font-mono text-slate-600 tabular-nums">
-                2024 Real: 9,41 TWh (53,8% h) · 2025 Real: 25,70 TWh (75,0% h)
+                2024 Real: {kpis.ind2024 ? `${kpis.ind2024.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh` : '—'} · 2025 Real:{' '}
+                {kpis.ind2025 ? `${kpis.ind2025.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh` : '—'}
               </span>
             </div>
 
@@ -696,8 +729,11 @@ export const FeaturesAndAnovaView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-700">
-                  {MODEL_C_BENCHMARK_2025.map((row, idx) => (
-                    <tr key={row.architecture} className={idx === 1 ? 'bg-amber-50/40' : 'hover:bg-slate-50'}>
+                  {modelCBenchmark.map((row) => (
+                    <tr
+                      key={row.architecture}
+                      className={row.architecture.includes('ResMLP') ? 'bg-amber-50/40' : 'hover:bg-slate-50'}
+                    >
                       <td className="py-3.5 pr-4 font-semibold text-slate-900">{row.architecture}</td>
                       <td className="py-3.5 px-3 text-slate-600">{row.family}</td>
                       <td className="py-3.5 px-3 font-mono font-bold text-sky-900">{row.rocAuc.toFixed(4)}</td>
@@ -855,7 +891,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-slate-700">
-                    {COMPENSATORY_WIND_CURVE_2035.map((pt) => {
+                    {compWindCurve.map((pt) => {
                       const meetsTarget = pt.probExceedInterchangePct <= 5.5;
                       return (
                         <tr key={pt.extraWindGW} className={meetsTarget ? 'bg-emerald-50/40' : 'hover:bg-slate-50'}>
@@ -910,7 +946,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-slate-700 font-mono">
-                    {ANNUAL_RISK_TIMELINE_2026_2035.map((yr) => (
+                    {annualTimeline.map((yr) => (
                       <tr key={yr.year} className="hover:bg-slate-50">
                         <td className="py-2 pr-2 font-bold text-slate-900">{yr.year}</td>
                         <td className="py-2 px-2 text-slate-700">
@@ -988,8 +1024,8 @@ export const FeaturesAndAnovaView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-700">
-                  {TRANSMISSION_SENSITIVITY_2035.map((row) => {
-                    const isBaseRef = row.importLimitMW === 7000;
+                  {txSensitivity.map((row) => {
+                    const isBaseRef = row.importLimitMW === ssot.config.interchangeImportLimitMW;
                     return (
                       <tr key={row.configId} className={isBaseRef ? 'bg-sky-50/60' : 'hover:bg-slate-50'}>
                         <td className="py-3.5 pr-3">
@@ -1062,7 +1098,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-700">
-                  {H2V_SYNERGY_SENSITIVITY_2035.map((row) => {
+                  {h2vSensitivity.map((row) => {
                     const isPureDc = row.h2vNominalMW === 0;
                     const isFlex = row.scenarioId.includes('Flexível');
                     return (
@@ -1117,7 +1153,21 @@ export const FeaturesAndAnovaView: React.FC = () => {
                 Participação Eólica na Capacidade Instalada (ANEEL/SIGA) vs. Geração Efetiva (ONS)
               </h2>
               <p className="text-sm text-slate-600 mt-1">
-                Demonstra por que capacidade instalada física não equivale a geração efetiva entregável: em 2025, a eólica detém <strong>51,46% da potência instalada</strong> no Nordeste, mas responde por <strong>62,41% da geração elétrica efetiva</strong> (apesar de perder 9,80 pontos percentuais de fator de capacidade para o <em>constrained-off</em> de 25,70 TWh).
+                Demonstra por que capacidade instalada física não equivale a geração efetiva entregável: em 2025, a eólica
+                detém{' '}
+                <strong>
+                  {kpis.ind2025 ? kpis.ind2025.aneelInstalledSharePct.toFixed(2).replace('.', ',') : '51,46'}% da potência instalada
+                </strong>{' '}
+                no Nordeste, mas responde por{' '}
+                <strong>
+                  {kpis.ind2025 ? kpis.ind2025.onsEffectiveGenSharePct.toFixed(2).replace('.', ',') : '62,41'}% da geração elétrica efetiva
+                </strong>{' '}
+                (apesar de perder{' '}
+                {kpis.ind2025
+                  ? (kpis.ind2025.potentialUnconstrainedCfPct - kpis.ind2025.onsEffectiveCfPct).toFixed(2).replace('.', ',')
+                  : '9,80'}{' '}
+                pontos percentuais de fator de capacidade para o <em>constrained-off</em> de{' '}
+                {kpis.ind2025 ? kpis.ind2025.annualCurtailmentLossTWh.toFixed(2).replace('.', ',') : '25,70'} TWh).
               </p>
             </div>
 
@@ -1136,7 +1186,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-700">
-                  {ANEEL_VS_ONS_WIND_INDICATORS_2015_2035.map((row) => {
+                  {aneelVsOns.map((row) => {
                     const isProjected = row.year >= 2028;
                     const is2025 = row.year === 2025;
                     return (
@@ -1212,7 +1262,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-700 text-xs">
-                  {ANOVA_TEST_RESULTS.map((r) => (
+                  {anovaResults.map((r) => (
                     <tr key={r.targetVariable} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3.5 pr-4 font-semibold text-slate-900 whitespace-nowrap">
                         {r.targetVariable}
@@ -1276,7 +1326,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-700 text-xs font-mono">
-                  {MONTHLY_WIND_PROFILES.map((m) => {
+                  {monthlyProfiles.map((m) => {
                     const isSafra = m.seasonalRegime === 'Safra dos Ventos';
                     const isCalmaria = m.seasonalRegime === 'Estação Chuvosa / Calmaria';
 

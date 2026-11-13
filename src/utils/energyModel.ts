@@ -1,3 +1,5 @@
+import { PIPELINE_SSOT } from '../data/generated/pipelineSsot';
+
 export type DataCenterScenarioId = 'none' | 'conservative' | 'central' | 'high';
 export type WindExpansionScenarioId = 'base' | 'intermediate' | 'high';
 export type SeasonalRegimeId = 'dry_windy' | 'wet_calm' | 'annual_blend';
@@ -11,7 +13,7 @@ export interface SimulationConfig {
   pue: number; // e.g., 1.25
   dcUtilization: number; // 0.50 .. 0.95
   isPublishedPowerTotalGrid: boolean; // if true, do not multiply by PUE again (PDF Sec. 5 rule)
-  interchangeImportLimitMW: number; // e.g., 7500 MW import limit into NE
+  interchangeImportLimitMW: number; // e.g., 7000 MW import limit into NE
   interchangeExportLimitMW: number; // e.g., 9500 MW export limit out of NE
 }
 
@@ -72,18 +74,14 @@ export interface SimulationResult {
 }
 
 const DC_IT_PIPELINE_MW_2035: Record<DataCenterScenarioId, number> = {
-  none: 0,
-  conservative: 950, // Projetos maduros/contratados (ex.: Fortaleza/Pecém fase 1 e ampliações firmes)
-  central: 2200, // Pipeline ponderado por probabilidade de concretização e atraso
-  high: 4100, // Stress test: pipeline anunciado + polos de IA/hiperescala no NE
+  ...PIPELINE_SSOT.config.dcScenariosItMW,
 };
 
-const ONSHORE_WIND_2026_BASE_MW = 29600; // ~29.6 GW eólicos onshore em operação no NE (referência SIGA/ONS)
+const ONSHORE_WIND_2026_BASE_MW = PIPELINE_SSOT.config.baseWindOnshore2026MW;
 const ONSHORE_ADDITION_BY_2035_MW: Record<WindExpansionScenarioId, number> = {
-  base: 0, // Apenas parques já em operação
-  intermediate: 6800, // + Em construção no SIGA (~6.8 GW)
-  high: 14800, // + Construção + parcela qualificada de outorgados onshore (~14.8 GW)
+  ...PIPELINE_SSOT.config.windExpansionOnshoreMW,
 };
+const BASE_HYDRO_THERMAL_MW = PIPELINE_SSOT.config.baseHydroThermalMW;
 
 /**
  * Calcula a rampa logística/progressiva de entrada dos data centers entre 2026 e 2035.
@@ -188,7 +186,7 @@ export function simulateHourlyWeek(config: SimulationConfig): HourlyPoint[] {
   // Capacidade solar centralizada + MMGD equivalente no NE cresce no horizonte 2035
   const solarPeakMW = Math.round(8200 * (1 + 0.055 * yearsFrom2026));
   // Base hidrelétrica (CHESF/São Francisco) + biomassa/inflexibilidade térmica no NE
-  const baseHydroThermalMW = 4150;
+  const baseHydroThermalMW = BASE_HYDRO_THERMAL_MW;
 
   const series: HourlyPoint[] = [];
 

@@ -14,16 +14,16 @@ export const GROUP_DECISIONS: GroupDecisionItem[] = [
     question: 'Qual recorte temporal usar para treinar Carga Base, CF(t) e Curtailment?',
     options: [
       {
-        value: '2019_2025',
-        label: '2019–2024 (Treino) e 2025 (Teste Out-of-Time) — Recomendado',
+        value: '2015_2025',
+        label: '2015–2024 (Treino) e 2025 (Teste Out-of-Time) — Executado no Pipeline',
         rationale:
-          'Captura a maturação recente dos complexos eólicos/solares do NE e o aumento de constrained-off pós-2023 sem excesso de dados defasados.',
+          'Recorte completo de 11 anos adotado na esteira oficial (87.476 h de treino e 8.760 h de validação cega em 2025), capturando ciclos El Niño/La Niña e constrained-off 2023–2025.',
       },
       {
-        value: '2015_2025',
-        label: '2015–2023 (Treino) e 2024–2025 (Teste)',
+        value: '2019_2025',
+        label: '2019–2024 (Treino) e 2025 (Teste Out-of-Time) — Recorte Recente',
         rationale:
-          'Aumenta a amostra climática de El Niño/La Niña, mas exige cuidado maior com mudança estrutural da MMGD solar.',
+          'Alternativa restrita ao período pós-expansão acelerada da solar centralizada/MMGD no Nordeste.',
       },
     ],
   },

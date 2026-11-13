@@ -7,7 +7,7 @@ import {
   type SimulationConfig,
   type WindExpansionScenarioId,
 } from '../utils/energyModel';
-import { MONTE_CARLO_12_SCENARIOS_2035 } from '../data/featuresAnovaCatalog';
+import { usePipelineSsot } from '../data/pipelineSsotContext';
 
 interface ObjectiveAndSimulatorViewProps {
   config: SimulationConfig;
@@ -26,8 +26,40 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
   onNavigateToScripts,
   onNavigateToModels,
 }) => {
+  const { ssot } = usePipelineSsot();
   const [chartMode, setChartMode] = useState<ChartMode>('margin');
   const [inspectedHour, setInspectedHour] = useState<number>(76); // Quinta 04h/tarde na depressão sinóptica
+
+  const ssotSummary = useMemo(() => {
+    const intermWindMW = ssot.config.baseWindOnshore2026MW + ssot.config.windExpansionOnshoreMW.intermediate;
+    const mcInterm = ssot.monteCarlo12Scenarios2035.filter((s) => Math.abs(s.windCapacityMW - intermWindMW) < 100);
+    const mcCentral = mcInterm.find((s) => s.dcScenarioId === 'central');
+    const a1h = ssot.modelABenchmark2025.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
+    const a24h = ssot.modelABenchmark2025.find((r) => r.horizon.includes('24h') && r.architecture.includes('ResMLP'));
+    const b1h = ssot.modelBBenchmark2025.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
+    const b24h = ssot.modelBBenchmark2025.find((r) => r.horizon.includes('24h') && r.architecture.includes('ResMLP'));
+    const cBest = ssot.modelCBenchmark2025.find((r) => r.architecture.includes('ResMLP'));
+    const tx04 = ssot.transmissionSensitivity2035.find((r) => r.configId.startsWith('TX-04'));
+    const tx05 = ssot.transmissionSensitivity2035.find((r) => r.configId.startsWith('TX-05'));
+    const h2v2Inflex = ssot.h2vSynergySensitivity2035.find((r) => r.h2vNominalMW === 2000 && r.scenarioId.includes('Inflexível'));
+    const h2v2Flex = ssot.h2vSynergySensitivity2035.find((r) => r.h2vNominalMW === 2000 && r.scenarioId.includes('Flexível'));
+    const ind2025 = ssot.aneelVsOnsWindIndicators2015_2035.find((r) => r.year === 2025);
+    return {
+      intermWindMW,
+      mcInterm,
+      mcCentral,
+      a1h,
+      a24h,
+      b1h,
+      b24h,
+      cBest,
+      tx04,
+      tx05,
+      h2v2Inflex,
+      h2v2Flex,
+      ind2025,
+    };
+  }, [ssot]);
 
   const result = useMemo(() => evaluateScenario(config), [config]);
   const activePoint: HourlyPoint = result.hourlySeries[inspectedHour] ?? result.hourlySeries[0];
@@ -188,7 +220,9 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                     Rede Neural Residual (ResMLP L-BFGS-B) vs. GBDT e Ridge L2
                   </td>
                   <td className="py-3 pl-4 font-mono text-xs font-semibold text-slate-900">
-                    MAPE 1,22% (1h: MAE 158,9 MW, R² 0,9719) · 2,37% (24h: R² 0,8768)
+                    {ssotSummary.a1h && ssotSummary.a24h
+                      ? `MAPE ${ssotSummary.a1h.mapePct.toFixed(2)}% (1h: MAE ${ssotSummary.a1h.maeMW.toFixed(1)} MW, R² ${ssotSummary.a1h.r2Score.toFixed(4)}) · ${ssotSummary.a24h.mapePct.toFixed(2)}% (24h: R² ${ssotSummary.a24h.r2Score.toFixed(4)})`
+                      : 'Sincronizado via SSOT'}
                   </td>
                 </tr>
                 <tr className="hover:bg-slate-50/80">
@@ -198,7 +232,9 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                     ResMLP L-BFGS-B com não-linearidades aerodinâmicas (v³) e ANOVA
                   </td>
                   <td className="py-3 pl-4 font-mono text-xs font-semibold text-emerald-800">
-                    R² = 0,9853 (1h: MAE 0,0173 / 517,6 MW) · R² = 0,7058 (24h)
+                    {ssotSummary.b1h && ssotSummary.b24h
+                      ? `R² = ${ssotSummary.b1h.r2Score.toFixed(4)} (1h: MAE ${ssotSummary.b1h.maeCF.toFixed(4)} / ${ssotSummary.b1h.equivPowerMaeMW.toFixed(1)} MW) · R² = ${ssotSummary.b24h.r2Score.toFixed(4)} (24h)`
+                      : 'Sincronizado via SSOT'}
                   </td>
                 </tr>
                 <tr className="hover:bg-slate-50/80">
@@ -208,17 +244,21 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                     Hurdle 2-Estágios: Histogram GBDT Classifier + ResMLP Regressor
                   </td>
                   <td className="py-3 pl-4 font-mono text-xs font-semibold text-amber-800">
-                    ROC-AUC = 0,9311 · Brier = 0,0990 · F1 = 0,9106 · R² Vol = 0,6876
+                    {ssotSummary.cBest
+                      ? `ROC-AUC = ${ssotSummary.cBest.rocAuc.toFixed(4)} · Brier = ${ssotSummary.cBest.brierScore.toFixed(4)} · F1 = ${ssotSummary.cBest.f1Score.toFixed(4)} · R² Vol = ${ssotSummary.cBest.r2Volume.toFixed(4)}`
+                      : 'Sincronizado via SSOT'}
                   </td>
                 </tr>
                 <tr className="hover:bg-slate-50/80">
                   <td className="py-3 pr-4 font-medium text-slate-900 whitespace-nowrap">Passo 4 · Monte Carlo</td>
                   <td className="py-3 px-4 font-mono text-xs">P(Import &gt; 7 GW) & GW Extra</td>
                   <td className="py-3 px-4 text-xs text-slate-600">
-                    Block-Bootstrap Sazonal + Modulação Chesf + 14 Projetos Bottom-Up
+                    Block-Bootstrap Sazonal + Modulação Chesf + {ssot.dataCentersPipeline.length} Projetos Bottom-Up
                   </td>
                   <td className="py-3 pl-4 font-mono text-xs font-semibold text-sky-900">
-                    Central DC: P95 = 8.439 MW (+6,85 GW eólicos extras; −3,60 TWh corte)
+                    {ssotSummary.mcCentral
+                      ? `Central DC: P95 = ${ssotSummary.mcCentral.importP95MW.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} MW (+${ssotSummary.mcCentral.compensatoryWindExpansionGW.toFixed(2)} GW eólicos extras; −${(ssotSummary.mcCentral.curtailmentAvoidedGWh / 1000).toFixed(2)} TWh corte)`
+                      : 'Sincronizado via SSOT'}
                   </td>
                 </tr>
               </tbody>
@@ -280,9 +320,15 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               className="w-full h-10 px-3 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
             >
               <option value="none">Sem Data Centers (Baseline Controle)</option>
-              <option value="conservative">Conservador (~0.95 GW TI · Confirmados)</option>
-              <option value="central">Central (~2.20 GW TI · Ponderado)</option>
-              <option value="high">Alto / Stress Test (~4.10 GW TI · Pipeline)</option>
+              <option value="conservative">
+                Conservador (~{(ssot.config.dcScenariosItMW.conservative / 1000).toFixed(2)} GW TI · Confirmados)
+              </option>
+              <option value="central">
+                Central (~{(ssot.config.dcScenariosItMW.central / 1000).toFixed(2)} GW TI · Ponderado)
+              </option>
+              <option value="high">
+                Alto / Stress Test (~{(ssot.config.dcScenariosItMW.high / 1000).toFixed(2)} GW TI · Pipeline)
+              </option>
             </select>
             <p className="text-xs text-slate-500 tabular-nums">
               Carga efetiva em {config.targetYear}:{' '}
@@ -303,9 +349,15 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               }
               className="w-full h-10 px-3 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
             >
-              <option value="base">Base (Apenas Operação ~29.6 GW)</option>
-              <option value="intermediate">Intermediário (+ Construção SIGA)</option>
-              <option value="high">Alto (+ Construção e Outorgados)</option>
+              <option value="base">
+                Base (Apenas Operação ~{(ssot.config.baseWindOnshore2026MW / 1000).toFixed(1)} GW)
+              </option>
+              <option value="intermediate">
+                Intermediário (+{(ssot.config.windExpansionOnshoreMW.intermediate / 1000).toFixed(1)} GW Construção SIGA)
+              </option>
+              <option value="high">
+                Alto (+{(ssot.config.windExpansionOnshoreMW.high / 1000).toFixed(1)} GW Construção e Outorgados)
+              </option>
             </select>
             <label className="flex items-center gap-2 text-xs text-slate-700 pt-0.5 cursor-pointer">
               <input
@@ -441,11 +493,11 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                 windScenario: 'intermediate',
                 includeOffshorePost2031: false,
                 seasonalRegime: 'annual_blend',
-                pue: 1.28,
-                dcUtilization: 0.8,
+                pue: ssot.config.defaultPue,
+                dcUtilization: ssot.config.defaultUtilization,
                 isPublishedPowerTotalGrid: false,
-                interchangeImportLimitMW: 7000,
-                interchangeExportLimitMW: 9500,
+                interchangeImportLimitMW: ssot.config.interchangeImportLimitMW,
+                interchangeExportLimitMW: ssot.config.interchangeExportLimitMW,
               })
             }
             className="text-xs font-medium text-slate-600 hover:text-slate-900 underline whitespace-nowrap shrink-0 cursor-pointer"
@@ -847,7 +899,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700">
-              {MONTE_CARLO_12_SCENARIOS_2035.filter((s) => Math.abs(s.windCapacityMW - 36400) < 100).map((s) => (
+              {ssotSummary.mcInterm.map((s) => (
                 <tr
                   key={s.scenarioName}
                   className={s.dcScenarioId === 'central' ? 'bg-sky-50/50' : 'hover:bg-slate-50'}
@@ -876,7 +928,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                   <td className="py-3.5 px-3 font-mono font-semibold text-emerald-800 whitespace-nowrap">
                     {s.curtailmentAvoidedGWh > 0
                       ? `−${(s.curtailmentAvoidedGWh / 1000).toFixed(2)} TWh/ano`
-                      : 'Referência (13,11 TWh)'}
+                      : `Referência (${s.curtailmentWithDcTWh.toFixed(2)} TWh)`}
                   </td>
                   <td className="py-3.5 pl-3 font-mono font-bold text-sky-900 whitespace-nowrap">
                     {s.compensatoryWindExpansionGW > 0
@@ -897,9 +949,19 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             </span>
             <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
               A entrada das novas LTs 500 kV e Bipolo HVDC (elevando o limite de importação para{' '}
-              <strong>8,0–9,0 GW</strong> e exportação para <strong>11,0–12,5 GW</strong>) reduz o requisito de expansão
-              eólica compensatória de <strong>+6,85 GW</strong> para <strong>+2,20 GW (TX-04)</strong> ou{' '}
-              <strong>0,00 GW (TX-05)</strong>.
+              <strong>
+                {((ssotSummary.tx04?.importLimitMW ?? 8000) / 1000).toFixed(1)}–
+                {((ssotSummary.tx05?.importLimitMW ?? 9000) / 1000).toFixed(1)} GW
+              </strong>{' '}
+              e exportação para{' '}
+              <strong>
+                {((ssotSummary.tx04?.exportLimitMW ?? 11000) / 1000).toFixed(1)}–
+                {((ssotSummary.tx05?.exportLimitMW ?? 12500) / 1000).toFixed(1)} GW
+              </strong>
+              ) reduz o requisito de expansão eólica compensatória de{' '}
+              <strong>+{ssotSummary.mcCentral?.compensatoryWindExpansionGW.toFixed(2) ?? '6.85'} GW</strong> para{' '}
+              <strong>+{ssotSummary.tx04?.compensatoryWindGW.toFixed(2) ?? '2.20'} GW (TX-04)</strong> ou{' '}
+              <strong>{ssotSummary.tx05?.compensatoryWindGW.toFixed(2) ?? '0.00'} GW (TX-05)</strong>.
             </p>
           </div>
 
@@ -909,9 +971,12 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
             </span>
             <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
               Se 2,0 GW de H2V operarem inflexíveis 24/7 junto aos DCs, o risco crítico salta para{' '}
-              <strong>28,23%</strong> (+15,41 GW eólicos). Porém, com <strong>modulação flexível (12% na calmaria)</strong>,
-              o H2V absorve <strong>13,16 TWh/ano</strong> de <em>curtailment</em> mantendo o risco em{' '}
-              <strong>10,87%</strong>.
+              <strong>{ssotSummary.h2v2Inflex?.probCriticalImportPct.toFixed(2) ?? '28.23'}%</strong> (+
+              {ssotSummary.h2v2Inflex?.compensatoryWindGW.toFixed(2) ?? '15.41'} GW eólicos). Porém, com{' '}
+              <strong>modulação flexível (12% na calmaria)</strong>, o H2V absorve{' '}
+              <strong>{ssotSummary.h2v2Flex?.totalAbsorbedCurtailmentTWh.toFixed(2) ?? '13.16'} TWh/ano</strong> de{' '}
+              <em>curtailment</em> mantendo o risco em{' '}
+              <strong>{ssotSummary.h2v2Flex?.probCriticalImportPct.toFixed(2) ?? '10.87'}%</strong>.
             </p>
           </div>
 
@@ -920,9 +985,18 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
               Passo 5 · Capacidade ANEEL vs. Geração Efetiva ONS
             </span>
             <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">
-              Em 2025, a fonte eólica representou <strong>51,46% da capacidade instalada</strong> no NE (ANEEL), mas
-              entregou <strong>62,41% da geração elétrica efetiva</strong> (ONS), apesar da perda de{' '}
-              <strong>9,80 p.p. de fator de capacidade</strong> por <em>constrained-off</em> (25,70 TWh).
+              Em 2025, a fonte eólica representou{' '}
+              <strong>{ssotSummary.ind2025?.aneelInstalledSharePct.toFixed(2) ?? '51.46'}% da capacidade instalada</strong>{' '}
+              no NE (ANEEL), mas entregou{' '}
+              <strong>{ssotSummary.ind2025?.onsEffectiveGenSharePct.toFixed(2) ?? '62.41'}% da geração elétrica efetiva</strong>{' '}
+              (ONS), apesar da perda de{' '}
+              <strong>
+                {ssotSummary.ind2025
+                  ? (ssotSummary.ind2025.potentialUnconstrainedCfPct - ssotSummary.ind2025.onsEffectiveCfPct).toFixed(2)
+                  : '9.80'}{' '}
+                p.p. de fator de capacidade
+              </strong>{' '}
+              por <em>constrained-off</em> ({ssotSummary.ind2025?.annualCurtailmentLossTWh.toFixed(2) ?? '25.70'} TWh).
             </p>
           </div>
         </div>

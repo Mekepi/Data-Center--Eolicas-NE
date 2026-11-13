@@ -283,6 +283,51 @@ test('Passo 5 sensitivity datasets validate transmission expansion (TX-01..05), 
   assert.ok(PASSO5_FINAL_EXECUTIVE_REPORT_MD.includes('Relatório Técnico Consolidado Final'));
 });
 
+test('SSOT parity: public/data/pipeline-ssot.json, generated TS bundle, live Python scripts, and energyModel config stay synchronized', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { PIPELINE_SSOT } = await import('../data/generated/pipelineSsot');
+  const { SCRIPTS_PIPELINE } = await import('../data/scriptsRoadmap');
+
+  const jsonPath = path.join(process.cwd(), 'public', 'data', 'pipeline-ssot.json');
+  assert.ok(fs.existsSync(jsonPath), 'public/data/pipeline-ssot.json must exist');
+
+  const parsedJson = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+  assert.equal(parsedJson.schemaVersion, PIPELINE_SSOT.schemaVersion);
+  assert.equal(parsedJson.lineage.generatedAtUtc, PIPELINE_SSOT.lineage.generatedAtUtc);
+  assert.equal(parsedJson.lineage.trainHours, 87476);
+  assert.equal(parsedJson.lineage.testHours, 8760);
+  assert.equal(parsedJson.dataCentersPipeline.length, 14);
+  assert.equal(parsedJson.substationLoadConcentration.length, 9);
+  assert.equal(parsedJson.scriptsPipeline.length, 7);
+  assert.equal(parsedJson.monteCarlo12Scenarios2035.length, 12);
+
+  for (const script of SCRIPTS_PIPELINE) {
+    const diskPath = path.join(process.cwd(), 'scripts', script.filename);
+    assert.ok(fs.existsSync(diskPath), `Script file ${script.filename} must exist on disk`);
+    const diskSource = fs.readFileSync(diskPath, 'utf-8');
+    assert.equal(
+      script.starterCode,
+      diskSource,
+      `SSOT starterCode for ${script.filename} must match scripts/${script.filename} verbatim`
+    );
+  }
+
+  assert.deepEqual(parsedJson.config, PIPELINE_SSOT.config);
+  assert.equal(PIPELINE_SSOT.config.baseWindOnshore2026MW, 29600);
+  assert.equal(PIPELINE_SSOT.config.interchangeImportLimitMW, 7000);
+  assert.equal(PIPELINE_SSOT.config.dcScenariosItMW.central, 2200);
+  assert.equal(PIPELINE_SSOT.config.dcScenariosItMW.high, 4100);
+
+  const wind2026 = computeInstalledWindCapacityMW({
+    targetYear: 2026,
+    windScenario: 'base',
+    includeOffshorePost2031: false,
+  });
+  assert.equal(wind2026.onshoreMW, PIPELINE_SSOT.config.baseWindOnshore2026MW);
+});
+
+
 
 
 
