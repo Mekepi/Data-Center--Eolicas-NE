@@ -288,6 +288,61 @@ class TestSyncFrontendSsot(unittest.TestCase):
             auc_mlp = compute_roc_auc_fast(y_te, mlp.predict_proba(X_te))
             self.assertGreater(auc_mlp, auc_lin)
 
+    def test_model_c_stage_c2_supports_silu_tail_extrapolation(self) -> None:
+        from config import ML_MODEL_PARAMS
+
+        c2_cfg = ML_MODEL_PARAMS["modelCStageC2ResMlp"]
+        self.assertEqual(c2_cfg.get("activation"), "silu")
+
+        ml_source = (SCRIPTS_DIR / "ml_models_numpy.py").read_text(encoding="utf-8")
+        self.assertIn("def _activate_with_grad(", ml_source)
+        self.assertIn('if activation not in ("tanh", "silu"):', ml_source)
+
+        s05_source = (SCRIPTS_DIR / "05_forecast_wind_cf_and_curtailment.py").read_text(encoding="utf-8")
+        self.assertIn('activation=str(c2_mlp_cfg.get("activation", "tanh"))', s05_source)
+
+        if importlib.util.find_spec("numpy") and importlib.util.find_spec("scipy"):
+            import numpy as np
+            from ml_models_numpy import LinearRidgeModel, ResidualMLPRegressor, compute_regression_metrics
+
+            z = np.linspace(-6.0, 6.0, 25)
+            act, d_act = ResidualMLPRegressor._activate_with_grad(z, "silu")
+            eps = 1e-6
+            fd = (ResidualMLPRegressor._activate(z + eps, "silu") - ResidualMLPRegressor._activate(z - eps, "silu")) / (2.0 * eps)
+            self.assertTrue(np.allclose(d_act, fd, atol=1e-6))
+            self.assertGreater(float(act[-1]), 5.9)
+
+            rng = np.random.default_rng(7)
+            n_tr, n_te = 900, 400
+            X_tr = rng.normal(0.0, 1.0, size=(n_tr, 4))
+            X_te = rng.normal(0.8, 1.3, size=(n_te, 4))  # deslocamento para cauda superior (estilo 2025)
+
+            def true_vol(X: np.ndarray) -> np.ndarray:
+                surplus = 1.6 * X[:, 0] + 0.9 * X[:, 1]
+                hinge = np.log1p(np.exp(surplus - 0.5))
+                return 2500.0 + 950.0 * surplus + 1400.0 * hinge + 220.0 * X[:, 2]
+
+            y_tr = true_vol(X_tr) + rng.normal(0.0, 35.0, size=n_tr)
+            y_te = true_vol(X_te)
+
+            lin = LinearRidgeModel(alpha=20.0).fit(X_tr, y_tr)
+            mlp = ResidualMLPRegressor(
+                hidden_units=12,
+                reg_l2=1.5e-2,
+                reg_l2_skip=4e-3,
+                reg_l2_grid=(3e-3, 1e-2, 3e-2, 1e-1),
+                cv_folds=3,
+                n_ensemble=2,
+                activation="silu",
+                max_iter=160,
+                seed=42,
+            ).fit(X_tr, y_tr)
+
+            m_lin = compute_regression_metrics(y_te, lin.predict(X_te))
+            m_mlp = compute_regression_metrics(y_te, mlp.predict(X_te))
+            self.assertGreater(m_mlp["r2"], m_lin["r2"])
+            self.assertLess(m_mlp["mae"], m_lin["mae"])
+
     def test_live_report_cross_consistency_when_regenerated_post_passo_2(self) -> None:
         payload = build_ssot_payload()
         md_text = payload["passo5FinalExecutiveReportMd"]
@@ -568,6 +623,7 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertIn('c2_mlp_cfg["regL2Grid"]', s05)
         self.assertIn('c2_mlp_cfg["cvFolds"]', s05)
         self.assertIn('c2_mlp_cfg["nEnsemble"]', s05)
+        self.assertIn('c2_mlp_cfg.get("activation"', s05)
         self.assertIn('c1_gbdt_cfg["l2LeafReg"]', s05)
         self.assertIn('c2_gbdt_cfg["l2LeafReg"]', s05)
 

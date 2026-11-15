@@ -216,7 +216,9 @@ class LogisticLBFGSModel:
 class ResidualMLPRegressor:
     """
     Rede Neural Perceptron Multicamadas com Conexão Residual Linear (ResMLP):
-        y_hat = b_out + X_norm @ w_skip + tanh(X_norm @ W1 + b1) @ w2
+        y_hat = b_out + X_norm @ w_skip + act(X_norm @ W1 + b1) @ w2
+    Suporta ativação 'tanh' (padrão, Modelos A/B) ou 'silu' (Swish suave não-saturante
+    para regimes de cauda/excedente sem teto como o Estágio C2 de curtailment).
     Treinada via backpropagation analítico vetorizado + quasi-Newton L-BFGS-B (SciPy).
     Opcionalmente executa validação cruzada em blocos temporais (cv_folds >= 2) para
     calibrar reg_l2 sem vazamento futuro e média de ensemble multi-seed.
@@ -233,7 +235,10 @@ class ResidualMLPRegressor:
         reg_l2_grid: Optional[Tuple[float, ...]] = None,
         cv_folds: int = 1,
         n_ensemble: int = 1,
+        activation: str = "tanh",
     ):
+        if activation not in ("tanh", "silu"):
+            raise ValueError(f"Ativação não suportada em ResidualMLPRegressor: {activation}")
         self.hidden_units = hidden_units
         self.reg_l2 = reg_l2
         self.reg_l2_skip = reg_l2_skip
@@ -242,6 +247,7 @@ class ResidualMLPRegressor:
         )
         self.cv_folds = max(1, int(cv_folds))
         self.n_ensemble = max(1, int(n_ensemble))
+        self.activation = activation
         self.max_iter = max_iter
         self.subsample_max = subsample_max
         self.seed = seed
@@ -264,12 +270,28 @@ class ResidualMLPRegressor:
         return W1, b1, w2, w_skip, b_out
 
     @staticmethod
+    def _activate(Z1: np.ndarray, activation: str) -> np.ndarray:
+        if activation == "silu":
+            return Z1 * expit(Z1)
+        return np.tanh(Z1)
+
+    @staticmethod
+    def _activate_with_grad(Z1: np.ndarray, activation: str) -> Tuple[np.ndarray, np.ndarray]:
+        if activation == "silu":
+            sig = expit(Z1)
+            A1 = Z1 * sig
+            dA1_dz = sig * (1.0 + Z1 * (1.0 - sig))
+            return A1, dA1_dz
+        A1 = np.tanh(Z1)
+        return A1, 1.0 - A1 ** 2
+
     def _eval_norm(
+        self,
         params: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float],
         X_norm: np.ndarray,
     ) -> np.ndarray:
         W1, b1, w2, w_skip, b_out = params
-        return b_out + X_norm @ w_skip + np.tanh(X_norm @ W1 + b1) @ w2
+        return b_out + X_norm @ w_skip + self._activate(X_norm @ W1 + b1, self.activation) @ w2
 
     def _fit_with_reg(
         self,
@@ -284,6 +306,7 @@ class ResidualMLPRegressor:
         n, d = X_norm.shape
         h = self.hidden_units
         skip_reg = float(self.reg_l2_skip) if self.reg_l2_skip is not None else 0.2 * float(reg_l2_val)
+        activation = self.activation
 
         # 1. Warm-start exato do ramo residual linear (Ridge ponderado na escala normalizada)
         X_bias = np.hstack([np.ones((n, 1)), X_norm])
@@ -298,14 +321,14 @@ class ResidualMLPRegressor:
         # 2. Quebra de simetria + passo Ridge amortecido sobre os resíduos lineares
         W1_0 = rng.normal(0.0, 1.0 / np.sqrt(d), size=(d, h))
         b1_0 = rng.uniform(-0.5, 0.5, size=h) if self.reg_l2_skip is not None else np.zeros(h)
-        H_0 = np.tanh(X_norm @ W1_0 + b1_0)
+        H_0 = self._activate(X_norm @ W1_0 + b1_0, activation)
         gram_h = H_0.T @ (H_0 * w_norm[:, None]) + max(5e-3, float(reg_l2_val)) * np.eye(h)
         rhs_h = H_0.T @ (w_norm * resid)
         w2_base = solve(gram_h, rhs_h, assume_a="pos")
 
         def eval_obj(theta: np.ndarray) -> float:
             W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
-            A1 = np.tanh(X_norm @ W1 + b1)
+            A1 = self._activate(X_norm @ W1 + b1, activation)
             pred = b_out + X_norm @ w_skip + A1 @ w2
             diff = pred - y_norm
             mse = 0.5 * float(np.sum(w_norm * (diff ** 2)))
@@ -332,7 +355,7 @@ class ResidualMLPRegressor:
         def obj_and_grad(theta: np.ndarray) -> Tuple[float, np.ndarray]:
             W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
             Z1 = X_norm @ W1 + b1
-            A1 = np.tanh(Z1)
+            A1, dA1_dz = self._activate_with_grad(Z1, activation)
             pred = b_out + X_norm @ w_skip + A1 @ w2
             diff = pred - y_norm
 
@@ -343,7 +366,7 @@ class ResidualMLPRegressor:
             grad_b_out = float(np.sum(d_pred))
             grad_w_skip = X_norm.T @ d_pred + skip_reg * w_skip
             grad_w2 = A1.T @ d_pred + float(reg_l2_val) * w2
-            dA1 = np.outer(d_pred, w2) * (1.0 - A1 ** 2)
+            dA1 = np.outer(d_pred, w2) * dA1_dz
             grad_W1 = X_norm.T @ dA1 + float(reg_l2_val) * W1
             grad_b1 = np.sum(dA1, axis=0)
 

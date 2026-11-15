@@ -285,12 +285,13 @@ ML_MODEL_PARAMS: Dict[str, Any] = {
     },
     "modelCStageC2ResMlp": {
         "hiddenUnits": 16,
+        "activation": "silu",
         "regL2": 1.5e-2,
-        "regL2Skip": 3e-3,
-        "regL2Grid": [3e-3, 1e-2, 3e-2, 8e-2, 2e-1],
+        "regL2Skip": 4e-3,
+        "regL2Grid": [3e-3, 1e-2, 3e-2, 8e-2, 2e-1, 4e-1],
         "cvFolds": 4,
         "nEnsemble": 3,
-        "maxIter": 160,
+        "maxIter": 200,
     },
     "modelCStageC2Gbdt": {
         "nEstimators": 90,
