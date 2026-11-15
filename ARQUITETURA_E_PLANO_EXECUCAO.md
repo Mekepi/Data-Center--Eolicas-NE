@@ -1,7 +1,7 @@
 # Documento Base de Arquitetura e Plano Sequencial de Execução (Ciclo 3)
 
 **Projeto:** Balanço Eólico & Data Centers NE 2035 (PTC3567 · Grupo 6)  
-**Estado Atual:** Ciclos 1–2 + Saneamento Pré-Ciclo 3 + **Código & SSOT dos Passos C3-1 e C3-2 concluídos** · Aguardando Passo C3-3 (execução científica do Ciclo 3)  
+**Estado Atual:** Ciclos 1–2 + Passos C3-1 e C3-2 concluídos + **Execução científica parcial C3-3 materializada e SSOT desbloqueado** (`17/17` testes Python OK · `16/17` testes TS OK · Aguardando reexecução rápida `--only-from 05` para fechar `r2_volume` do Estágio C2 e iniciar Passo C3-4)  
 **Data de Referência:** 2026-11-15  
 **Finalidade:** Documentar exclusivamente a arquitetura vigente do sistema, o diagnóstico técnico quantitativo de entrada e os próximos passos sequenciais do **Ciclo 3** (engenharia elétrica, ciência de dados e calibração física dos modelos).
 
@@ -58,20 +58,21 @@ Toda a parametrização numérica, física e editorial converge em fonte única 
 ### 2.1 Últimos Resultados Científicos Registrados (Teste Cego `2025`, `8.760 h`)
 | Modelo / Horizonte | Família Linear | Challenger ResMLP (Não-Linear) | Challenger Hist-GBDT | Situação |
 |---|---|---|---|---|
-| **Modelo A · Demanda Base (`1h`)** | Ridge `MAE 222,89 MW` (`R² 0,9479`) | `MAE 158,51 MW` (`MAPE 1,22%`, `R² 0,9721`) | `MAE 187,45 MW` (`R² 0,9594`) | ResMLP vence |
-| **Modelo A · Demanda Base (`24h`)** | Ridge `MAE 398,48 MW` (`R² 0,8155`) | `MAE 309,59 MW` (`MAPE 2,37%`, `R² 0,8767`) | `MAE 349,47 MW` (`R² 0,8502`) | ResMLP vence |
-| **Modelo B · CF Eólico (`1h`)** | Ridge `MAE 0,0211` (`R² 0,9783`) | `MAE 0,0173` (`517,5 MW`, `R² 0,9853`) | `MAE 0,0203` (`R² 0,9791`) | ResMLP vence |
-| **Modelo B · CF Eólico (`24h`)** | Ridge `MAE 0,0810` (`R² 0,6985`) | `MAE 0,0801` (`R² 0,7039`) | `MAE 0,0806` (`R² 0,7011`) | ResMLP vence com margem estreita |
-| **Modelo C · Estágio C1 (Ocorrência)** | Logística `ROC-AUC 0,9289` (`Brier 0,1208`, `F1 0,8863`) | `ROC-AUC 0,9051` (`Brier 0,1510`, `F1 0,8616`) | `ROC-AUC 0,9097` (`Brier 0,1419`, `F1 0,8611`) | **Gate aberto (Logística ainda vence C1)** |
-| **Modelo C · Estágio C2 (Volume)** | Ridge `R² 0,5790` (`MAE 1.482,2 MW`, `15,21 TWh`) | `R² 0,6561` (`MAE 1.385,1 MW`, `16,43 TWh`) | `R² 0,5746` (`MAE 1.465,6 MW`, `15,38 TWh`) | ResMLP vence em `R²`, subestima total anual (`25,70 TWh` real) |
+| **Modelo A · Demanda Base (`1h`)** | Ridge `MAE 222,89 MW` (`R² 0,9479`) | `MAE 159,05 MW` (`MAPE 1,22%`, `R² 0,9719`) | `MAE 187,45 MW` (`R² 0,9594`) | ResMLP vence |
+| **Modelo A · Demanda Base (`24h`)** | Ridge `MAE 398,48 MW` (`R² 0,8155`) | `MAE 310,20 MW` (`MAPE 2,38%`, `R² 0,8763`) | `MAE 349,47 MW` (`R² 0,8502`) | ResMLP vence |
+| **Modelo B · CF Eólico (`1h`)** | Ridge `MAE 0,0211` (`R² 0,9783`) | `MAE 0,0173` (`516,5 MW`, `R² 0,9854`) | `MAE 0,0203` (`R² 0,9791`) | ResMLP vence |
+| **Modelo B · CF Eólico (`24h`)** | Ridge `MAE 0,0810` (`R² 0,6985`) | `MAE 0,0801` (`2.395,2 MW`, `R² 0,7044`) | `MAE 0,0806` (`R² 0,7011`) | ResMLP vence |
+| **Modelo C · Estágio C1 (Ocorrência)** | Logística `ROC-AUC 0,9479` (`Brier 0,0853`, `F1 0,9213`) | `ROC-AUC 0,9520` (`Brier 0,0782`, `F1 0,9270`) | `ROC-AUC 0,9293` (`Brier 0,0994`, `F1 0,9086`) | **Gate C1 fechado (ResMLP vence em AUC, Brier e F1)** |
+| **Modelo C · Estágio C2 (Volume)** | Ridge `R² 0,9172` (`MAE 710,5 MW`, `22,53 TWh`) | `R² 0,9143` (`MAE 712,4 MW`, `21,71 TWh`) | `R² 0,7551` (`MAE 1.083,3 MW`, `18,74 TWh`) | **Ajuste C2 aplicado em `ml_models_numpy.py` (CV + skip L2); reexecutar `--only-from 05`** |
 
-### 2.2 Saneamento Pré-Ciclo 3 Aplicado e Estado dos Testes
-- **Corrigido em código antes do Ciclo 3:**
-  1. `scripts/06_monte_carlo_balance_2035.py`: mapeamento `g_hidraulica_mw -> g_hidro_mw` em `build_and_export_hourly_baseline_8760`, inclusão das variantes offshore pós-2031 (`high` sem offshore e `intermediate` com offshore) em `export_simulator_monte_carlo_grid` e ancoragem exata da linha `2035` da evolução anual em `res_12`.
-  2. `scripts/config.py`: unificação `iterationsTimeline = 1000` (`== iterationsMain`) eliminando a discrepância estatística em `2035` (`9,6%` vs `9,3%`).
-  3. `src/utils/energyModel.ts`: interpolação 5D entre anos-âncora para anos intermediários (`2026`, `2027`, `2029`, `2031`, `2033`, `2034`), retorno `'unavailable'` honesto quando o recorte não possui variação paramétrica no eixo alterado, e interpolação em GW para `windScenario = 'high'` sem offshore sem colisão com `48,0 GW`.
-- **Pendência para materialização em disco (executar no ambiente Python científico durante o Ciclo 3):** os CSVs/JSON atuais em `reports/` e `public/data/hourly-baseline-8760.json` ainda refletem a execução pré-saneamento (`gHydroMW = 0` no baseline `8.760 h`, `9,6%` na linha `2035` de `evolucao_anual_risco_2026_2035.csv` e ausência das linhas `44,4 GW` sem offshore na grade). Todos serão regenerados automaticamente ao rodar `run_pipeline.py --skip-ingest` no Ciclo 3.
-- **Estado atual das suítes:** `17/17` testes Python (`unittest`) aprovados; `16/17` subtestes TypeScript (`energyModel.test.ts`) aprovados — restando exclusivamente o **Subteste 10** (gate científico do Modelo C Estágio C1 em `2025` out-of-time, cuja materialização nos CSVs depende da reexecução `--only-from 03` no Passo C3-3).
+### 2.2 Saneamento Materializado em Passo C3-3 (Tentativa 1) e Estado dos Testes
+- **Materializado e validado no repositório após execução científica:**
+  1. `public/data/hourly-baseline-8760.json` (`digest = 077346f9d62b5361`) e `reports/serie_base_horaria_8760h_ons.csv`: **`gHydroMW` populado** (`1.750,4` a `7.395,4 MW`, média `3.228,56 MW`).
+  2. Paridade `2035` 100% exata entre `matriz_cenarios_monte_carlo_2035.csv` (`Central × Intermediária`: `10,0%`, `LOLE 62,7 h`, `P95 8.439,5 MW`, `10,91 TWh`, `3.930,8 GWh`, `+6,85 GW`), `evolucao_anual_risco_2026_2035.csv`, `TX-03`, `H2V-01` e `grade_simulador_monte_carlo_2025_2035.csv` (`696` linhas com variantes offshore pós-2031).
+  3. **Diagnóstico e correções aplicadas após a rodada científica:**
+     - `scripts/sync_frontend_ssot.py`: corrigido `validate_ssot_cross_consistency` para exigir paridade de `windCapacityMW` ao comparar com `MC12` (evitando falso conflito das variantes offshore `44.400 MW` / `38.200 MW`) e preservar `"none"` via `safe_str(..., REFERENCE_SCENARIO_KEYS["dcControl"])`. SSOT desbloqueado e sincronizado com sucesso (`public/data/pipeline-ssot.json` + `src/data/generated/pipelineSsot.ts`).
+     - `scripts/ml_models_numpy.py`, `scripts/config.py`, `scripts/05_forecast_wind_cf_and_curtailment.py` e `scripts/07_sensitivity_and_final_report.py`: adicionado suporte a `reg_l2_skip`, `reg_l2_grid`, `cv_folds = 4` e `n_ensemble = 3` em `ResidualMLPRegressor` para o Estágio C2, além de correção do rótulo dinâmico do Modelo C no relatório Markdown final.
+- **Estado atual das suítes:** `17/17` testes Python (`unittest`) aprovados; `16/17` subtestes TypeScript (`energyModel.test.ts`) aprovados (`rocAuc` e `brierScore` do Modelo C já aprovados!) — restando apenas a asserção `nonLinearHurdle.r2Volume > linearHurdle.r2Volume` no Subteste 10 após reexecução rápida `--only-from 05` no ambiente Python científico.
 
 ---
 
@@ -100,13 +101,15 @@ Toda a parametrização numérica, física e editorial converge em fonte única 
 - **Critério de aceite:** Paridade física documentada entre `06_monte_carlo_balance_2035.py` e `src/utils/energyModel.ts`, além de consistência numérica `TX-03 == H2V-01 == Central × Intermediária == Evolução Anual 2035` (validado em execução científica no Passo C3-3).
 
 ### Passo C3-3 — Execução Científica Completa, Materialização de Artefatos e Validação Cruzada
-- **Objetivo:** Executar a esteira completa em ambiente Python científico (`numpy`/`pandas`/`scipy`), materializando todos os CSVs, `.md`, `hourly-baseline-8760.json` e `pipeline-ssot.json`/`pipelineSsot.ts`.
-- **Comandos-alvo:** `python scripts/run_pipeline.py --skip-ingest` (ou execução integral desde `01` caso haja atualização de base ONS/ANEEL).
-- **Ações técnicas:**
-  1. Confirmar `gHydroMW > 0` populado em `public/data/hourly-baseline-8760.json` e `reports/serie_base_horaria_8760h_ons.csv`.
-  2. Confirmar paridade absoluta de `2035` entre `evolucao_anual_risco_2026_2035.csv`, `matriz_cenarios_monte_carlo_2035.csv`, `sensibilidade_transmissao_intercambio_2035.csv` (`TX-03`) e `sensibilidade_h2v_eletrointensivos_2035.csv` (`H2V-01`), bem como presença das trajetórias offshore pós-2031 na grade `grade_simulador_monte_carlo_2025_2035.csv`.
-  3. Confirmar aprovação de `validate_ssot_cross_consistency` sem warnings ou desvios entre relatório Markdown final e DataFrames.
-- **Critério de aceite:** `python -m unittest discover -s scripts -v` **100% verde** e `npx tsx --test src/utils/energyModel.test.ts` **100% verde (incluindo Subteste 10 — gate científico do Modelo C C1)**.
+- **Status:** `[~]` **Rodada 1 materializada (01–06 + CSVs de 07), SSOT já sincronizado em disco (`17/17` Python OK)** · Aguardando reexecução rápida a partir da Etapa `05` para fechar Estágio C2 (`r2_volume`).
+- **Comando-alvo rápido (Etapas 01–04 e 06 já materializadas):**
+  `py scripts/05_forecast_wind_cf_and_curtailment.py && py scripts/run_pipeline.py --only-from 07` *(ou `py scripts/run_pipeline.py --only-from 05` para reexecução completa a partir de 05).*
+- **Ações técnicas concluídas vs. pendente:**
+  1. `[x]` Confirmado `gHydroMW > 0` populado em `public/data/hourly-baseline-8760.json` e `reports/serie_base_horaria_8760h_ons.csv`.
+  2. `[x]` Confirmada paridade absoluta de `2035` entre `evolucao_anual_risco_2026_2035.csv`, `matriz_cenarios_monte_carlo_2035.csv`, `TX-03` e `H2V-01`, bem como 696 cenários com trajetórias offshore pós-2031 na grade `grade_simulador_monte_carlo_2025_2035.csv`.
+  3. `[x]` Corrigido `validate_ssot_cross_consistency` (`windCapacityMW` + `dcControl = "none"`) e sincronizado SSOT com 0 violações.
+  4. `[ ]` Reexecutar Etapa `05` -> `07` -> `ssot` em ambiente Python científico para confirmar `nonLinearHurdle.r2Volume > linearHurdle.r2Volume` e fechar `17/17` em `npx tsx --test src/utils/energyModel.test.ts`.
+- **Critério de aceite:** `python -m unittest discover -s scripts -v` **100% verde (`17/17`)** e `npx tsx --test src/utils/energyModel.test.ts` **100% verde (`17/17`, incluindo Subteste 10 completo)**.
 
 ### Passo C3-4 — Fechamento Frontend, Verificação Ponta a Ponta e Congelamento de Entrega
 - **Objetivo:** Validar na interface real todos os fluxos impactados pelas calibrações do Ciclo 3 e congelar o código sem dívidas de build ou regressões visuais.

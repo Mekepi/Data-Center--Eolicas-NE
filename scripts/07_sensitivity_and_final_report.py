@@ -600,6 +600,8 @@ def write_final_consolidated_markdown_report(
 
     report_path = REPORTS_DIR / "relatorio_final_consolidado_ptc3567_grupo6.md"
 
+    c_nl_label = "`ResMLP Hurdle` (C1+C2)" if "ResMLP" in str(c_nl["arquitetura"]) else "`HistogramGBDT Hurdle`"
+
     md_content = f"""# Relatório Técnico Consolidado Final — PTC3567 (Grupo 6)
 ## Impacto da Expansão de Data Centers e Demanda Elétrica sobre a Geração Eólica no Nordeste (2026–2035)
 
@@ -640,7 +642,7 @@ Todos os modelos foram implementados em Python utilizando exclusivamente `numpy`
 | **Modelo A (Script 04)** | Demanda Base $L_{{\\text{{base}}}}(t)$ (1h-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = {_fmt_pt(float(a_1h_mlp['mae_mw']), 1)} MW** · **MAPE = {_fmt_pt(float(a_1h_mlp['mape_pct']), 2)}%** · $R^2 = {_fmt_pt(float(a_1h_mlp['r2_score']), 4)}$ | Redução de **{_fmt_pt(a_1h_gain_pct, 1)}%** no erro MAE |
 | **Modelo A (Script 04)** | Demanda Base $L_{{\\text{{base}}}}(t)$ (24h Day-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = {_fmt_pt(float(a_24h_mlp['mae_mw']), 1)} MW** · **MAPE = {_fmt_pt(float(a_24h_mlp['mape_pct']), 2)}%** · $R^2 = {_fmt_pt(float(a_24h_mlp['r2_score']), 4)}$ | Captura interação térmica × dia útil |
 | **Modelo B (Script 05)** | Fator de Capacidade Potencial $CF_{{\\text{{pot}}}}(t)$ (1h) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = {_fmt_pt(float(b_1h_mlp['mae_cf']), 4)}** ({_fmt_pt(float(b_1h_mlp['mae_potencia_equiv_mw']), 1)} MW) · **$R^2 = {_fmt_pt(float(b_1h_mlp['r2_score']), 4)}$** | Captura potência cúbica $v^3$ de Betz |
-| **Modelo C (Script 05)** | *Curtailment* Eólico Real ONS (Hurdle 2 Estágios) | `HistogramGBDT` + `ResMLP` | `Logistic` + `Ridge` | **ROC-AUC = {_fmt_pt(float(c_nl['roc_auc']), 4)}** · **Brier = {_fmt_pt(float(c_nl['brier_score']), 4)}** · **F1 = {_fmt_pt(float(c_nl['f1_score']), 4)}** | **$R^2$ Volume = {_fmt_pt(float(c_nl['r2_volume']), 4)}** (vs {_fmt_pt(float(c_lin['r2_volume']), 4)} linear) |
+| **Modelo C (Script 05)** | *Curtailment* Eólico Real ONS (Hurdle 2 Estágios) | {c_nl_label} | `Logistic` + `Ridge` | **ROC-AUC = {_fmt_pt(float(c_nl['roc_auc']), 4)}** · **Brier = {_fmt_pt(float(c_nl['brier_score']), 4)}** · **F1 = {_fmt_pt(float(c_nl['f1_score']), 4)}** | **$R^2$ Volume = {_fmt_pt(float(c_nl['r2_volume']), 4)}** (vs {_fmt_pt(float(c_lin['r2_volume']), 4)} linear) |
 
 ---
 

@@ -283,7 +283,15 @@ ML_MODEL_PARAMS: Dict[str, Any] = {
         "minSamplesLeaf": 40,
         "l2LeafReg": 12.0,
     },
-    "modelCStageC2ResMlp": {"hiddenUnits": 20, "regL2": 2e-3, "maxIter": 150},
+    "modelCStageC2ResMlp": {
+        "hiddenUnits": 16,
+        "regL2": 1.5e-2,
+        "regL2Skip": 3e-3,
+        "regL2Grid": [3e-3, 1e-2, 3e-2, 8e-2, 2e-1],
+        "cvFolds": 4,
+        "nEnsemble": 3,
+        "maxIter": 160,
+    },
     "modelCStageC2Gbdt": {
         "nEstimators": 90,
         "learningRate": 0.06,

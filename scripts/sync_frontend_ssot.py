@@ -700,16 +700,25 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
                 and abs(safe_float(gr.get("importLimitMW")) - INTERCHANGE_IMPORT_LIMIT_MW) < 1.0
                 and abs(safe_float(gr.get("exportLimitMW")) - INTERCHANGE_EXPORT_LIMIT_MW) < 1.0
             ):
-                pair = (safe_str(gr.get("dcScenarioId")), safe_str(gr.get("windScenarioId")))
+                pair = (
+                    safe_str(gr.get("dcScenarioId"), REFERENCE_SCENARIO_KEYS["dcControl"]),
+                    safe_str(gr.get("windScenarioId")),
+                )
                 ref_mc = mc_by_pair.get(pair)
-                if ref_mc is not None:
+                if (
+                    ref_mc is not None
+                    and abs(safe_float(gr.get("windCapacityMW")) - safe_float(ref_mc.get("windCapacityMW"))) < 1.0
+                ):
                     matched_nominal_rows += 1
                     if abs(float(gr["probExceedInterchangePct"]) - float(ref_mc["probExceedInterchangePct"])) > float(tols["probPct"]):
                         violations.append(f"Divergência grade vs MC12 em probExceedInterchangePct para {pair}")
                     if abs(float(gr["importP95MW"]) - float(ref_mc["importP95MW"])) > float(tols["importMW"]):
                         violations.append(f"Divergência grade vs MC12 em importP95MW para {pair}")
-        if matched_nominal_rows == 0:
-            violations.append("Grade simulatorMonteCarloGrid não contém pontos nominais de referência para TARGET_END_YEAR.")
+        if matched_nominal_rows < len(mc_rows):
+            violations.append(
+                f"Grade simulatorMonteCarloGrid incompleta para pontos nominais de {TARGET_END_YEAR}: "
+                f"{matched_nominal_rows}/{len(mc_rows)}."
+            )
 
     return violations
 

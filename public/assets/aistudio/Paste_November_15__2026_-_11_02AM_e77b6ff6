@@ -1,0 +1,370 @@
+py scripts/run_pipeline.py   
+========================================================================
+Orquestrador PTC3567 · Execução Sequencial da Esteira Analítica
+========================================================================
+  - [01] 01_ingest_ons_aneel_epe.py — Ingestão ONS/ANEEL/EPE
+  - [02] 02_build_dc_and_offshore_scenarios.py — Cenários Data Centers & Eólica
+  - [03] 03_feature_engineering_anova.py — Feature Engineering & ANOVA
+  - [04] 04_forecast_demanda_base.py — Modelo A · Demanda Base
+  - [05] 05_forecast_wind_cf_and_curtailment.py — Modelos B & C · CF e Curtailment
+  - [06] 06_monte_carlo_balance_2035.py — Monte Carlo 2035 (12 Cenários + Subestações)
+  - [07] 07_sensitivity_and_final_report.py — Sensibilidade Passo 5 & Relatório Final
+  - [ssot] sync_frontend_ssot.py — Sincronização SSOT Frontend
+
+[PIPELINE -> 01] Iniciando 01_ingest_ons_aneel_epe.py (Ingestão ONS/ANEEL/EPE)...
+======================================================================
+Ingestão Histórica Multi-Ano ONS: 2015 a 2025
+======================================================================
+[CACHE] Arquivo existente: ons_capacidade_geracao.csv
+[CACHE] Arquivo existente: ons_curva_carga_2015.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2015.csv
+[CACHE] Arquivo existente: ons_curva_carga_2016.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2016.csv
+[CACHE] Arquivo existente: ons_curva_carga_2017.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2017.csv
+[CACHE] Arquivo existente: ons_curva_carga_2018.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2018.csv
+[CACHE] Arquivo existente: ons_curva_carga_2019.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2019.csv
+[CACHE] Arquivo existente: ons_curva_carga_2020.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2020.csv
+[CACHE] Arquivo existente: ons_curva_carga_2021.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2021.csv
+[CACHE] Arquivo existente: ons_curva_carga_2022.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2022.csv
+[CACHE] Arquivo existente: ons_curva_carga_2023.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2023.csv
+[CACHE] Arquivo existente: ons_curva_carga_2024.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2024.csv
+[CACHE] Arquivo existente: ons_curva_carga_2025.csv
+[CACHE] Arquivo existente: ons_balanco_subsistema_2025.csv
+
+[ETL] Concatenando histórico completo de Carga e Balanço...
+[ETL] Reconstruindo série temporal de capacidade eólica instalada histórica...
+[CACHE] Carregando série horária real de constrained-off: ons_constrained_off_ne_hourly_2023_2025.csv
+
+[SUCESSO] Base histórica completa 2015-2025 gerada: 96,404 horas!
+Treino (2015-2024): 87,644 horas
+Teste (2025):       8,760 horas
+Curtailment Eólico Real NE 2024: 9.04 TWh (50.2% das horas > 50 MW)
+Curtailment Eólico Real NE 2025: 25.70 TWh (75.0% das horas > 50 MW)
+CF Eólico Potencial Médio Geral: 45.41%
+[PIPELINE -> 01] Concluído em 12.99s.
+
+[PIPELINE -> 02] Iniciando 02_build_dc_and_offshore_scenarios.py (Cenários Data Centers & Eólica)...
+======================================================================
+Script 02: Modelagem Bottom-Up do Pipeline de Data Centers e Eólica
+======================================================================
+[PIPELINE DC] 14 projetos carregados com sucesso de data_centers_pipeline_ne.csv.
+[PROJETOS] Resumo anual individual gravado em: D:\github\Data-Center---E-licas-NE\data\scenarios\dc_pipeline_project_summary.csv
+
+Concentração Geográfica por Subestação em 2035 (Total: 3414.4 MW):
+subestacao_conexao estado  tensao_conexao_kv  n_projetos  potencia_it_total_mw  demanda_efetiva_2035_mw  participacao_pct
+       SE Pecém II     CE                500           3                1850.0                   1768.8              51.8
+       SE Suape II     PE                230           3                 720.0                    713.3              20.9
+       SE Camaçari     BA                230           1                 250.0                    256.0               7.5
+        SE Caucaia     CE                230           2                 250.0                    248.8               7.3
+    SE Extremoz II     RN                230           1                 180.0                    181.4               5.3
+           SE Pici     CE                230           1                 180.0                    178.6               5.2
+           SE Pici     CE                 69           1                  30.0                     31.2               0.9
+   SE Fortaleza II     CE                230           1                  20.0                     20.5               0.6
+    SE João Pessoa     PB                 69           1                  15.0                     15.8               0.5
+
+[SUCESSO] Matriz de cenários cruzados gerada com 132 linhas em: D:\github\Data-Center---E-licas-NE\data\scenarios\matriz_cenarios_dc_eolica_2026_2035.csv
+
+Resumo das Projeções Bottom-Up para 2035:
+  cenario_dc  carga_efetiva_dc_mw  projetos_ativos cenario_eolica  eolica_total_mw
+        none                  0.0                0           base          29600.0
+        none                  0.0                0   intermediate          36400.0
+        none                  0.0                0           high          48000.0
+conservative                469.0                6           base          29600.0
+conservative                469.0                6   intermediate          36400.0
+conservative                469.0                6           high          48000.0
+     central               1596.8               11           base          29600.0
+     central               1596.8               11   intermediate          36400.0
+     central               1596.8               11           high          48000.0
+        high               3414.4               14           base          29600.0
+        high               3414.4               14   intermediate          36400.0
+        high               3414.4               14           high          48000.0
+[PIPELINE -> 02] Concluído em 1.53s.
+
+[PIPELINE -> 03] Iniciando 03_feature_engineering_anova.py (Feature Engineering & ANOVA)...
+======================================================================
+Script 03: Feature Engineering Causal, Não-Linearidades e ANOVA (Passo 3)
+======================================================================
+[INPUT] Carregando 96,404 registros horários de ne_hourly_master.csv...
+[PROCESSAMENTO] 96,236 horas válidas e 75 colunas na matriz de features.
+
+Resultados dos Testes ANOVA de Significância (SciPy):
+                                  variavel_analisada                    fator_agrupador  estatistica_f  p_valor  eta_squared_pct
+                     CF Eólico Potencial (cf_eolica) Mês do Ano (Sazonalidade 12 meses)        5176.56      0.0            37.18
+                              Carga Base (l_base_mw)  Dia da Semana (7 dias: Seg a Dom)        1345.64      0.0             7.74
+    Intercâmbio Líquido SIN (intercambio_liquido_mw)              Mês do Ano (12 meses)        2059.45      0.0            19.06
+Curtailment Eólico Real (curtailment_mw · 2023-2025)    Faixa Horária do Dia (24 horas)         176.02      0.0            13.35
+
+Resumo Mensal (CF Potencial 2015-2025 & Curtailment Real 2023-2025):
+ mes  nome_mes  cf_medio  cf_p10  cf_p90  curtailment_medio_mw             regime_sazonal
+   1   Janeiro     0.348   0.148   0.550                 260.8                  Transição
+   2 Fevereiro     0.340   0.145   0.544                1316.8                  Transição
+   3     Março     0.299   0.107   0.494                 473.8 Estação Chuvosa / Calmaria
+   4     Abril     0.318   0.125   0.511                 339.3 Estação Chuvosa / Calmaria
+   5      Maio     0.409   0.217   0.582                 779.2 Estação Chuvosa / Calmaria
+   6     Junho     0.487   0.300   0.645                1217.3                  Transição
+   7     Julho     0.550   0.359   0.700                1711.6                  Transição
+   8    Agosto     0.603   0.422   0.749                2373.1           Safra dos Ventos
+   9  Setembro     0.618   0.445   0.761                3232.6           Safra dos Ventos
+  10   Outubro     0.564   0.331   0.747                2855.3           Safra dos Ventos
+  11  Novembro     0.473   0.265   0.678                1670.8           Safra dos Ventos
+  12  Dezembro     0.431   0.242   0.615                1157.9                  Transição
+
+Correlações de Pearson com Variáveis-Alvo:
+                      feature  corr_l_base_mw  corr_cf_eolica  corr_curtailment_mw
+             l_base_mw_lag_1h           0.973          -0.015               -0.153
+            l_base_mw_lag_24h           0.865          -0.031               -0.058
+           l_base_mw_lag_168h           0.935          -0.010               -0.092
+             cf_eolica_lag_1h          -0.052           0.984                0.425
+            cf_eolica_lag_24h          -0.021           0.820                0.318
+                    month_sin           0.042          -0.592               -0.309
+                     hour_cos           0.044           0.229               -0.295
+                     hour_sin          -0.342           0.047                0.098
+                   is_weekend          -0.248          -0.003                0.105
+             faixa_solar_pico           0.034          -0.204                0.230
+       excedente_renovavel_mw           0.316           0.553                0.700
+        razao_renovavel_carga           0.386           0.538                0.722
+      folga_escoamento_sin_mw          -0.325          -0.524               -0.708
+  excesso_sobre_escoamento_mw           0.112           0.188                0.822
+despacho_total_est_excesso_mw           0.177           0.236                0.844
+    interacao_solar_eolica_mw           0.278           0.090                0.685
+        g_hidro_roll_mean_24h           0.298          -0.103               -0.340
+       wind_speed_lag1_approx          -0.057           0.964                0.385
+              cf_lag1_squared          -0.036           0.959                0.460
+
+[SUCESSO] Treino (2015-2024): 87,476 h | Teste Cego (2025): 8,760 h
+[PIPELINE -> 03] Concluído em 27.23s.
+
+[PIPELINE -> 04] Iniciando 04_forecast_demanda_base.py (Modelo A · Demanda Base)...
+========================================================================
+Script 04: Modelo A - Previsão da Carga Base Horária NE (Treino 2015-2024 -> Teste 2025)
+========================================================================
+[BACKTEST] Executando TimeSeriesSplit paralelo em 2015-2024 (87,476 h)...
+ fold  train_hours  val_hours  ridge_mae_mw  ridge_mape_pct  resmlp_mae_mw  resmlp_mape_pct
+    1        78836       2160        229.95            1.75         157.48             1.19
+    2        80996       2160        189.13            1.52         138.17             1.11
+    3        83156       2160        181.52            1.42         140.84             1.10
+    4        85316       2160        236.25            1.76         170.20             1.27
+
+[TESTE OUT-OF-TIME 2025] Avaliando Baseline Linear vs. Challengers Não-Lineares em 8,760 h...
+
+Benchmark Cego Out-of-Time em 2025 — Modelo A (Carga Base NE):
+                         horizonte                                           arquitetura  mae_mw  rmse_mw  mape_pct  r2_score  mae_ponta_18h_21h_mw
+  Operativo Curto Prazo (1h-Ahead)                            Baseline Linear · Ridge L2  222.89   290.28      1.70    0.9479                236.55
+  Operativo Curto Prazo (1h-Ahead) Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)  159.05   213.29      1.22    0.9719                165.50
+  Operativo Curto Prazo (1h-Ahead)      Challenger Não-Linear · Histogram GBDT (Árvores)  187.45   256.23      1.41    0.9594                201.99
+Programação Diária (24h Day-Ahead)                            Baseline Linear · Ridge L2  398.48   545.99      3.07    0.8155                316.52
+Programação Diária (24h Day-Ahead) Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)  310.20   447.04      2.38    0.8763                264.28
+Programação Diária (24h Day-Ahead)      Challenger Não-Linear · Histogram GBDT (Árvores)  349.47   492.05      2.68    0.8502                318.61
+
+[ANCORAGEM EPE PDE 2035] Carga Base Média NE Real 2025: 13,266.9 MW -> Projeção Estrutural 2035 (sem DCs): 18,003.4 MW (Pico: 22,318.4 MW)
+[PIPELINE -> 04] Concluído em 43.06s.
+
+[PIPELINE -> 05] Iniciando 05_forecast_wind_cf_and_curtailment.py (Modelos B & C · CF e Curtailment)...
+========================================================================
+Script 05: Modelos B (CF Eólico) e C (Curtailment) — Validação Cega 2025
+========================================================================
+
+Benchmark Out-of-Time 2025 — Modelo B (Fator de Capacidade Eólico Potencial):
+                              horizonte                                           arquitetura  mae_cf  rmse_cf  r2_score  mae_potencia_equiv_mw
+       Operativo Curto Prazo (1h-Ahead)                            Baseline Linear · Ridge L2  0.0211   0.0277    0.9783                  632.1
+       Operativo Curto Prazo (1h-Ahead) Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)  0.0173   0.0227    0.9854                  516.5
+       Operativo Curto Prazo (1h-Ahead)      Challenger Não-Linear · Histogram GBDT (Árvores)  0.0203   0.0272    0.9791                  607.1
+Regime Diário / Sazonal (24h Day-Ahead)                            Baseline Linear · Ridge L2  0.0810   0.1031    0.6985                 2422.9
+Regime Diário / Sazonal (24h Day-Ahead) Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)  0.0801   0.1021    0.7044                 2395.2
+Regime Diário / Sazonal (24h Day-Ahead)      Challenger Não-Linear · Histogram GBDT (Árvores)  0.0806   0.1026    0.7011                 2412.7
+
+Benchmark Out-of-Time 2025 — Modelo C (Curtailment Eólico 2 Estágios):
+                                              arquitetura  roc_auc  brier_score  f1_score  mae_global_mw  r2_volume  energia_cortada_real_2025_twh  energia_cortada_pred_2025_twh
+               Baseline Linear · Logística + Ridge Hurdle   0.9479       0.0853    0.9213          710.5     0.9172                           25.7                          22.53
+Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2)   0.9520       0.0782    0.9270          712.4     0.9143                           25.7                          21.71
+   Challenger Não-Linear · Histogram GBDT Hurdle Completo   0.9293       0.0994    0.9086         1083.3     0.7551                           25.7                          18.74
+
+[SUCESSO] Métricas B/C e perfis comparativos 2025 exportados em: D:\github\Data-Center---E-licas-NE\reports
+[PIPELINE -> 05] Concluído em 58.39s.
+
+[PIPELINE -> 06] Iniciando 06_monte_carlo_balance_2035.py (Monte Carlo 2035 (12 Cenários + Subestações))...
+========================================================================
+Script 06 (Passo 4): Simulação Estocástica de Monte Carlo 2025-2035 (Multiprocessing)
+========================================================================
+[BASELINE 8760h] Série real exportada (8760 h): serie_base_horaria_8760h_ons.csv e hourly-baseline-8760.json (digest=077346f9d62b5361)
+[MONTE CARLO 2035] Executando 12 cenários cruzados (12,000 simulações) em 4 processos...
+
+Matriz Completa de Risco e Curtailment em 2035 (12 Cenários):
+                                                                 cenario_nome  dc_load_mw  wind_capacity_mw  prob_exceder_intercambio_pct  importacao_p95_mw  curtailment_com_dc_twh_ano  curtailment_evitado_gwh_ano  expansao_eolica_compensatoria_gw
+                  Sem Data Centers (Controle) × Eólica Base (29,6 GW Onshore)         0.0           29600.0                           5.8             7336.3                        6.00                          0.0                              1.60
+            Sem Data Centers (Controle) × Eólica Intermediária SIGA (36,4 GW)         0.0           36400.0                           3.8             6612.2                       14.40                          0.0                              0.00
+         Sem Data Centers (Controle) × Eólica Alta + Offshore IBAMA (48,0 GW)         0.0           48000.0                           1.1             5364.6                       40.49                          0.0                              0.00
+                 DC Conservador (469 MW rede) × Eólica Base (29,6 GW Onshore)       469.0           29600.0                           8.5             7924.5                        5.66                        683.5                              4.40
+           DC Conservador (469 MW rede) × Eólica Intermediária SIGA (36,4 GW)       469.0           36400.0                           6.1             7293.9                       13.59                       1250.2                              1.40
+        DC Conservador (469 MW rede) × Eólica Alta + Offshore IBAMA (48,0 GW)       469.0           48000.0                           3.1             6035.3                       38.33                       2222.4                              0.00
+         DC Central Ponderado (1.597 MW rede) × Eólica Base (29,6 GW Onshore)      1596.8           29600.0                          13.4             9030.1                        4.25                       2091.2                              9.67
+   DC Central Ponderado (1.597 MW rede) × Eólica Intermediária SIGA (36,4 GW)      1596.8           36400.0                          10.0             8439.5                       10.91                       3930.8                              6.85
+DC Central Ponderado (1.597 MW rede) × Eólica Alta + Offshore IBAMA (48,0 GW)      1596.8           48000.0                           5.6             7162.1                       33.31                       7248.9                              0.66
+          DC Stress Test / IA (3.414 MW rede) × Eólica Base (29,6 GW Onshore)      3414.4           29600.0                          28.8            10835.6                        2.59                       3752.9                             18.26
+    DC Stress Test / IA (3.414 MW rede) × Eólica Intermediária SIGA (36,4 GW)      3414.4           36400.0                          21.5            10177.2                        7.47                       7373.9                             15.13
+ DC Stress Test / IA (3.414 MW rede) × Eólica Alta + Offshore IBAMA (48,0 GW)      3414.4           48000.0                          12.4             8931.0                       26.15                      14409.0                              7.92
+
+Resumo Monte Carlo Bottom-Up (Projetos Nominais em 2035):
+ target_year  n_iterations  projetos_ativos_media  dc_load_p50_mw  dc_load_p90_mw  dc_load_p95_mw  prob_exceder_intercambio_pct  importacao_p50_mw  importacao_p95_mw  curtailment_com_dc_twh_ano  expansao_eolica_compensatoria_gw
+        2035          1000                   11.3          2328.5          2994.4          3189.7                          12.9             3415.0             8678.2                        9.57                              7.99
+[GRADE SIMULADOR 2025-2035] Executando 674 pontos paramétricos (+ 22 âncoras oficiais) em 4 processos...
+[GRADE SIMULADOR 2025-2035] Exportados 696 cenários em grade_simulador_monte_carlo_2025_2035.csv
+
+[SUCESSO] Passo 4 concluído! Todos os relatórios de Monte Carlo, série 8760h e grade 2025–2035 exportados em: D:\github\Data-Center---E-licas-NE\reports
+[PIPELINE -> 06] Concluído em 74.66s.
+
+[PIPELINE -> 07] Iniciando 07_sensitivity_and_final_report.py (Sensibilidade Passo 5 & Relatório Final)...
+[INFO] 1. Executando Análise de Sensibilidade de Transmissão SIN via Motor Monte Carlo (2035)...
+[INFO]    -> Salvo: D:\github\Data-Center---E-licas-NE\reports\sensibilidade_transmissao_intercambio_2035.csv
+[INFO] 2. Executando Análise H2V vs. Data Centers 24/7 via Motor Monte Carlo (2035)...
+[INFO]    -> Salvo: D:\github\Data-Center---E-licas-NE\reports\sensibilidade_h2v_eletrointensivos_2035.csv
+[INFO] 3. Calculando Indicadores Separados ANEEL (Capacidade) vs. ONS (Geração Efetiva) 2015–2035...
+[INFO]    -> Salvo: D:\github\Data-Center---E-licas-NE\reports\indicadores_participacao_eolica_aneel_vs_ons_2015_2035.csv
+[INFO] 4. Relatório Executivo Final Consolidado gerado em: D:\github\Data-Center---E-licas-NE\reports\relatorio_final_consolidado_ptc3567_grupo6.md
+Traceback (most recent call last):
+  File "D:\github\Data-Center---E-licas-NE\scripts\07_sensitivity_and_final_report.py", line 748, in <module>
+    main()
+  File "D:\github\Data-Center---E-licas-NE\scripts\07_sensitivity_and_final_report.py", line 743, in main
+    sync_frontend_ssot()
+  File "D:\github\Data-Center---E-licas-NE\scripts\sync_frontend_ssot.py", line 1092, in sync_frontend_ssot
+    raise ValueError(
+ValueError: Bloqueio SSOT — inconsistências cruzadas detectadas antes da emissão:
+- Divergência grade vs MC12 em probExceedInterchangePct para ('central', 'high')
+- Divergência grade vs MC12 em importP95MW para ('central', 'high')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('central', 'intermediate')
+- Divergência grade vs MC12 em importP95MW para ('central', 'intermediate')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('conservative', 'high')
+- Divergência grade vs MC12 em importP95MW para ('conservative', 'high')
+- Divergência grade vs MC12 em importP95MW para ('conservative', 'intermediate')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('high', 'high')
+- Divergência grade vs MC12 em importP95MW para ('high', 'high')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('high', 'intermediate')
+- Divergência grade vs MC12 em importP95MW para ('high', 'intermediate')
+
+[FALHA] Etapa [07] (07_sensitivity_and_final_report.py) encerrou com código 1.
+PS D:\github\Data-Center---E-licas-NE> py -m unittest -v            
+>> npm run test
+test_build_ssot_payload_parity_with_official_scripts_and_reports (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_build_ssot_payload_parity_with_official_scripts_and_reports) ... ok
+test_c2_3_grid_and_hourly_baseline_contracts_and_optional_loading (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_3_grid_and_hourly_baseline_contracts_and_optional_loading) ... ok
+test_c2_3_script_06_defines_8760h_and_parametric_grid_exporters (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_3_script_06_defines_8760h_and_parametric_grid_exporters) ... ok
+test_c2_5_anti_hardcode_guardrails_across_scripts_and_frontend (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_5_anti_hardcode_guardrails_across_scripts_and_frontend) ... ok
+test_c2_5_config_and_uicatalog_complete_contract (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_5_config_and_uicatalog_complete_contract) ... ok
+test_c3_1_causal_grid_features_symmetrical_weighting_and_calibration (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c3_1_causal_grid_features_symmetrical_weighting_and_calibration) ... ok
+test_c3_2_seasonal_chesf_dispatch_solar_h2v_offshore_and_grid_parity (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c3_2_seasonal_chesf_dispatch_solar_h2v_offshore_and_grid_parity) ... ok
+test_cross_consistency_validator_catches_tx_h2v_md_and_substation_drift (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_cross_consistency_validator_catches_tx_h2v_md_and_substation_drift) ... ok
+test_external_metadata_and_orchestrator_stage_resolution (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_external_metadata_and_orchestrator_stage_resolution) ... ========================================================================
+Orquestrador PTC3567 · Execução Sequencial da Esteira Analítica
+========================================================================
+  - [02] 02_build_dc_and_offshore_scenarios.py — Cenários Data Centers & Eólica
+  - [03] 03_feature_engineering_anova.py — Feature Engineering & ANOVA
+  - [04] 04_forecast_demanda_base.py — Modelo A · Demanda Base
+  - [05] 05_forecast_wind_cf_and_curtailment.py — Modelos B & C · CF e Curtailment
+  - [06] 06_monte_carlo_balance_2035.py — Monte Carlo 2035 (12 Cenários + Subestações)
+  - [07] 07_sensitivity_and_final_report.py — Sensibilidade Passo 5 & Relatório Final
+  - [ssot] sync_frontend_ssot.py — Sincronização SSOT Frontend
+
+[DRY-RUN] Nenhuma etapa foi executada.
+ok
+test_live_report_cross_consistency_when_regenerated_post_passo_2 (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_live_report_cross_consistency_when_regenerated_post_passo_2) ... FAIL
+test_model_c_stage_c1_wires_residual_mlp_classifier (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_model_c_stage_c1_wires_residual_mlp_classifier) ... ok
+test_read_csv_records_safe_handles_semicolon_bom_and_blank_rows (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_read_csv_records_safe_handles_semicolon_bom_and_blank_rows) ... ok
+test_resolve_substations_with_composite_key_prevents_voltage_collision (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_resolve_substations_with_composite_key_prevents_voltage_collision) ... ok
+test_safe_parsers_handle_blanks_nan_inf_and_ptbr_numbers (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_safe_parsers_handle_blanks_nan_inf_and_ptbr_numbers) ... ok
+test_scripts_01_to_07_align_with_config_and_resmlp_c2_2 (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_scripts_01_to_07_align_with_config_and_resmlp_c2_2) ... ok
+test_sync_frontend_ssot_blocks_write_when_cross_consistency_fails (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_sync_frontend_ssot_blocks_write_when_cross_consistency_fails) ... ok
+test_sync_frontend_ssot_writes_matching_json_and_ts (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_sync_frontend_ssot_writes_matching_json_and_ts) ... ERROR
+
+======================================================================
+ERROR: test_sync_frontend_ssot_writes_matching_json_and_ts (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_sync_frontend_ssot_writes_matching_json_and_ts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\github\Data-Center---E-licas-NE\scripts\test_sync_frontend_ssot.py", line 305, in test_sync_frontend_ssot_writes_matching_json_and_ts
+    payload = sync_frontend_ssot(json_out_path=json_out, ts_out_path=ts_out)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\github\Data-Center---E-licas-NE\scripts\sync_frontend_ssot.py", line 1092, in sync_frontend_ssot
+    raise ValueError(
+ValueError: Bloqueio SSOT — inconsistências cruzadas detectadas antes da emissão:
+- Divergência grade vs MC12 em probExceedInterchangePct para ('central', 'high')
+- Divergência grade vs MC12 em importP95MW para ('central', 'high')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('central', 'intermediate')
+- Divergência grade vs MC12 em importP95MW para ('central', 'intermediate')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('conservative', 'high')
+- Divergência grade vs MC12 em importP95MW para ('conservative', 'high')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('conservative', 'intermediate')
+- Divergência grade vs MC12 em importP95MW para ('conservative', 'intermediate')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('high', 'high')
+- Divergência grade vs MC12 em importP95MW para ('high', 'high')
+- Divergência grade vs MC12 em probExceedInterchangePct para ('high', 'intermediate')
+- Divergência grade vs MC12 em importP95MW para ('high', 'intermediate')
+
+======================================================================
+FAIL: test_live_report_cross_consistency_when_regenerated_post_passo_2 (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_live_report_cross_consistency_when_regenerated_post_passo_2)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\github\Data-Center---E-licas-NE\scripts\test_sync_frontend_ssot.py", line 298, in test_live_report_cross_consistency_when_regenerated_post_passo_2
+    self.assertEqual(validate_ssot_cross_consistency(payload), [])
+AssertionError: Lists differ: ["Divergência grade vs MC12 em probExceedI[915 chars]e')"] != []
+
+First list contains 12 additional elements.
+First extra element 0:
+"Divergência grade vs MC12 em probExceedInterchangePct para ('central', 'high')"
+
+Diff is 1039 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 17 tests in 3.649s
+
+FAILED (failures=1, errors=1)
+
+> react-example@0.0.0 test
+> npx tsx --test src/utils/energyModel.test.ts
+
+✔ computeDataCenterLoadMW applies PUE only when power is IT load, avoiding double PUE when total grid power is published (2.1431ms)
+✔ computeWindGenerationMW converts capacity factor and installed MW properly (0.3461ms)
+✔ computeDcRampFactor grows monotonically across configured horizon (0.4096ms)
+✔ computeInstalledWindCapacityMW includes offshore wind only from offshoreCommercialStartYear onward when enabled (0.3645ms)
+✔ evaluateScenario generates exact 8760h real-time series for every year 2025..2035 and preserves hourly fidelity across multi-scale slices (676.845ms)
+✔ Passo C3-2: computeChesfDispatchMW enforces wet/dry seasonality, thermal inflexibility, hydro blend, and water-constrained hourly parity (74.5507ms)
+✔ resolveMonteCarloSummary uses Python grid (exact + IDW interpolation) or SSOT anchors, never synthetic JS fallback (2.5866ms)
+✔ DATA_CENTER_PIPELINE conforms to official Northeast constraints and composite substation keys (15.0435ms)
+✔ ANOVA_TEST_RESULTS and MONTHLY_WIND_PROFILES statistically validate Northeast wind seasonality (16.8079ms)
+✖ Passo 3 Out-of-Time 2025 benchmarks confirm non-linear models outperform linear baselines across Models A, B, and C (4.3904ms)
+✔ Passo 4 Monte Carlo 2035 12-scenario matrix and compensatory wind curve validate physical trade-offs (1.847ms)
+✔ Passo 5 sensitivity datasets validate transmission expansion, H2V flexible synergy, and ANEEL vs ONS indicators (17.7671ms)
+✔ SSOT parity and anti-hardcode check: JSON, TS bundle, live Python scripts, config, and uiCatalog stay synchronized (18.7086ms)
+✔ Passo 4 convergence: evaluateScenario(BASE_CONFIG, PIPELINE_SSOT) converges dynamically to live SSOT Central x Intermediate anchor (0.9473ms)
+✔ Passo 4 dynamic SSOT scaling: resolveEffectiveDcLoadMW matches scenarioAnnualRamp, scales with PUE/utilization without double PUE, and computeInstalledWindCapacityMW honors injected config (0.437ms)
+✔ Passo 5 csvExport helpers escape quotes, preserve nullish blanks, and prepend UTF-8 BOM with semicolon delimiter (12.4448ms)
+✔ Passo 5 computeFeaturesAnovaKpis derives consistent SSOT KPIs for panel subcomponents (12.3001ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 16
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4287.3064
+
+✖ failing tests:
+
+test at src\utils\energyModel.test.ts:541:1
+✖ Passo 3 Out-of-Time 2025 benchmarks confirm non-linear models outperform linear baselines across Models A, B, and C (4.3904ms)
+  AssertionError [ERR_ASSERTION]: Non-linear Hurdle ROC-AUC must exceed Linear Hurdle
+      at TestContext.<anonymous> (D:\github\Data-Center---E-licas-NE\src\utils\energyModel.test.ts:568:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

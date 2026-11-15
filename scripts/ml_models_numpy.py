@@ -218,7 +218,8 @@ class ResidualMLPRegressor:
     Rede Neural Perceptron Multicamadas com Conexão Residual Linear (ResMLP):
         y_hat = b_out + X_norm @ w_skip + tanh(X_norm @ W1 + b1) @ w2
     Treinada via backpropagation analítico vetorizado + quasi-Newton L-BFGS-B (SciPy).
-    Combina estabilidade de extrapolação linear com captura de não-linearidades suaves.
+    Opcionalmente executa validação cruzada em blocos temporais (cv_folds >= 2) para
+    calibrar reg_l2 sem vazamento futuro e média de ensemble multi-seed.
     """
 
     def __init__(
@@ -228,9 +229,19 @@ class ResidualMLPRegressor:
         max_iter: int = 120,
         subsample_max: int = 35000,
         seed: int = 42,
+        reg_l2_skip: Optional[float] = None,
+        reg_l2_grid: Optional[Tuple[float, ...]] = None,
+        cv_folds: int = 1,
+        n_ensemble: int = 1,
     ):
         self.hidden_units = hidden_units
         self.reg_l2 = reg_l2
+        self.reg_l2_skip = reg_l2_skip
+        self.reg_l2_grid: Optional[Tuple[float, ...]] = (
+            tuple(float(v) for v in reg_l2_grid) if reg_l2_grid is not None else None
+        )
+        self.cv_folds = max(1, int(cv_folds))
+        self.n_ensemble = max(1, int(n_ensemble))
         self.max_iter = max_iter
         self.subsample_max = subsample_max
         self.seed = seed
@@ -238,7 +249,9 @@ class ResidualMLPRegressor:
         self.std_x: Optional[np.ndarray] = None
         self.mean_y: float = 0.0
         self.std_y: float = 1.0
+        self.reg_l2_selected_: Optional[float] = None
         self.params_: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = None
+        self.ensemble_params_: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = []
 
     def _unpack(self, theta: np.ndarray, d: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
         h = self.hidden_units
@@ -250,6 +263,102 @@ class ResidualMLPRegressor:
         b_out = float(theta[-1])
         return W1, b1, w2, w_skip, b_out
 
+    @staticmethod
+    def _eval_norm(
+        params: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float],
+        X_norm: np.ndarray,
+    ) -> np.ndarray:
+        W1, b1, w2, w_skip, b_out = params
+        return b_out + X_norm @ w_skip + np.tanh(X_norm @ W1 + b1) @ w2
+
+    def _fit_with_reg(
+        self,
+        X_norm: np.ndarray,
+        y_norm: np.ndarray,
+        w_norm: np.ndarray,
+        reg_l2_val: float,
+        max_iter: int,
+        seed_offset: int = 0,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+        rng = np.random.default_rng(self.seed + seed_offset)
+        n, d = X_norm.shape
+        h = self.hidden_units
+        skip_reg = float(self.reg_l2_skip) if self.reg_l2_skip is not None else 0.2 * float(reg_l2_val)
+
+        # 1. Warm-start exato do ramo residual linear (Ridge ponderado na escala normalizada)
+        X_bias = np.hstack([np.ones((n, 1)), X_norm])
+        reg_mat = skip_reg * np.eye(d + 1)
+        reg_mat[0, 0] = 0.0
+        lin_w = solve(X_bias.T @ (X_bias * w_norm[:, None]) + reg_mat, X_bias.T @ (w_norm * y_norm), assume_a="pos")
+        b_out_0 = float(lin_w[0])
+        w_skip_0 = lin_w[1:].copy()
+        resid = y_norm - (b_out_0 + X_norm @ w_skip_0)
+        obj_lin_pure = 0.5 * float(np.sum(w_norm * (resid ** 2))) + 0.5 * skip_reg * float(np.sum(w_skip_0 ** 2))
+
+        # 2. Quebra de simetria + passo Ridge amortecido sobre os resíduos lineares
+        W1_0 = rng.normal(0.0, 1.0 / np.sqrt(d), size=(d, h))
+        b1_0 = rng.uniform(-0.5, 0.5, size=h) if self.reg_l2_skip is not None else np.zeros(h)
+        H_0 = np.tanh(X_norm @ W1_0 + b1_0)
+        gram_h = H_0.T @ (H_0 * w_norm[:, None]) + max(5e-3, float(reg_l2_val)) * np.eye(h)
+        rhs_h = H_0.T @ (w_norm * resid)
+        w2_base = solve(gram_h, rhs_h, assume_a="pos")
+
+        def eval_obj(theta: np.ndarray) -> float:
+            W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
+            A1 = np.tanh(X_norm @ W1 + b1)
+            pred = b_out + X_norm @ w_skip + A1 @ w2
+            diff = pred - y_norm
+            mse = 0.5 * float(np.sum(w_norm * (diff ** 2)))
+            pen = 0.5 * float(reg_l2_val) * float(np.sum(W1 ** 2) + np.sum(w2 ** 2)) + 0.5 * skip_reg * float(np.sum(w_skip ** 2))
+            return mse + pen
+
+        theta0 = None
+        best_theta = None
+        best_obj = float("inf")
+        for damp in (0.6, 0.3, 0.15, 0.05):
+            cand = np.concatenate([W1_0.ravel(), b1_0, damp * w2_base, w_skip_0, [b_out_0]])
+            cand_obj = eval_obj(cand)
+            if cand_obj < best_obj:
+                best_obj = cand_obj
+                best_theta = cand
+            if cand_obj < obj_lin_pure:
+                theta0 = cand
+                break
+        if theta0 is None:
+            theta0 = best_theta if best_theta is not None else np.concatenate(
+                [W1_0.ravel(), b1_0, 0.15 * w2_base, w_skip_0, [b_out_0]]
+            )
+
+        def obj_and_grad(theta: np.ndarray) -> Tuple[float, np.ndarray]:
+            W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
+            Z1 = X_norm @ W1 + b1
+            A1 = np.tanh(Z1)
+            pred = b_out + X_norm @ w_skip + A1 @ w2
+            diff = pred - y_norm
+
+            mse = 0.5 * float(np.sum(w_norm * (diff ** 2)))
+            pen = 0.5 * float(reg_l2_val) * float(np.sum(W1 ** 2) + np.sum(w2 ** 2)) + 0.5 * skip_reg * float(np.sum(w_skip ** 2))
+
+            d_pred = w_norm * diff
+            grad_b_out = float(np.sum(d_pred))
+            grad_w_skip = X_norm.T @ d_pred + skip_reg * w_skip
+            grad_w2 = A1.T @ d_pred + float(reg_l2_val) * w2
+            dA1 = np.outer(d_pred, w2) * (1.0 - A1 ** 2)
+            grad_W1 = X_norm.T @ dA1 + float(reg_l2_val) * W1
+            grad_b1 = np.sum(dA1, axis=0)
+
+            grad = np.concatenate([grad_W1.ravel(), grad_b1, grad_w2, grad_w_skip, [grad_b_out]])
+            return mse + pen, grad
+
+        res = minimize(
+            obj_and_grad,
+            theta0,
+            method="L-BFGS-B",
+            jac=True,
+            options={"maxiter": max_iter},
+        )
+        return self._unpack(res.x, d)
+
     def fit(self, X: np.ndarray, y: np.ndarray, sample_weight: Optional[np.ndarray] = None) -> "ResidualMLPRegressor":
         rng = np.random.default_rng(self.seed)
         X_arr = np.asarray(X, dtype=float)
@@ -257,7 +366,6 @@ class ResidualMLPRegressor:
         w_in = np.ones(len(X_arr), dtype=float) if sample_weight is None else np.asarray(sample_weight, dtype=float)
 
         if len(X_arr) > self.subsample_max:
-            # Usa os registros mais recentes + amostra estratificada histórica para rapidez no L-BFGS
             recent = int(self.subsample_max * 0.6)
             older_idx = rng.choice(len(X_arr) - recent, size=self.subsample_max - recent, replace=False)
             sel = np.concatenate([np.sort(older_idx), np.arange(len(X_arr) - recent, len(X_arr))])
@@ -265,10 +373,60 @@ class ResidualMLPRegressor:
             y_arr = y_arr[sel]
             w_in = w_in[sel]
 
-        n, d = X_arr.shape
-        h = self.hidden_units
+        n, _ = X_arr.shape
         w_norm, w_eff = _prepare_sample_weights(w_in, n)
 
+        selected_reg = float(self.reg_l2)
+        if self.cv_folds >= 2 and self.reg_l2_grid and len(self.reg_l2_grid) > 1 and n >= 400:
+            k_folds = min(self.cv_folds, max(2, n // 150))
+            fold_bounds = np.linspace(0, n, k_folds + 1, dtype=int)
+            best_mse = float("inf")
+            for cand_reg in self.reg_l2_grid:
+                oof_sq_err: List[np.ndarray] = []
+                oof_w: List[np.ndarray] = []
+                for f_idx in range(k_folds):
+                    val_start, val_end = int(fold_bounds[f_idx]), int(fold_bounds[f_idx + 1])
+                    val_mask = np.zeros(n, dtype=bool)
+                    val_mask[val_start:val_end] = True
+                    tr_mask = ~val_mask
+                    if np.sum(tr_mask) < 50 or np.sum(val_mask) < 20:
+                        continue
+
+                    X_sub_tr, X_sub_val = X_arr[tr_mask], X_arr[val_mask]
+                    y_sub_tr, y_sub_val = y_arr[tr_mask], y_arr[val_mask]
+                    w_sub_tr_norm, w_sub_tr_eff = _prepare_sample_weights(w_eff[tr_mask], len(X_sub_tr))
+
+                    sub_mean_x = np.average(X_sub_tr, axis=0, weights=w_sub_tr_eff)
+                    sub_std_x = np.sqrt(np.average((X_sub_tr - sub_mean_x) ** 2, axis=0, weights=w_sub_tr_eff))
+                    sub_std_x[sub_std_x < 1e-9] = 1.0
+                    sub_mean_y = float(np.average(y_sub_tr, weights=w_sub_tr_eff))
+                    sub_std_y = float(np.sqrt(np.average((y_sub_tr - sub_mean_y) ** 2, weights=w_sub_tr_eff)))
+                    if sub_std_y < 1e-9:
+                        sub_std_y = 1.0
+
+                    X_sub_tr_n = (X_sub_tr - sub_mean_x) / sub_std_x
+                    X_sub_val_n = (X_sub_val - sub_mean_x) / sub_std_x
+                    y_sub_tr_n = (y_sub_tr - sub_mean_y) / sub_std_y
+
+                    params_c = self._fit_with_reg(
+                        X_sub_tr_n,
+                        y_sub_tr_n,
+                        w_sub_tr_norm,
+                        reg_l2_val=cand_reg,
+                        max_iter=min(110, self.max_iter),
+                    )
+                    pred_val = self._eval_norm(params_c, X_sub_val_n) * sub_std_y + sub_mean_y
+                    oof_sq_err.append((pred_val - y_sub_val) ** 2)
+                    oof_w.append(w_eff[val_mask])
+
+                if oof_sq_err:
+                    w_all = np.concatenate(oof_w)
+                    mse_val = float(np.average(np.concatenate(oof_sq_err), weights=w_all))
+                    if mse_val < best_mse:
+                        best_mse = mse_val
+                        selected_reg = cand_reg
+
+        self.reg_l2_selected_ = selected_reg
         self.mean_x = np.average(X_arr, axis=0, weights=w_eff)
         var_x = np.average((X_arr - self.mean_x) ** 2, axis=0, weights=w_eff)
         self.std_x = np.sqrt(var_x)
@@ -281,53 +439,26 @@ class ResidualMLPRegressor:
             self.std_y = 1.0
         y_norm = (y_arr - self.mean_y) / self.std_y
 
-        # Inicializar w_skip com solução Ridge ponderada para partir de ótimo local excelente
-        sqrt_w = np.sqrt(w_eff)
-        Xw_init = X_norm * sqrt_w[:, None]
-        yw_init = y_norm * sqrt_w
-        ridge_init = solve(Xw_init.T @ Xw_init + 5.0 * np.eye(d), Xw_init.T @ yw_init, assume_a="pos")
-        W1_0 = rng.normal(0.0, 1.0 / np.sqrt(d), size=(d, h))
-        b1_0 = np.zeros(h)
-        w2_0 = rng.normal(0.0, 0.05, size=h)
-        theta0 = np.concatenate([W1_0.ravel(), b1_0, w2_0, ridge_init, [0.0]])
-
-        def obj_and_grad(theta: np.ndarray) -> Tuple[float, np.ndarray]:
-            W1, b1, w2, w_skip, b_out = self._unpack(theta, d)
-            Z1 = X_norm @ W1 + b1
-            A1 = np.tanh(Z1)
-            pred = b_out + X_norm @ w_skip + A1 @ w2
-            diff = pred - y_norm
-
-            mse = 0.5 * float(np.sum(w_norm * (diff ** 2)))
-            pen = 0.5 * self.reg_l2 * float(np.sum(W1 ** 2) + np.sum(w2 ** 2) + 0.2 * np.sum(w_skip ** 2))
-
-            d_pred = w_norm * diff
-            grad_b_out = float(np.sum(d_pred))
-            grad_w_skip = X_norm.T @ d_pred + 0.2 * self.reg_l2 * w_skip
-            grad_w2 = A1.T @ d_pred + self.reg_l2 * w2
-            dA1 = np.outer(d_pred, w2) * (1.0 - A1 ** 2)
-            grad_W1 = X_norm.T @ dA1 + self.reg_l2 * W1
-            grad_b1 = np.sum(dA1, axis=0)
-
-            grad = np.concatenate([grad_W1.ravel(), grad_b1, grad_w2, grad_w_skip, [grad_b_out]])
-            return mse + pen, grad
-
-        res = minimize(
-            obj_and_grad,
-            theta0,
-            method="L-BFGS-B",
-            jac=True,
-            options={"maxiter": self.max_iter},
-        )
-        self.params_ = self._unpack(res.x, d)
+        self.ensemble_params_ = [
+            self._fit_with_reg(
+                X_norm,
+                y_norm,
+                w_norm,
+                reg_l2_val=selected_reg,
+                max_iter=self.max_iter,
+                seed_offset=idx,
+            )
+            for idx in range(self.n_ensemble)
+        ]
+        self.params_ = self.ensemble_params_[0]
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        if self.params_ is None or self.mean_x is None or self.std_x is None:
+        if (not self.ensemble_params_ and self.params_ is None) or self.mean_x is None or self.std_x is None:
             raise ValueError("ResidualMLPRegressor não treinado.")
-        W1, b1, w2, w_skip, b_out = self.params_
         X_norm = (np.asarray(X, dtype=float) - self.mean_x) / self.std_x
-        y_norm = b_out + X_norm @ w_skip + np.tanh(X_norm @ W1 + b1) @ w2
+        models = self.ensemble_params_ if self.ensemble_params_ else [self.params_]  # type: ignore[list-item]
+        y_norm = np.mean([self._eval_norm(p, X_norm) for p in models], axis=0)
         return y_norm * self.std_y + self.mean_y
 
 

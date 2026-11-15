@@ -298,6 +298,10 @@ def evaluate_model_c_curtailment(
     reg_mlp = ResidualMLPRegressor(
         hidden_units=int(c2_mlp_cfg["hiddenUnits"]),
         reg_l2=float(c2_mlp_cfg["regL2"]),
+        reg_l2_skip=float(c2_mlp_cfg["regL2Skip"]),
+        reg_l2_grid=tuple(float(v) for v in c2_mlp_cfg["regL2Grid"]),
+        cv_folds=int(c2_mlp_cfg["cvFolds"]),
+        n_ensemble=int(c2_mlp_cfg["nEnsemble"]),
         max_iter=int(c2_mlp_cfg["maxIter"]),
         seed=seed,
     ).fit(X_tr_pos, y_tr_pos, sample_weight=w_tr_pos)

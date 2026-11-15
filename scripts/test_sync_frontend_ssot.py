@@ -406,24 +406,33 @@ class TestSyncFrontendSsot(unittest.TestCase):
             baseline_file = tmp_dir / "hourly-baseline-8760.json"
             baseline_file.write_text(json.dumps(baseline_obj), encoding="utf-8")
 
-            mc_ref = next(
-                r
-                for r in base_payload["monteCarlo12Scenarios2035"]
-                if r["dcScenarioId"] == "central" and r["windScenarioId"] == "intermediate"
+            mc_rows = base_payload["monteCarlo12Scenarios2035"]
+            mc_high_ref = next(
+                r for r in mc_rows if r["dcScenarioId"] == "central" and r["windScenarioId"] == "high"
             )
-            grid_file = tmp_dir / "grade_simulador_monte_carlo_2025_2035.csv"
-            grid_file.write_text(
+            grid_lines = [
                 "year,dc_scenario,wind_scenario,seasonal_regime,pue,dc_utilization,import_limit_mw,export_limit_mw,"
                 "dc_load_mw,wind_capacity_mw,prob_exceder_intercambio_pct,lole_horas_criticas_ano,"
                 "importacao_p50_mw,importacao_p95_mw,curtailment_sem_dc_twh_ano,curtailment_com_dc_twh_ano,"
-                "curtailment_evitado_gwh_ano,expansao_eolica_compensatoria_gw\n"
-                f"2035,central,intermediate,annual_blend,1.28,0.8,7000.0,9500.0,"
-                f"{mc_ref['dcLoadMW']},{mc_ref['windCapacityMW']},{mc_ref['probExceedInterchangePct']},"
-                f"{mc_ref['loleCriticalHoursYear']},{mc_ref['importP50MW']},{mc_ref['importP95MW']},"
-                f"{mc_ref['curtailmentWithoutDcTWh']},{mc_ref['curtailmentWithDcTWh']},"
-                f"{mc_ref['curtailmentAvoidedGWh']},{mc_ref['compensatoryWindExpansionGW']}\n",
-                encoding="utf-8",
+                "curtailment_evitado_gwh_ano,expansao_eolica_compensatoria_gw"
+            ]
+            for r in mc_rows:
+                grid_lines.append(
+                    f"2035,{r['dcScenarioId']},{r['windScenarioId']},annual_blend,1.28,0.8,7000.0,9500.0,"
+                    f"{r['dcLoadMW']},{r['windCapacityMW']},{r['probExceedInterchangePct']},"
+                    f"{r['loleCriticalHoursYear']},{r['importP50MW']},{r['importP95MW']},"
+                    f"{r['curtailmentWithoutDcTWh']},{r['curtailmentWithDcTWh']},"
+                    f"{r['curtailmentAvoidedGWh']},{r['compensatoryWindExpansionGW']}"
+                )
+            # Variante offshore desligada (44,4 GW em vez de 48,0 GW) não deve colidir com a âncora MC12 nominal
+            grid_lines.append(
+                f"2035,central,high,annual_blend,1.28,0.8,7000.0,9500.0,"
+                f"{mc_high_ref['dcLoadMW']},44400.0,9.9,45.0,{mc_high_ref['importP50MW']},8100.0,"
+                f"{mc_high_ref['curtailmentWithoutDcTWh']},{mc_high_ref['curtailmentWithDcTWh']},"
+                f"{mc_high_ref['curtailmentAvoidedGWh']},{mc_high_ref['compensatoryWindExpansionGW']}"
             )
+            grid_file = tmp_dir / "grade_simulador_monte_carlo_2025_2035.csv"
+            grid_file.write_text("\n".join(grid_lines) + "\n", encoding="utf-8")
 
             populated_payload = build_ssot_payload(
                 baseline_json_path=baseline_file,
@@ -433,10 +442,11 @@ class TestSyncFrontendSsot(unittest.TestCase):
             self.assertEqual(populated_payload["lineage"]["hourlyBaselineDigest"], "abc123def4567890")
             self.assertEqual(populated_payload["lineage"]["hourlyBaselineHoursCount"], 8760)
             self.assertTrue(populated_payload["lineage"]["simulatorGridAvailable"])
-            self.assertEqual(populated_payload["lineage"]["simulatorGridRowsCount"], 1)
-            self.assertEqual(len(populated_payload["simulatorMonteCarloGrid"]), 1)
+            self.assertEqual(populated_payload["lineage"]["simulatorGridRowsCount"], len(mc_rows) + 1)
+            self.assertEqual(len(populated_payload["simulatorMonteCarloGrid"]), len(mc_rows) + 1)
+            self.assertEqual(validate_ssot_cross_consistency(populated_payload), [])
 
-            # Se divergir de monteCarlo12Scenarios2035, validate_ssot_cross_consistency bloqueia
+            # Se divergir de monteCarlo12Scenarios2035 em ponto nominal, validate_ssot_cross_consistency bloqueia
             drifted_payload = copy.deepcopy(populated_payload)
             drifted_payload["simulatorMonteCarloGrid"][0]["probExceedInterchangePct"] = 99.0
             self.assertTrue(
@@ -554,6 +564,10 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertIn('c1_mlp_cfg["regL2Grid"]', s05)
         self.assertIn('c1_mlp_cfg["cvFolds"]', s05)
         self.assertIn('c1_mlp_cfg["nEnsemble"]', s05)
+        self.assertIn('c2_mlp_cfg["regL2Skip"]', s05)
+        self.assertIn('c2_mlp_cfg["regL2Grid"]', s05)
+        self.assertIn('c2_mlp_cfg["cvFolds"]', s05)
+        self.assertIn('c2_mlp_cfg["nEnsemble"]', s05)
         self.assertIn('c1_gbdt_cfg["l2LeafReg"]', s05)
         self.assertIn('c2_gbdt_cfg["l2LeafReg"]', s05)
 
