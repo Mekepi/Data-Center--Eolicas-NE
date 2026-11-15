@@ -27,6 +27,8 @@ from config import (
     HISTORY_START_YEAR,
     COFF_START_YEAR,
     TRAIN_CUTOFF_YEAR,
+    INTERCHANGE_EXPORT_LIMIT_MW,
+    EXPORT_SOLAR_CURTAILMENT_COEF,
 )
 
 
@@ -105,14 +107,38 @@ def create_lags_rolling_and_physical_features(
         out["cf_eolica_squared"] = np.clip(out["cf_eolica"], 0.0, 1.0) ** 2
         out["wind_speed_approx"] = np.cbrt(np.clip(out["cf_eolica"], 0.0, 1.0))
 
-    # Variáveis físicas de excedente renovável para o Modelo C (Curtailment Hurdle/Não-Linear)
-    # Na arquitetura encadeada (Seção 6 do PDF), o Modelo C recebe G_eol_pot(t), G_solar(t) e L_base(t)
+    # Variáveis físicas de excedente renovável e saturação de escoamento para o Modelo C (Curtailment Hurdle)
+    # Na arquitetura encadeada (Seção 6 do PDF), o Modelo C recebe G_eol_pot(t), G_solar(t), L_base(t) e lags causais
     gen_renovavel = out["g_eolica_potencial_mw"] + out["g_solar_mw"]
     carga_segura = np.maximum(1000.0, out["l_base_mw"])
     out["excedente_renovavel_mw"] = gen_renovavel - out["l_base_mw"]
     out["razao_renovavel_carga"] = gen_renovavel / carga_segura
     out["penetracao_solar"] = out["g_solar_mw"] / carga_segura
     out["penetracao_eolica_pot"] = out["g_eolica_potencial_mw"] / carga_segura
+
+    # Folga física de escoamento SIN e excesso acima do cotovelo de exportação (coeficiente solar de 0,18)
+    limite_export_efetivo = float(INTERCHANGE_EXPORT_LIMIT_MW) - float(EXPORT_SOLAR_CURTAILMENT_COEF) * out["g_solar_mw"]
+    out["folga_escoamento_sin_mw"] = limite_export_efetivo - out["excedente_renovavel_mw"]
+    out["excesso_sobre_escoamento_mw"] = np.maximum(0.0, -out["folga_escoamento_sin_mw"])
+    out["interacao_solar_eolica_mw"] = (out["g_eolica_potencial_mw"] * out["g_solar_mw"]) / 1e6
+
+    # Persistência e rampas causais do excedente renovável (zero data leakage)
+    out["excedente_renovavel_lag_1h"] = out["excedente_renovavel_mw"].shift(1)
+    out["rampa_excedente_1h_mw"] = out["excedente_renovavel_mw"] - out["excedente_renovavel_lag_1h"]
+    out["excedente_renovavel_roll_mean_24h"] = out["excedente_renovavel_mw"].shift(1).rolling(24).mean()
+    out["excedente_renovavel_roll_max_24h"] = out["excedente_renovavel_mw"].shift(1).rolling(24).max()
+
+    # Ocupação hidráulica causal (Chesf/São Francisco na estação úmida t-1..t-24h) sobre o corredor de exportação
+    hydro_col = "g_hidraulica_mw" if "g_hidraulica_mw" in out.columns else ("g_hidro_mw" if "g_hidro_mw" in out.columns else None)
+    if hydro_col is not None:
+        hydro_series = pd.to_numeric(out[hydro_col], errors="coerce")
+        out["g_hidro_roll_mean_24h"] = hydro_series.shift(1).rolling(24).mean().fillna(hydro_series.shift(1)).fillna(0.0)
+    else:
+        out["g_hidro_roll_mean_24h"] = 0.0
+    out["despacho_total_est_excesso_mw"] = np.maximum(
+        0.0,
+        (gen_renovavel + out["g_hidro_roll_mean_24h"] - out["l_base_mw"]) - limite_export_efetivo,
+    )
 
     return out
 
@@ -255,6 +281,11 @@ def compute_feature_correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
         "faixa_solar_pico",
         "excedente_renovavel_mw",
         "razao_renovavel_carga",
+        "folga_escoamento_sin_mw",
+        "excesso_sobre_escoamento_mw",
+        "despacho_total_est_excesso_mw",
+        "interacao_solar_eolica_mw",
+        "g_hidro_roll_mean_24h",
         "wind_speed_lag1_approx",
         "cf_lag1_squared",
     ]

@@ -74,24 +74,34 @@ FEATURES_CF_24H = [
     "wind_speed_lag24_approx",
 ]
 
-# Features físicas e de calendário do Modelo C (aplicáveis diretamente nos cenários de Monte Carlo 2035)
+# Features físicas e de calendário do Modelo C (estritamente causais e aplicáveis a cenários futuros)
 FEATURES_CURTAILMENT = [
     "hour_sin",
     "hour_cos",
     "hour_sin_2",
     "hour_cos_2",
-    "month_sin",
-    "month_cos",
     "is_weekend",
     "faixa_solar_pico",
     "faixa_ponta",
     "g_eolica_potencial_mw",
     "g_solar_mw",
     "l_base_mw",
+    "cap_eolica_instalada_mw",
     "excedente_renovavel_mw",
     "razao_renovavel_carga",
     "penetracao_solar",
     "penetracao_eolica_pot",
+    "folga_escoamento_sin_mw",
+    "excesso_sobre_escoamento_mw",
+    "despacho_total_est_excesso_mw",
+    "interacao_solar_eolica_mw",
+    "rampa_excedente_1h_mw",
+    "excedente_renovavel_roll_mean_24h",
+    "g_hidro_roll_mean_24h",
+    "intercambio_liquido_mw_lag_1h",
+    "intercambio_liquido_mw_roll_mean_24h",
+    "cf_eolica_lag_1h",
+    "cf_eolica_roll_mean_24h",
 ]
 
 
@@ -171,6 +181,25 @@ def evaluate_model_b_wind_cf(
     return rows, preds_map
 
 
+def _impute_with_train_medians(
+    X_tr: np.ndarray,
+    X_te: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Substitui eventuais NaNs/infs usando exclusivamente medianas do treino (< 2025, zero vazamento)."""
+    X_tr_clean = np.where(np.isfinite(X_tr), X_tr, np.nan)
+    X_te_clean = np.where(np.isfinite(X_te), X_te, np.nan)
+    medians = np.nanmedian(X_tr_clean, axis=0)
+    medians = np.where(np.isfinite(medians), medians, 0.0)
+    for j in range(X_tr_clean.shape[1]):
+        tr_na = ~np.isfinite(X_tr_clean[:, j])
+        if np.any(tr_na):
+            X_tr_clean[tr_na, j] = medians[j]
+        te_na = ~np.isfinite(X_te_clean[:, j])
+        if np.any(te_na):
+            X_te_clean[te_na, j] = medians[j]
+    return X_tr_clean, X_te_clean
+
+
 def evaluate_model_c_curtailment(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
@@ -184,21 +213,33 @@ def evaluate_model_c_curtailment(
     # Usar o regime operativo pós-agosto/2023 dentro do conjunto de treino (< 2025) para evitar viés
     # de época em que o SIN operava sob outra malha e sem geração solar distribuída relevante
     ts_train = pd.to_datetime(train_df["ts"])
-    train_coff = train_df[ts_train >= pd.Timestamp(COFF_REGIME_START_DATE)].reset_index(drop=True)
+    train_coff = (
+        train_df[ts_train >= pd.Timestamp(COFF_REGIME_START_DATE)]
+        .sort_values("ts")
+        .reset_index(drop=True)
+    )
     if len(train_coff) < 2000:
-        train_coff = train_df[train_df["year"] >= COFF_START_YEAR].reset_index(drop=True)
+        train_coff = (
+            train_df[train_df["year"] >= COFF_START_YEAR]
+            .sort_values("ts")
+            .reset_index(drop=True)
+        )
 
     feats = [c for c in FEATURES_CURTAILMENT if c in train_coff.columns]
-    X_tr = train_coff[feats].to_numpy(dtype=float)
+    X_tr_raw = train_coff[feats].to_numpy(dtype=float)
     y_tr_flag = train_coff["flag_curtailment"].to_numpy(dtype=int)
     y_tr_vol = train_coff["curtailment_mw"].to_numpy(dtype=float)
 
-    X_te = test_df[feats].to_numpy(dtype=float)
+    X_te_raw = test_df[feats].to_numpy(dtype=float)
+    X_tr, X_te = _impute_with_train_medians(X_tr_raw, X_te_raw)
     y_te_flag = test_df["flag_curtailment"].to_numpy(dtype=int)
     y_te_vol = test_df["curtailment_mw"].to_numpy(dtype=float)
 
     seed = int(ML_MODEL_PARAMS["seed"])
     prob_threshold = float(ML_MODEL_PARAMS["modelCProbThreshold"])
+    min_recency_weight = float(ML_MODEL_PARAMS.get("modelCRecencyMinWeight", 0.35))
+    sample_weights = np.linspace(min_recency_weight, 1.0, len(train_coff), dtype=float)
+
     c1_log_cfg = ML_MODEL_PARAMS["modelCStageC1Logistic"]
     c1_mlp_cfg = ML_MODEL_PARAMS["modelCStageC1ResMlp"]
     c1_gbdt_cfg = ML_MODEL_PARAMS["modelCStageC1Gbdt"]
@@ -206,10 +247,11 @@ def evaluate_model_c_curtailment(
     c2_gbdt_cfg = ML_MODEL_PARAMS["modelCStageC2Gbdt"]
 
     # 1. Estágio de Classificação: Logística L-BFGS-B vs. ResMLP Classifier vs. Histogram GBDT Classifier
+    # Ponderação temporal simétrica aplicada igualmente às famílias linear e não-lineares
     clf_lin = LogisticLBFGSModel(
         reg_l2=float(c1_log_cfg["regL2"]),
         max_iter=int(c1_log_cfg["maxIter"]),
-    ).fit(X_tr, y_tr_flag)
+    ).fit(X_tr, y_tr_flag, sample_weight=sample_weights)
     prob_lin = clf_lin.predict_proba(X_te)
     cm_lin = compute_classification_metrics(y_te_flag, prob_lin, threshold=prob_threshold)
 
@@ -217,9 +259,12 @@ def evaluate_model_c_curtailment(
         hidden_units=int(c1_mlp_cfg["hiddenUnits"]),
         reg_l2=float(c1_mlp_cfg["regL2"]),
         reg_l2_skip=float(c1_mlp_cfg["regL2Skip"]),
+        reg_l2_grid=tuple(float(v) for v in c1_mlp_cfg["regL2Grid"]),
+        cv_folds=int(c1_mlp_cfg["cvFolds"]),
+        n_ensemble=int(c1_mlp_cfg["nEnsemble"]),
         max_iter=int(c1_mlp_cfg["maxIter"]),
         seed=seed,
-    ).fit(X_tr, y_tr_flag)
+    ).fit(X_tr, y_tr_flag, sample_weight=sample_weights)
     prob_mlp = clf_mlp.predict_proba(X_te)
     cm_mlp = compute_classification_metrics(y_te_flag, prob_mlp, threshold=prob_threshold)
 
@@ -228,7 +273,9 @@ def evaluate_model_c_curtailment(
         learning_rate=float(c1_gbdt_cfg["learningRate"]),
         max_depth=int(c1_gbdt_cfg["maxDepth"]),
         min_samples_leaf=int(c1_gbdt_cfg["minSamplesLeaf"]),
-    ).fit(X_tr, y_tr_flag)
+        l2_leaf_reg=float(c1_gbdt_cfg["l2LeafReg"]),
+        seed=seed,
+    ).fit(X_tr, y_tr_flag, sample_weight=sample_weights)
     prob_gbdt = clf_gbdt.predict_proba(X_te)
     cm_gbdt = compute_classification_metrics(y_te_flag, prob_gbdt, threshold=prob_threshold)
 
@@ -237,10 +284,13 @@ def evaluate_model_c_curtailment(
     pos_mask_tr = y_tr_flag == 1
     X_tr_pos = X_tr[pos_mask_tr]
     y_tr_pos = y_tr_vol[pos_mask_tr]
+    w_tr_pos = sample_weights[pos_mask_tr]
     g_pot_te = test_df["g_eolica_potencial_mw"].to_numpy(dtype=float)
 
     # Baseline Linear Hurdle (Logística + Ridge condicional)
-    reg_lin = LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"]) * 2.0).fit(X_tr_pos, y_tr_pos)
+    reg_lin = LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"]) * 2.0).fit(
+        X_tr_pos, y_tr_pos, sample_weight=w_tr_pos
+    )
     vol_cond_lin = np.clip(reg_lin.predict(X_te), 0.0, g_pot_te)
     pred_vol_lin = np.clip(prob_lin * vol_cond_lin, 0.0, g_pot_te)
 
@@ -250,7 +300,7 @@ def evaluate_model_c_curtailment(
         reg_l2=float(c2_mlp_cfg["regL2"]),
         max_iter=int(c2_mlp_cfg["maxIter"]),
         seed=seed,
-    ).fit(X_tr_pos, y_tr_pos)
+    ).fit(X_tr_pos, y_tr_pos, sample_weight=w_tr_pos)
     vol_cond_mlp = np.clip(reg_mlp.predict(X_te), 0.0, g_pot_te)
     pred_vol_mlp = np.clip(prob_mlp * vol_cond_mlp, 0.0, g_pot_te)
 
@@ -260,7 +310,9 @@ def evaluate_model_c_curtailment(
         learning_rate=float(c2_gbdt_cfg["learningRate"]),
         max_depth=int(c2_gbdt_cfg["maxDepth"]),
         min_samples_leaf=int(c2_gbdt_cfg["minSamplesLeaf"]),
-    ).fit(X_tr_pos, y_tr_pos)
+        l2_leaf_reg=float(c2_gbdt_cfg["l2LeafReg"]),
+        seed=seed,
+    ).fit(X_tr_pos, y_tr_pos, sample_weight=w_tr_pos)
     vol_cond_gbdt = np.clip(reg_gbdt.predict(X_te), 0.0, g_pot_te)
     pred_vol_gbdt = np.clip(prob_gbdt * vol_cond_gbdt, 0.0, g_pot_te)
 

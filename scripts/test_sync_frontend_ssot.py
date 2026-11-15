@@ -233,8 +233,10 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertEqual(len(payload["monteCarlo12Scenarios2035"]), 12)
         for row in payload["monteCarlo12Scenarios2035"]:
             self.assertIn(row["windScenarioId"], {"base", "intermediate", "high"})
-        self.assertEqual(payload["annualRiskTimeline2026_2035"][0]["year"], 2026)
-        self.assertEqual(len(payload["annualRiskTimeline2026_2035"]), 10)
+        expected_tl_len = payload["config"]["targetEndYear"] - payload["config"]["projectionStartYear"] + 1
+        self.assertEqual(payload["annualRiskTimeline2026_2035"][0]["year"], payload["config"]["projectionStartYear"])
+        self.assertEqual(payload["annualRiskTimeline2026_2035"][-1]["year"], payload["config"]["targetEndYear"])
+        self.assertEqual(len(payload["annualRiskTimeline2026_2035"]), expected_tl_len)
         self.assertEqual(len(payload["transmissionSensitivity2035"]), 5)
         self.assertEqual(len(payload["h2vSynergySensitivity2035"]), 5)
         self.assertEqual(len(payload["scriptsPipeline"]), 7)
@@ -342,6 +344,14 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertNotIn("* 52.0", s06)
         self.assertNotIn("/ 0.21", s06)
 
+        from config import MONTE_CARLO_PARAMS
+
+        self.assertEqual(
+            MONTE_CARLO_PARAMS["iterationsTimeline"],
+            MONTE_CARLO_PARAMS["iterationsMain"],
+            "iterationsTimeline must match iterationsMain for 2035 parity",
+        )
+
         s07 = (SCRIPTS_DIR / "07_sensitivity_and_final_report.py").read_text(encoding="utf-8")
         self.assertIn("TX_SENSITIVITY_SPECS", s07)
         self.assertIn("H2V_SENSITIVITY_SPECS", s07)
@@ -443,6 +453,11 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertIn("HOURLY_BASELINE_CSV_FILENAME", s06)
         self.assertIn("SIMULATOR_GRID_CSV_FILENAME", s06)
         self.assertIn("SEASONAL_REGIME_MONTHS", s06)
+        self.assertIn('"g_hidraulica_mw"', s06)
+        self.assertIn('modern["g_hidro_mw"] = modern["g_hidraulica_mw"]', s06)
+        self.assertIn("OFFSHORE_COMMERCIAL_START_YEAR", s06)
+        self.assertIn("override_wind", s06)
+        self.assertIn("anchor_2035", s06)
 
     def test_c2_5_config_and_uicatalog_complete_contract(self) -> None:
         from config import build_ons_urls, export_frontend_config_dict
@@ -507,7 +522,122 @@ class TestSyncFrontendSsot(unittest.TestCase):
             self.assertNotIn("DEFAULT_ENERGY_MODEL_CONFIG", content, f"Config estático legado em {ts_path.name}")
             self.assertNotIn("GROUP_DECISIONS", content, f"Catálogo estático legado em {ts_path.name}")
 
+    def test_c3_1_causal_grid_features_symmetrical_weighting_and_calibration(self) -> None:
+        s03 = (SCRIPTS_DIR / "03_feature_engineering_anova.py").read_text(encoding="utf-8")
+        for feat_name in (
+            "folga_escoamento_sin_mw",
+            "excesso_sobre_escoamento_mw",
+            "despacho_total_est_excesso_mw",
+            "interacao_solar_eolica_mw",
+            "g_hidro_roll_mean_24h",
+            "rampa_excedente_1h_mw",
+            "excedente_renovavel_roll_mean_24h",
+        ):
+            self.assertIn(feat_name, s03, f"Feature C3-1 ausente em Script 03: {feat_name}")
+        self.assertIn("INTERCHANGE_EXPORT_LIMIT_MW", s03)
+        self.assertIn("EXPORT_SOLAR_CURTAILMENT_COEF", s03)
+
+        ml_src = (SCRIPTS_DIR / "ml_models_numpy.py").read_text(encoding="utf-8")
+        for symbol in (
+            "def _prepare_sample_weights(",
+            "sample_weight: Optional[np.ndarray] = None",
+            "self.calib_a_",
+            "self.calib_b_",
+            "cv_folds: int = 4",
+            "n_ensemble: int = 1",
+        ):
+            self.assertIn(symbol, ml_src, f"Contrato ML C3-1 ausente em ml_models_numpy.py: {symbol}")
+
+        s05 = (SCRIPTS_DIR / "05_forecast_wind_cf_and_curtailment.py").read_text(encoding="utf-8")
+        self.assertIn("def _impute_with_train_medians(", s05)
+        self.assertIn("modelCRecencyMinWeight", s05)
+        self.assertIn('c1_mlp_cfg["regL2Grid"]', s05)
+        self.assertIn('c1_mlp_cfg["cvFolds"]', s05)
+        self.assertIn('c1_mlp_cfg["nEnsemble"]', s05)
+        self.assertIn('c1_gbdt_cfg["l2LeafReg"]', s05)
+        self.assertIn('c2_gbdt_cfg["l2LeafReg"]', s05)
+
+        curt_feats_block = s05.split("FEATURES_CURTAILMENT = [", 1)[1].split("]", 1)[0]
+        self.assertNotIn('"month_sin"', curt_feats_block)
+        self.assertNotIn('"month_cos"', curt_feats_block)
+        for required_feat in (
+            '"folga_escoamento_sin_mw"',
+            '"excesso_sobre_escoamento_mw"',
+            '"despacho_total_est_excesso_mw"',
+            '"interacao_solar_eolica_mw"',
+            '"g_hidro_roll_mean_24h"',
+        ):
+            self.assertIn(required_feat, curt_feats_block)
+
+        # Garantir ponderação temporal simétrica em todos os 3 classificadores (C1) e 3 regressores (C2)
+        self.assertEqual(s05.count("sample_weight=sample_weights)"), 3)
+        self.assertEqual(s05.count("sample_weight=w_tr_pos"), 3)
+
+        meta = load_pipeline_metadata()
+        for meta_feat in (
+            "folga_escoamento_sin_mw",
+            "excesso_sobre_escoamento_mw",
+            "despacho_total_est_excesso_mw",
+            "interacao_solar_eolica_mw",
+            "g_hidro_roll_mean_24h",
+        ):
+            self.assertIn(meta_feat, meta["featureMetadata"])
+
+    def test_c3_2_seasonal_chesf_dispatch_solar_h2v_offshore_and_grid_parity(self) -> None:
+        from config import CHESF_DISPATCH_PARAMS, MONTE_CARLO_PARAMS
+
+        for key in (
+            "wetMonths",
+            "dryMonths",
+            "wetFloorBonusMW",
+            "wetSlope",
+            "drySlope",
+            "thermalInflexWeight",
+            "hydroObsBlend",
+        ):
+            self.assertIn(key, CHESF_DISPATCH_PARAMS, f"Chave C3-2 ausente em CHESF_DISPATCH_PARAMS: {key}")
+
+        for key in (
+            "firmWindCfDryWindy",
+            "firmWindCfWetCalm",
+            "firmWindCfOffshoreMarginal",
+            "offshoreMarginalBlendMult",
+        ):
+            self.assertIn(key, MONTE_CARLO_PARAMS, f"Chave C3-2 ausente em MONTE_CARLO_PARAMS: {key}")
+
+        s06 = (SCRIPTS_DIR / "06_monte_carlo_balance_2035.py").read_text(encoding="utf-8")
+        for symbol in (
+            '"month": modern["month"]',
+            '"hydro": hydro_arr',
+            '"thermal": thermal_arr',
+            "def _compute_firm_wind_cf(",
+            "month_arr: np.ndarray | None = None",
+            "obs_hydro_mw: np.ndarray | None = None",
+            "obs_thermal_mw: np.ndarray | None = None",
+            "curtail_surplus_active = pre_h2v_margin >= export_threshold",
+            "np.maximum(0.0, export_limit_mw - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block)",
+            'for reg in ("wet_calm", "dry_windy"):',
+            'for reg in ("annual_blend", "wet_calm"):',
+        ):
+            self.assertIn(symbol, s06, f"Refinamento C3-2 ausente em Script 06: {symbol}")
+
+        s07 = (SCRIPTS_DIR / "07_sensitivity_and_final_report.py").read_text(encoding="utf-8")
+        self.assertIn("month_arr=month_2025_arr", s07)
+        self.assertIn("obs_hydro_mw=hydro_2025_arr", s07)
+        self.assertIn("obs_thermal_mw=thermal_2025_arr", s07)
+
+        ts_model = (SCRIPTS_DIR.parent / "src" / "utils" / "energyModel.ts").read_text(encoding="utf-8")
+        for ts_symbol in (
+            "export interface ChesfDispatchContext",
+            "netNeedBaseMW",
+            "observedHydroMW",
+            "observedThermalMW",
+            "Math.max(0, config.interchangeExportLimitMW - ssotCfg.exportSolarCurtailmentCoef * solarGenMW)",
+        ):
+            self.assertIn(ts_symbol, ts_model, f"Paridade C3-2 ausente em energyModel.ts: {ts_symbol}")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

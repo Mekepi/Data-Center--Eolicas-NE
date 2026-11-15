@@ -244,6 +244,66 @@ test('evaluateScenario generates exact 8760h real-time series for every year 202
   }
 });
 
+test('Passo C3-2: computeChesfDispatchMW enforces wet/dry seasonality, thermal inflexibility, hydro blend, and water-constrained hourly parity', () => {
+  const chesf = PIPELINE_SSOT.config.chesfDispatch;
+
+  // Backward-compatible 2-argument call preserves static baseline
+  assert.equal(computeChesfDispatchMW(0, chesf), chesf.floorMW);
+  assert.equal(computeChesfDispatchMW(1_000_000, chesf), chesf.ceilingMW);
+
+  // Seasonal differentiation at equal net need (wet month > transition month > dry month)
+  const netNeed = 4000;
+  const wetDisp = computeChesfDispatchMW(netNeed, chesf, { month: 2, observedHydroMW: 0, observedThermalMW: 0 });
+  const transDisp = computeChesfDispatchMW(netNeed, chesf, { month: 6, observedHydroMW: 0, observedThermalMW: 0 });
+  const dryDisp = computeChesfDispatchMW(netNeed, chesf, { month: 9, observedHydroMW: 0, observedThermalMW: 0 });
+  assert.ok(wetDisp > transDisp && transDisp > dryDisp, `Expected wet (${wetDisp}) > trans (${transDisp}) > dry (${dryDisp})`);
+
+  // Thermal inflexibility adds thermalInflexWeight * observedThermalMW within ceiling
+  const withThermal = computeChesfDispatchMW(netNeed, chesf, { month: 9, observedHydroMW: 0, observedThermalMW: 1000 });
+  assert.ok(Math.abs(withThermal - dryDisp - chesf.thermalInflexWeight * 1000) < 1e-6);
+
+  // Observed hydro blend anchors curve toward obsHydro + thermalInflex when obsHydro > 0
+  const withHydroAnchor = computeChesfDispatchMW(netNeed, chesf, {
+    month: 9,
+    observedHydroMW: 6000,
+    observedThermalMW: 1000,
+  });
+  const expectedAnchor =
+    (1 - chesf.hydroObsBlend) * withThermal + chesf.hydroObsBlend * (6000 + chesf.thermalInflexWeight * 1000);
+  assert.ok(Math.abs(withHydroAnchor - expectedAnchor) < 1e-6);
+
+  // Bounds enforcement under extreme seasonal/thermal contexts
+  assert.equal(
+    computeChesfDispatchMW(0, chesf, { month: 2, observedHydroMW: 200, observedThermalMW: 0 }),
+    Math.max(
+      chesf.floorMW,
+      (1 - chesf.hydroObsBlend) * (chesf.floorMW + chesf.wetFloorBonusMW) + chesf.hydroObsBlend * 200
+    )
+  );
+  assert.equal(
+    computeChesfDispatchMW(500_000, chesf, { month: 2, observedHydroMW: 9000, observedThermalMW: 3000 }),
+    chesf.ceilingMW
+  );
+
+  // Water-constrained Chesf parity: otherDispatchableMW in estimateFullYearHourly does not expand artificially with DC load
+  const baseline8760 = makeTestBaseline8760();
+  const seriesNoDc = estimateFullYearHourly({ ...BASE_CONFIG, dcScenario: 'none' }, baseline8760, PIPELINE_SSOT);
+  const seriesHighDc = estimateFullYearHourly({ ...BASE_CONFIG, dcScenario: 'high' }, baseline8760, PIPELINE_SSOT);
+
+  for (const hIdx of [12, 1500, 3200, 6200, 8000]) {
+    assert.equal(
+      seriesHighDc[hIdx].otherDispatchableMW,
+      seriesNoDc[hIdx].otherDispatchableMW,
+      `Chesf hydro-thermal dispatch at hour ${hIdx} must follow water availability rather than DC load`
+    );
+    assert.ok(
+      Math.abs(seriesHighDc[hIdx].marginWithDcMW - (seriesHighDc[hIdx].marginWithoutDcMW - seriesHighDc[hIdx].dcLoadMW)) <=
+        0.3,
+      `Hourly conservation failed at hour ${hIdx}`
+    );
+  }
+});
+
 test('resolveMonteCarloSummary uses Python grid (exact + IDW interpolation) or SSOT anchors, never synthetic JS fallback', () => {
   const cfg = PIPELINE_SSOT.config;
   const baselineCfg = buildDefaultSimulationConfig(cfg);
@@ -328,6 +388,92 @@ test('resolveMonteCarloSummary uses Python grid (exact + IDW interpolation) or S
       interpRes.probCriticalImportAnnualPct < 8.0
   );
   assert.ok(interpRes.p95PeakImportMW !== null && interpRes.p95PeakImportMW > 6200 && interpRes.p95PeakImportMW < 7800);
+
+  // Intermediate year without local sensitivity slices (e.g. 2026) interpolates 5D across neighboring anchor years
+  const y2026Interp = resolveMonteCarloSummary(
+    { ...baselineCfg, targetYear: 2026, pue: 1.38, interchangeImportLimitMW: 6250 },
+    PIPELINE_SSOT
+  );
+  assert.equal(y2026Interp.sourceStatus, 'grid_interpolated');
+  assert.ok(y2026Interp.probCriticalImportAnnualPct !== null);
+
+  // Categorical slice without parametric variation along modified axis (wet_calm + off-nominal PUE) must be unavailable
+  const unsupportedWetCalm = resolveMonteCarloSummary(
+    { ...baselineCfg, targetYear: 2035, windScenario: 'base', seasonalRegime: 'wet_calm', pue: 1.4 },
+    PIPELINE_SSOT
+  );
+  assert.equal(unsupportedWetCalm.sourceStatus, 'unavailable');
+  assert.equal(unsupportedWetCalm.probCriticalImportAnnualPct, null);
+
+  // High wind without offshore (44.4 GW) must never match 48.0 GW grid_exact; interpolates between 36.4 GW and 48.0 GW when 44.4 GW is absent
+  const windCapHighNoOff = computeInstalledWindCapacityMW(
+    { targetYear: 2035, windScenario: 'high', includeOffshorePost2031: false },
+    cfg
+  );
+  const windCapHighOff = computeInstalledWindCapacityMW(
+    { targetYear: 2035, windScenario: 'high', includeOffshorePost2031: true },
+    cfg
+  );
+  const windCapInterm = computeInstalledWindCapacityMW(
+    { targetYear: 2035, windScenario: 'intermediate', includeOffshorePost2031: false },
+    cfg
+  );
+  const offshoreFixtureSsot: EnergyModelSsotInput = {
+    ...PIPELINE_SSOT,
+    simulatorMonteCarloGrid: [
+      {
+        year: 2035,
+        dcScenarioId: 'central',
+        windScenarioId: 'intermediate',
+        seasonalRegime: 'annual_blend',
+        pue: cfg.defaultPue,
+        dcUtilization: cfg.defaultUtilization,
+        importLimitMW: cfg.interchangeImportLimitMW,
+        exportLimitMW: cfg.interchangeExportLimitMW,
+        dcLoadMW: 1596.8,
+        windCapacityMW: windCapInterm.totalMW,
+        probExceedInterchangePct: 9.3,
+        loleHoursYear: 814.7,
+        importP50MW: 2600,
+        importP95MW: 8440,
+        curtailmentWithoutDcTWh: 13.5,
+        curtailmentWithDcTWh: 9.93,
+        curtailmentAvoidedGWh: 3578,
+        compensatoryWindGW: 6.85,
+      },
+      {
+        year: 2035,
+        dcScenarioId: 'central',
+        windScenarioId: 'high',
+        seasonalRegime: 'annual_blend',
+        pue: cfg.defaultPue,
+        dcUtilization: cfg.defaultUtilization,
+        importLimitMW: cfg.interchangeImportLimitMW,
+        exportLimitMW: cfg.interchangeExportLimitMW,
+        dcLoadMW: 1596.8,
+        windCapacityMW: windCapHighOff.totalMW,
+        probExceedInterchangePct: 5.4,
+        loleHoursYear: 473.0,
+        importP50MW: 1900,
+        importP95MW: 7100,
+        curtailmentWithoutDcTWh: 26.0,
+        curtailmentWithDcTWh: 20.5,
+        curtailmentAvoidedGWh: 5500,
+        compensatoryWindGW: 0.0,
+      },
+    ],
+  };
+  const highNoOffshoreInterp = resolveMonteCarloSummary(
+    { ...baselineCfg, targetYear: 2035, windScenario: 'high', includeOffshorePost2031: false },
+    offshoreFixtureSsot
+  );
+  assert.equal(highNoOffshoreInterp.sourceStatus, 'grid_interpolated');
+  assert.equal(highNoOffshoreInterp.installedWindGW, Number((windCapHighNoOff.totalMW / 1000).toFixed(2)));
+  assert.ok(
+    highNoOffshoreInterp.probCriticalImportAnnualPct !== null &&
+      highNoOffshoreInterp.probCriticalImportAnnualPct > 5.4 &&
+      highNoOffshoreInterp.probCriticalImportAnnualPct < 9.3
+  );
 });
 
 test('DATA_CENTER_PIPELINE conforms to official Northeast constraints and composite substation keys', async () => {
@@ -569,7 +715,7 @@ test('Passo 4 convergence: evaluateScenario(BASE_CONFIG, PIPELINE_SSOT) converge
   assert.ok(anchor, 'Central x Intermediate reference row must exist in SSOT');
 
   const result = evaluateScenario(BASE_CONFIG, PIPELINE_SSOT);
-  assert.equal(result.monteCarlo.sourceStatus, 'ssot_anchor');
+  assert.equal(result.monteCarlo.sourceStatus, 'grid_exact');
   assert.equal(result.summary.effectiveDcLoadMW, Number(anchor.dcLoadMW.toFixed(1)));
   assert.equal(result.monteCarlo.effectiveDcLoadMW, Number(anchor.dcLoadMW.toFixed(1)));
   assert.equal(result.monteCarlo.probCriticalImportAnnualPct, anchor.probExceedInterchangePct);
@@ -577,6 +723,12 @@ test('Passo 4 convergence: evaluateScenario(BASE_CONFIG, PIPELINE_SSOT) converge
   assert.equal(result.monteCarlo.expectedCurtailmentWithDcTWh, anchor.curtailmentWithDcTWh);
   assert.equal(result.monteCarlo.curtailmentAvoidedByDcGWh, Math.round(anchor.curtailmentAvoidedGWh));
   assert.equal(result.monteCarlo.requiredExtraWindGWForTargetRisk, anchor.compensatoryWindExpansionGW);
+
+  // Without pre-computed simulator grid, nominal Central x Intermediate must fall back cleanly to ssot_anchor
+  const anchorFallback = evaluateScenario(BASE_CONFIG, { ...PIPELINE_SSOT, simulatorMonteCarloGrid: [] });
+  assert.equal(anchorFallback.monteCarlo.sourceStatus, 'ssot_anchor');
+  assert.equal(anchorFallback.monteCarlo.probCriticalImportAnnualPct, anchor.probExceedInterchangePct);
+  assert.equal(anchorFallback.monteCarlo.p95PeakImportMW, Math.round(anchor.importP95MW));
 });
 
 test('Passo 4 dynamic SSOT scaling: resolveEffectiveDcLoadMW matches scenarioAnnualRamp, scales with PUE/utilization without double PUE, and computeInstalledWindCapacityMW honors injected config', () => {

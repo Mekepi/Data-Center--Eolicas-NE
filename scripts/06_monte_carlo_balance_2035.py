@@ -94,11 +94,30 @@ def _prepare_seasonal_blocks(
     else:
         hour_arr = pd.to_datetime(modern["ts"]).dt.hour.to_numpy(dtype=np.int32)
 
+    hydro_col = (
+        "g_hidro_mw"
+        if "g_hidro_mw" in modern.columns
+        else ("g_hidraulica_mw" if "g_hidraulica_mw" in modern.columns else None)
+    )
+    hydro_arr = (
+        pd.to_numeric(modern[hydro_col], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+        if hydro_col is not None
+        else np.zeros(len(modern), dtype=float)
+    )
+    thermal_arr = (
+        pd.to_numeric(modern["g_termica_mw"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+        if "g_termica_mw" in modern.columns
+        else np.zeros(len(modern), dtype=float)
+    )
+
     return {
         "cf": modern["cf_eolica"].to_numpy(dtype=float),
         "load": modern["l_base_mw"].to_numpy(dtype=float),
         "solar": modern["g_solar_mw"].fillna(0.0).to_numpy(dtype=float),
         "hour": hour_arr,
+        "month": modern["month"].to_numpy(dtype=np.int32),
+        "hydro": hydro_arr,
+        "thermal": thermal_arr,
     }
 
 
@@ -106,17 +125,78 @@ def _compute_chesf_hydro_thermal_dispatch(
     base_load_mw: np.ndarray,
     wind_gen_mw: np.ndarray,
     solar_gen_mw: np.ndarray,
+    month_arr: np.ndarray | None = None,
+    obs_hydro_mw: np.ndarray | None = None,
+    obs_thermal_mw: np.ndarray | None = None,
 ) -> np.ndarray:
     """
-    Modela a resposta operativa real das hidrelétricas da Chesf (Rio São Francisco) e térmicas/biomassa no NE
-    a partir dos parâmetros centralizados em CHESF_DISPATCH_PARAMS.
+    Modela a resposta operativa sazonal das hidrelétricas da Chesf (Rio São Francisco) e a
+    inflexibilidade térmica/biomassa no NE a partir de CHESF_DISPATCH_PARAMS:
+      - Estação úmida (Dez–Mai): defluência mínima mais alta e maior modulação nas pontas.
+      - Estação seca (Ago–Nov): conservação hídrica compensada por parcela da base térmica ONS.
+      - Ancoragem parcial (hydroObsBlend) na geração hidráulica observada g_hidro_mw quando > 0.
     """
     floor_mw = float(CHESF_DISPATCH_PARAMS["floorMW"])
-    slope = float(CHESF_DISPATCH_PARAMS["netNeedSlope"])
+    slope_base = float(CHESF_DISPATCH_PARAMS["netNeedSlope"])
     ceiling_mw = float(CHESF_DISPATCH_PARAMS["ceilingMW"])
     net_thermal_hydro_need = np.maximum(0.0, base_load_mw - (wind_gen_mw + solar_gen_mw))
-    modulated = floor_mw + slope * net_thermal_hydro_need
+
+    if month_arr is None and obs_hydro_mw is None and obs_thermal_mw is None:
+        return np.clip(floor_mw + slope_base * net_thermal_hydro_need, floor_mw, ceiling_mw)
+
+    wet_months = tuple(int(m) for m in CHESF_DISPATCH_PARAMS["wetMonths"])
+    dry_months = tuple(int(m) for m in CHESF_DISPATCH_PARAMS["dryMonths"])
+    wet_bonus = float(CHESF_DISPATCH_PARAMS["wetFloorBonusMW"])
+    wet_slope = float(CHESF_DISPATCH_PARAMS["wetSlope"])
+    dry_slope = float(CHESF_DISPATCH_PARAMS["drySlope"])
+    therm_weight = float(CHESF_DISPATCH_PARAMS["thermalInflexWeight"])
+    hydro_blend = float(CHESF_DISPATCH_PARAMS["hydroObsBlend"])
+
+    if month_arr is not None:
+        is_wet = np.isin(month_arr, wet_months)
+        is_dry = np.isin(month_arr, dry_months)
+        seasonal_floor = np.where(
+            is_wet,
+            floor_mw + wet_bonus,
+            np.where(is_dry, floor_mw, floor_mw + 0.5 * wet_bonus),
+        )
+        seasonal_slope = np.where(is_wet, wet_slope, np.where(is_dry, dry_slope, slope_base))
+    else:
+        seasonal_floor = np.full_like(net_thermal_hydro_need, floor_mw, dtype=float)
+        seasonal_slope = np.full_like(net_thermal_hydro_need, slope_base, dtype=float)
+
+    thermal_inflex = therm_weight * np.maximum(0.0, obs_thermal_mw) if obs_thermal_mw is not None else 0.0
+    model_curve = seasonal_floor + seasonal_slope * net_thermal_hydro_need + thermal_inflex
+
+    if obs_hydro_mw is not None and np.any(obs_hydro_mw > 0.0):
+        has_obs = obs_hydro_mw > 0.0
+        obs_anchor = obs_hydro_mw + thermal_inflex
+        modulated = np.where(has_obs, (1.0 - hydro_blend) * model_curve + hydro_blend * obs_anchor, model_curve)
+    else:
+        modulated = model_curve
+
     return np.clip(modulated, floor_mw, ceiling_mw)
+
+
+def _compute_firm_wind_cf(seasonal_regime: str, offshore_share: float) -> float:
+    """
+    Retorna o fator de capacidade firme crítico na calmaria diferenciando regime sazonal
+    (Safra vs. Calmaria Úmida vs. Anual) e participação marginal de eólica offshore pós-2031.
+    """
+    if seasonal_regime == "wet_calm":
+        cf_onshore = float(MONTE_CARLO_PARAMS["firmWindCfWetCalm"])
+    elif seasonal_regime == "dry_windy":
+        cf_onshore = float(MONTE_CARLO_PARAMS["firmWindCfDryWindy"])
+    else:
+        cf_onshore = float(MONTE_CARLO_PARAMS["firmWindCfBase"])
+
+    if offshore_share <= 0.0:
+        return cf_onshore
+
+    offshore_marg_cf = float(MONTE_CARLO_PARAMS["firmWindCfOffshoreMarginal"])
+    blend_mult = float(MONTE_CARLO_PARAMS["offshoreMarginalBlendMult"])
+    offshore_weight = min(0.5, max(0.0, offshore_share * blend_mult))
+    return (1.0 - offshore_weight) * cf_onshore + offshore_weight * offshore_marg_cf
 
 
 def simulate_block_bootstrap(
@@ -145,6 +225,9 @@ def simulate_block_bootstrap(
     load_arr = arrays["load"]
     solar_arr = arrays["solar"]
     hour_arr = arrays.get("hour")
+    month_arr = arrays.get("month")
+    hydro_arr = arrays.get("hydro")
+    thermal_arr = arrays.get("thermal")
 
     block_size = int(BLOCK_SIZE_HOURS)
     n_blocks = max(1, len(cf_arr) // block_size)
@@ -194,6 +277,9 @@ def simulate_block_bootstrap(
         cf_block = cf_arr[s:e]
         load_block = load_arr[s:e] * structural_load_growth
         solar_block = solar_arr[s:e] * solar_growth
+        month_block = month_arr[s:e] if month_arr is not None else None
+        hydro_block = hydro_arr[s:e] if hydro_arr is not None else None
+        thermal_block = thermal_arr[s:e] if thermal_arr is not None else None
 
         # 2. Incerteza da demanda base (resíduo Modelo A + anomalia de temperatura)
         sim_base_load = load_block * rng.normal(1.0, load_noise_std)
@@ -211,15 +297,30 @@ def simulate_block_bootstrap(
         # 4. Incerteza de utilização e PUE térmico dos Data Centers
         sim_dc_load = dc_load_mw * rng.uniform(dc_jit_min, dc_jit_max) if dc_load_mw > 0 else 0.0
 
-        # 4b. Carga eletrointensiva adicional opcional de Hidrogênio Verde (H2V)
+        # 5. Despacho hidrotérmico sazonal (Chesf + inflexibilidade térmica) e limiar solar-eólico de exportação
+        hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(
+            sim_base_load,
+            sim_wind_gen,
+            solar_block,
+            month_arr=month_block,
+            obs_hydro_mw=hydro_block,
+            obs_thermal_mw=thermal_block,
+        )
+        total_gen = sim_wind_gen + solar_block + hydro_thermal_mw
+        export_threshold = np.maximum(0.0, export_limit_mw - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block)
+
+        # 5b. Carga eletrointensiva opcional de Hidrogênio Verde (H2V) acoplada ao corte solar-eólico
         if h2v_nominal_mw > 0.0:
             if h2v_flexible:
                 if hour_arr is not None:
                     hr_block = hour_arr[s:e]
                 else:
                     hr_block = np.arange(block_size, dtype=np.int32) % HOURS_PER_DAY
+                pre_h2v_margin = total_gen - (sim_base_load + sim_dc_load)
+                curtail_surplus_active = pre_h2v_margin >= export_threshold
                 flex_factor = np.where(
                     (effective_cf >= h2v_high_cf)
+                    | curtail_surplus_active
                     | ((hr_block >= h2v_sol_hmin) & (hr_block <= h2v_sol_hmax) & (effective_cf >= h2v_sol_cf)),
                     h2v_high_f,
                     np.where(
@@ -236,10 +337,6 @@ def simulate_block_bootstrap(
             sim_h2v_block = 0.0
             h2v_means_mw[i] = 0.0
 
-        # 5. Despacho hidrotérmico modulado (Chesf + térmicas flexíveis) e Margem M(t)
-        hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(sim_base_load, sim_wind_gen, solar_block)
-        total_gen = sim_wind_gen + solar_block + hydro_thermal_mw
-
         margin_no_dc = total_gen - sim_base_load
         margin_with_dc = total_gen - (sim_base_load + sim_dc_load + sim_h2v_block)
 
@@ -254,7 +351,6 @@ def simulate_block_bootstrap(
         exceed_hours_annual[i] = float(np.sum(import_with_dc > import_limit_mw) * scale_to_year)
 
         # 6. Curtailment Horário (Modelo C: limite de exportação SIN + restrição elétrica solar diurna)
-        export_threshold = export_limit_mw - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block
         curt_no_dc_mw = np.maximum(0.0, margin_no_dc - export_threshold)
         curt_dc_mw = np.maximum(0.0, margin_with_dc - export_threshold)
 
@@ -272,10 +368,8 @@ def simulate_block_bootstrap(
     avoided_gwh = float(max(0.0, (avg_curt_no_dc - avg_curt_dc) * 1000.0))
     avoided_pct = float((avoided_gwh / max(1.0, avg_curt_no_dc * 1000.0)) * 100.0)
 
-    # Expansão eólica compensatória necessária (Seção 8 do PDF)
-    cf_firme_critico = float(MONTE_CARLO_PARAMS["firmWindCfBase"]) + (
-        float(MONTE_CARLO_PARAMS["firmWindCfOffshoreBonus"]) * offshore_share
-    )
+    # Expansão eólica compensatória necessária diferenciada por regime e offshore (Seção 8 do PDF)
+    cf_firme_critico = _compute_firm_wind_cf(seasonal_regime, offshore_share)
     excess_import_p95 = max(0.0, p95_import - import_limit_mw)
     req_extra_wind_gw = (excess_import_p95 / cf_firme_critico) / 1000.0
 
@@ -376,6 +470,9 @@ def run_bottom_up_project_monte_carlo(
     cf_array = arrays["cf"]
     base_load_array = arrays["load"]
     solar_array = arrays["solar"]
+    month_array = arrays.get("month")
+    hydro_array = arrays.get("hydro")
+    thermal_array = arrays.get("thermal")
     total_hours = len(cf_array)
     n_blocks = max(1, total_hours // block_size_hours)
     scale_to_year = float(HOURS_PER_YEAR) / float(block_size_hours)
@@ -457,13 +554,23 @@ def run_bottom_up_project_monte_carlo(
         cf_block = cf_array[start_h:end_h]
         load_block = base_load_array[start_h:end_h] * structural_growth
         solar_block = solar_array[start_h:end_h] * solar_growth
+        month_block = month_array[start_h:end_h] if month_array is not None else None
+        hydro_block = hydro_array[start_h:end_h] if hydro_array is not None else None
+        thermal_block = thermal_array[start_h:end_h] if thermal_array is not None else None
 
         sim_base_load = load_block * rng.normal(1.0, load_noise_std)
         sim_wind_completion = rng.uniform(wind_comp_min, wind_comp_max)
         sim_wind_regime = rng.uniform(wind_reg_min, wind_reg_max)
         sim_wind_gen = np.clip(cf_block * sim_wind_regime, 0.0, 1.0) * (wind_capacity_mw * sim_wind_completion)
 
-        hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(sim_base_load, sim_wind_gen, solar_block)
+        hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(
+            sim_base_load,
+            sim_wind_gen,
+            solar_block,
+            month_arr=month_block,
+            obs_hydro_mw=hydro_block,
+            obs_thermal_mw=thermal_block,
+        )
         total_gen = sim_wind_gen + solar_block + hydro_thermal_mw
         margin_with_dc = total_gen - (sim_base_load + iter_dc_load)
 
@@ -474,7 +581,7 @@ def run_bottom_up_project_monte_carlo(
         if max_import > INTERCHANGE_IMPORT_LIMIT_MW:
             critical_import_count += 1
 
-        export_threshold = INTERCHANGE_EXPORT_LIMIT_MW - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block
+        export_threshold = np.maximum(0.0, INTERCHANGE_EXPORT_LIMIT_MW - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block)
         curt_dc = np.sum(np.maximum(0.0, margin_with_dc - export_threshold))
         curtailment_dc_mwh.append(curt_dc * scale_to_year)
 
@@ -486,9 +593,7 @@ def run_bottom_up_project_monte_carlo(
     prob_critical = float((critical_import_count / n_iterations) * 100.0)
 
     offshore_share = wind_offshore_mw / max(1.0, wind_capacity_mw)
-    cf_firme_critico = float(MONTE_CARLO_PARAMS["firmWindCfBase"]) + (
-        float(MONTE_CARLO_PARAMS["firmWindCfOffshoreBonus"]) * offshore_share
-    )
+    cf_firme_critico = _compute_firm_wind_cf("annual_blend", offshore_share)
     excess_import = max(0.0, p95_import - INTERCHANGE_IMPORT_LIMIT_MW)
     req_extra_wind_mw = excess_import / cf_firme_critico
 
@@ -559,6 +664,9 @@ def build_and_export_hourly_baseline_8760(
     modern = df[df["year"] >= MODERN_BLOCK_START_YEAR].copy()
     if modern["year"].nunique() == 0:
         modern = df.copy()
+
+    if "g_hidro_mw" not in modern.columns and "g_hidraulica_mw" in modern.columns:
+        modern["g_hidro_mw"] = modern["g_hidraulica_mw"]
 
     value_cols = ["l_base_mw", "cf_eolica", "g_solar_mw", "g_hidro_mw", "g_termica_mw", "curtailment_mw"]
     for col in value_cols:
@@ -809,7 +917,7 @@ def export_simulator_monte_carlo_grid(
     }
 
     grid_rows: List[Dict[str, Any]] = []
-    seen_keys: set[Tuple[int, str, str, str, float, float, float, float]] = set()
+    seen_keys: set[Tuple[int, str, str, str, float, float, float, float, float]] = set()
     tasks: List[Tuple[Any, ...]] = []
 
     def _enqueue(
@@ -821,7 +929,11 @@ def export_simulator_monte_carlo_grid(
         util_v: float,
         imp_lim: float,
         exp_lim: float,
+        override_wind: Tuple[float, float] | None = None,
     ) -> None:
+        base_dc_mw, scen_w_on, scen_w_off = scen_lookup[(yr, dc_id, w_id)]
+        w_on, w_off = override_wind if override_wind is not None else (scen_w_on, scen_w_off)
+        wind_total_mw = round(w_on + w_off, 1)
         key = (
             yr,
             dc_id,
@@ -831,13 +943,15 @@ def export_simulator_monte_carlo_grid(
             round(util_v, 2),
             round(imp_lim, 1),
             round(exp_lim, 1),
+            wind_total_mw,
         )
         if key in seen_keys:
             return
         seen_keys.add(key)
 
         is_nominal_params = (
-            reg == "annual_blend"
+            override_wind is None
+            and reg == "annual_blend"
             and abs(pue_v - DEFAULT_PUE) < 1e-6
             and abs(util_v - DEFAULT_UTILIZATION) < 1e-6
             and abs(imp_lim - INTERCHANGE_IMPORT_LIMIT_MW) < 1e-6
@@ -868,7 +982,6 @@ def export_simulator_monte_carlo_grid(
                 })
                 return
 
-        base_dc_mw, w_on, w_off = scen_lookup[(yr, dc_id, w_id)]
         scaled_dc_mw = (
             base_dc_mw * (pue_v / DEFAULT_PUE) * (util_v / DEFAULT_UTILIZATION)
             if base_dc_mw > 0.0
@@ -893,6 +1006,8 @@ def export_simulator_monte_carlo_grid(
         ))
 
     # 1. Malha nominal completa 2025..2035 × 4 DC × 3 Eólica × 3 Regimes Sazonais
+    from config import OFFSHORE_COMMERCIAL_START_YEAR, OFFSHORE_SCENARIO_MW_POST_2031, OFFSHORE_START_YEAR
+
     for yr in range(PROJECTION_START_YEAR, TARGET_END_YEAR + 1):
         for dc_id in dc_order:
             for w_id in wind_order:
@@ -907,6 +1022,39 @@ def export_simulator_monte_carlo_grid(
                         INTERCHANGE_IMPORT_LIMIT_MW,
                         INTERCHANGE_EXPORT_LIMIT_MW,
                     )
+                    # Variante toggle Offshore pós-2031 para Alto (sem offshore) e Intermediário (com offshore)
+                    if yr >= OFFSHORE_COMMERCIAL_START_YEAR:
+                        _, base_on, base_off = scen_lookup[(yr, dc_id, w_id)]
+                        if w_id == REFERENCE_SCENARIO_KEYS["windHigh"] and base_off > 0.0:
+                            _enqueue(
+                                yr,
+                                dc_id,
+                                w_id,
+                                reg,
+                                DEFAULT_PUE,
+                                DEFAULT_UTILIZATION,
+                                INTERCHANGE_IMPORT_LIMIT_MW,
+                                INTERCHANGE_EXPORT_LIMIT_MW,
+                                override_wind=(base_on, 0.0),
+                            )
+                        elif w_id == REFERENCE_SCENARIO_KEYS["windIntermediate"] and base_off == 0.0:
+                            off_span = max(1.0, float(TARGET_END_YEAR - OFFSHORE_START_YEAR))
+                            off_mw = round(
+                                float(OFFSHORE_SCENARIO_MW_POST_2031[w_id])
+                                * ((yr - OFFSHORE_START_YEAR) / off_span),
+                                1,
+                            )
+                            _enqueue(
+                                yr,
+                                dc_id,
+                                w_id,
+                                reg,
+                                DEFAULT_PUE,
+                                DEFAULT_UTILIZATION,
+                                INTERCHANGE_IMPORT_LIMIT_MW,
+                                INTERCHANGE_EXPORT_LIMIT_MW,
+                                override_wind=(base_on, off_mw),
+                            )
 
     # 2. Fatias de sensibilidade paramétrica em anos-âncora (Intercâmbio TX e PUE × Utilização)
     sens_years = [int(y) for y in MONTE_CARLO_PARAMS["gridSensitivityYears"]]
@@ -944,6 +1092,47 @@ def export_simulator_monte_carlo_grid(
                         INTERCHANGE_IMPORT_LIMIT_MW,
                         INTERCHANGE_EXPORT_LIMIT_MW,
                     )
+
+    # 3. Cobertura expandida para regimes de alto risco (Calmaria Úmida wet_calm & Stress Test high)
+    for yr in [y for y in sens_years if y >= 2030]:
+        for reg in ("wet_calm", "dry_windy"):
+            for tx_spec in TX_SENSITIVITY_SPECS:
+                _enqueue(
+                    yr,
+                    dc_central,
+                    wind_interm,
+                    reg,
+                    DEFAULT_PUE,
+                    DEFAULT_UTILIZATION,
+                    float(tx_spec["importLimitMW"]),
+                    float(tx_spec["exportLimitMW"]),
+                )
+    for yr in [y for y in sens_years if y >= 2032]:
+        for dc_id in (dc_central, REFERENCE_SCENARIO_KEYS["dcHigh"]):
+            for pue_v in pue_values:
+                for util_v in util_values:
+                    _enqueue(
+                        yr,
+                        dc_id,
+                        wind_interm,
+                        "wet_calm",
+                        pue_v,
+                        util_v,
+                        INTERCHANGE_IMPORT_LIMIT_MW,
+                        INTERCHANGE_EXPORT_LIMIT_MW,
+                    )
+    for reg in ("annual_blend", "wet_calm"):
+        for tx_spec in TX_SENSITIVITY_SPECS:
+            _enqueue(
+                TARGET_END_YEAR,
+                REFERENCE_SCENARIO_KEYS["dcHigh"],
+                wind_interm,
+                reg,
+                DEFAULT_PUE,
+                DEFAULT_UTILIZATION,
+                float(tx_spec["importLimitMW"]),
+                float(tx_spec["exportLimitMW"]),
+            )
 
     print(
         f"[GRADE SIMULADOR 2025-2035] Executando {len(tasks)} pontos paramétricos "
@@ -1139,6 +1328,19 @@ def main():
 
     with mp.Pool(processes=n_workers) as pool:
         timeline_res = pool.map(_simulate_scenario_worker, timeline_tasks)
+
+    # Garante paridade exata de 2035 entre evolução anual e matriz principal (12 cenários)
+    anchor_2035 = next(
+        (r for r in res_12 if r.get("cenario_dc") == dc_central_key and r.get("cenario_eolica") == w_interm_key),
+        None,
+    )
+    if anchor_2035 is not None:
+        for idx, row in enumerate(timeline_res):
+            if int(row.get("target_year", 0)) == TARGET_END_YEAR:
+                synced_row = dict(anchor_2035)
+                synced_row["cenario_nome"] = row["cenario_nome"]
+                timeline_res[idx] = synced_row
+
     df_timeline = pd.DataFrame(timeline_res)
     df_timeline.to_csv(REPORTS_DIR / "evolucao_anual_risco_2026_2035.csv", index=False)
 

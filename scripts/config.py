@@ -68,10 +68,17 @@ EXPORT_SOLAR_CURTAILMENT_COEF = 0.18  # Redução da folga de exportação duran
 CURTAILMENT_FLAG_THRESHOLD_MW = 50.0  # Limiar operacional para caracterizar evento de corte (MWmed)
 WIND_POTENTIAL_FALLBACK_CAPACITY_MW = 3300.0  # Fallback auditável caso registro histórico antigo não possua cap. inicial
 
-CHESF_DISPATCH_PARAMS: Dict[str, float] = {
+CHESF_DISPATCH_PARAMS: Dict[str, Any] = {
     "floorMW": 2600.0,
     "netNeedSlope": 0.56,
     "ceilingMW": 9850.0,
+    "wetMonths": [12, 1, 2, 3, 4, 5],
+    "dryMonths": [8, 9, 10, 11],
+    "wetFloorBonusMW": 650.0,
+    "wetSlope": 0.62,
+    "drySlope": 0.50,
+    "thermalInflexWeight": 0.35,
+    "hydroObsBlend": 0.25,
 }
 
 # Parâmetros macro para indicadores separados ANEEL (capacidade) vs. ONS (geração)
@@ -123,7 +130,7 @@ REFERENCE_SCENARIO_KEYS: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 MONTE_CARLO_PARAMS: Dict[str, Any] = {
     "iterationsMain": 1000,
-    "iterationsTimeline": 800,
+    "iterationsTimeline": 1000,
     "iterationsBottomUp": 1000,
     "seed": 42,
     "maxWorkers": 6,
@@ -140,7 +147,11 @@ MONTE_CARLO_PARAMS: Dict[str, Any] = {
     "projectUtilMin": 0.72,
     "projectUtilMax": 0.94,
     "firmWindCfBase": 0.21,
+    "firmWindCfDryWindy": 0.34,
+    "firmWindCfWetCalm": 0.14,
     "firmWindCfOffshoreBonus": 0.06,
+    "firmWindCfOffshoreMarginal": 0.36,
+    "offshoreMarginalBlendMult": 3.0,
     "extraWindGwGrid": [0.0, 2.0, 4.0, 6.8, 10.0, 14.8, 18.4],
     "iterationsSimulatorGrid": 400,
     "gridSensitivityYears": [2025, 2028, 2030, 2032, 2035],
@@ -255,12 +266,33 @@ ML_MODEL_PARAMS: Dict[str, Any] = {
     "modelAGbdt": {"nEstimators": 85, "learningRate": 0.08, "maxDepth": 4, "minSamplesLeaf": 45},
     "modelBResMlp": {"hiddenUnits": 20, "regL2": 1e-3, "maxIter": 130},
     "modelBGbdt": {"nEstimators": 80, "learningRate": 0.08, "maxDepth": 4, "minSamplesLeaf": 45},
-    "modelCStageC1Logistic": {"regL2": 1e-3, "maxIter": 150},
-    "modelCStageC1ResMlp": {"hiddenUnits": 16, "regL2": 8e-4, "regL2Skip": 1e-3, "maxIter": 180},
-    "modelCStageC1Gbdt": {"nEstimators": 75, "learningRate": 0.08, "maxDepth": 4, "minSamplesLeaf": 30},
-    "modelCStageC2ResMlp": {"hiddenUnits": 16, "regL2": 1e-3, "maxIter": 130},
-    "modelCStageC2Gbdt": {"nEstimators": 75, "learningRate": 0.08, "maxDepth": 4, "minSamplesLeaf": 25},
+    "modelCStageC1Logistic": {"regL2": 1e-3, "maxIter": 180},
+    "modelCStageC1ResMlp": {
+        "hiddenUnits": 16,
+        "regL2": 4e-3,
+        "regL2Skip": 1e-3,
+        "regL2Grid": [5e-4, 2e-3, 8e-3, 3e-2],
+        "cvFolds": 4,
+        "nEnsemble": 3,
+        "maxIter": 180,
+    },
+    "modelCStageC1Gbdt": {
+        "nEstimators": 90,
+        "learningRate": 0.06,
+        "maxDepth": 3,
+        "minSamplesLeaf": 40,
+        "l2LeafReg": 12.0,
+    },
+    "modelCStageC2ResMlp": {"hiddenUnits": 20, "regL2": 2e-3, "maxIter": 150},
+    "modelCStageC2Gbdt": {
+        "nEstimators": 90,
+        "learningRate": 0.06,
+        "maxDepth": 4,
+        "minSamplesLeaf": 30,
+        "l2LeafReg": 10.0,
+    },
     "modelCProbThreshold": 0.45,
+    "modelCRecencyMinWeight": 0.35,
 }
 
 # ---------------------------------------------------------------------------

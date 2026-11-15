@@ -78,6 +78,13 @@ export interface PipelineConfigSnapshot {
     floorMW: number;
     netNeedSlope: number;
     ceilingMW: number;
+    wetMonths: number[];
+    dryMonths: number[];
+    wetFloorBonusMW: number;
+    wetSlope: number;
+    drySlope: number;
+    thermalInflexWeight: number;
+    hydroObsBlend: number;
   };
   thermalHydroInstalledCapMW: number;
   aneelProjectedYears: number[];
@@ -125,7 +132,11 @@ export interface PipelineConfigSnapshot {
     projectUtilMin: number;
     projectUtilMax: number;
     firmWindCfBase: number;
+    firmWindCfDryWindy: number;
+    firmWindCfWetCalm: number;
     firmWindCfOffshoreBonus: number;
+    firmWindCfOffshoreMarginal: number;
+    offshoreMarginalBlendMult: number;
     extraWindGwGrid: number[];
     iterationsSimulatorGrid: number;
     gridSensitivityYears: number[];

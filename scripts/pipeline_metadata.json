@@ -113,6 +113,26 @@
     "cf_lag1_squared": {
       "description": "Termo quadrático causal de Fator de Capacidade CF²(t-1)",
       "role": "Não-Linearidade Aerodinâmica"
+    },
+    "folga_escoamento_sin_mw": {
+      "description": "Folga remanescente do corredor de exportação SIN (limite efetivo menos excedente renovável) em MW",
+      "role": "Balanço Físico Exógeno"
+    },
+    "excesso_sobre_escoamento_mw": {
+      "description": "Excedente renovável positivo além da capacidade efetiva de escoamento SIN em MW (hinge de saturação)",
+      "role": "Balanço Físico Exógeno"
+    },
+    "despacho_total_est_excesso_mw": {
+      "description": "Pressão líquida estimada sobre o corredor considerando renováveis e ocupação hidráulica causal Chesf 24h",
+      "role": "Balanço Físico Exógeno"
+    },
+    "interacao_solar_eolica_mw": {
+      "description": "Coincidência horária solar × eólica potencial (GW² eq.) durante o pico fotovoltaico diurno",
+      "role": "Balanço Físico Exógeno"
+    },
+    "g_hidro_roll_mean_24h": {
+      "description": "Média móvel causal (t-1..t-24h) do despacho hidráulico Chesf como proxy de ocupação do corredor de transmissão",
+      "role": "Autoregressiva (Lag)"
     }
   },
   "scriptsCatalog": [

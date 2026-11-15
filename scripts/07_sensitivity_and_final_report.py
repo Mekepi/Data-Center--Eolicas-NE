@@ -349,6 +349,22 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
     load_2025_arr = df_2025["l_base_mw"].to_numpy(dtype=float)
     cf_2025_arr = df_2025["cf_eolica"].to_numpy(dtype=float)
     solar_2025_arr = df_2025["g_solar_mw"].fillna(0.0).to_numpy(dtype=float)
+    month_2025_arr = pd.to_datetime(df_2025["ts"]).dt.month.to_numpy(dtype=np.int32)
+    hydro_col_2025 = (
+        "g_hidro_mw"
+        if "g_hidro_mw" in df_2025.columns
+        else ("g_hidraulica_mw" if "g_hidraulica_mw" in df_2025.columns else None)
+    )
+    hydro_2025_arr = (
+        pd.to_numeric(df_2025[hydro_col_2025], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+        if hydro_col_2025 is not None
+        else np.zeros(len(df_2025), dtype=float)
+    )
+    thermal_2025_arr = (
+        pd.to_numeric(df_2025["g_termica_mw"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+        if "g_termica_mw" in df_2025.columns
+        else np.zeros(len(df_2025), dtype=float)
+    )
     solar_2025_mean_mw = float(np.mean(solar_2025_arr))
     solar_2025_cap_mw = max(float(SOLAR_CAP_MIN_MW), solar_2025_mean_mw * float(SOLAR_CAP_FROM_MEAN_FACTOR))
 
@@ -384,6 +400,9 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
             load_2025_arr * load_growth,
             cf_2025_arr * w_mw,
             proj_solar_gen_arr,
+            month_arr=month_2025_arr,
+            obs_hydro_mw=hydro_2025_arr,
+            obs_thermal_mw=thermal_2025_arr,
         )
         total_gen_mw = wind_eff_gen_mw + float(np.mean(proj_solar_gen_arr)) + float(np.mean(proj_hydro_therm_arr))
         share_gen = round((wind_eff_gen_mw / max(1.0, total_gen_mw)) * 100.0, 2)

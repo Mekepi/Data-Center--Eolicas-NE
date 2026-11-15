@@ -265,12 +265,56 @@ export function computeInstalledWindCapacityMW(
   };
 }
 
+export interface ChesfDispatchContext {
+  month?: number;
+  observedHydroMW?: number;
+  observedThermalMW?: number;
+}
+
 export function computeChesfDispatchMW(
   netNeedMW: number,
-  chesfConfig: PipelineConfigSnapshot['chesfDispatch']
+  chesfConfig: PipelineConfigSnapshot['chesfDispatch'],
+  context?: ChesfDispatchContext
 ): number {
-  const raw = chesfConfig.floorMW + chesfConfig.netNeedSlope * Math.max(0, netNeedMW);
-  return clamp(raw, chesfConfig.floorMW, chesfConfig.ceilingMW);
+  const positiveNeed = Math.max(0, netNeedMW);
+  if (
+    !context ||
+    (context.month === undefined &&
+      context.observedHydroMW === undefined &&
+      context.observedThermalMW === undefined)
+  ) {
+    const raw = chesfConfig.floorMW + chesfConfig.netNeedSlope * positiveNeed;
+    return clamp(raw, chesfConfig.floorMW, chesfConfig.ceilingMW);
+  }
+
+  let seasonalFloor = chesfConfig.floorMW;
+  let seasonalSlope = chesfConfig.netNeedSlope;
+  if (context.month !== undefined) {
+    const isWet = chesfConfig.wetMonths.includes(context.month);
+    const isDry = chesfConfig.dryMonths.includes(context.month);
+    if (isWet) {
+      seasonalFloor = chesfConfig.floorMW + chesfConfig.wetFloorBonusMW;
+      seasonalSlope = chesfConfig.wetSlope;
+    } else if (isDry) {
+      seasonalFloor = chesfConfig.floorMW;
+      seasonalSlope = chesfConfig.drySlope;
+    } else {
+      seasonalFloor = chesfConfig.floorMW + 0.5 * chesfConfig.wetFloorBonusMW;
+      seasonalSlope = chesfConfig.netNeedSlope;
+    }
+  }
+
+  const obsThermal = Math.max(0, context.observedThermalMW ?? 0);
+  const thermalInflex = chesfConfig.thermalInflexWeight * obsThermal;
+  const modelCurve = seasonalFloor + seasonalSlope * positiveNeed + thermalInflex;
+
+  const obsHydro = context.observedHydroMW ?? 0;
+  let modulated = modelCurve;
+  if (obsHydro > 0) {
+    const obsAnchor = obsHydro + thermalInflex;
+    modulated = (1 - chesfConfig.hydroObsBlend) * modelCurve + chesfConfig.hydroObsBlend * obsAnchor;
+  }
+  return clamp(modulated, chesfConfig.floorMW, chesfConfig.ceilingMW);
 }
 
 export function estimateFullYearHourly(
@@ -317,16 +361,17 @@ export function estimateFullYearHourly(
     const windGenPotentialMW = windCf * windCap.totalMW;
     const solarGenMW = regData.gSolarMW[h] * solarGrowth;
 
-    const netNeedNoDc = Math.max(0, baseLoadMW - (windGenPotentialMW + solarGenMW));
-    const chesfNoDc = computeChesfDispatchMW(netNeedNoDc, ssotCfg.chesfDispatch);
-    const marginWithoutDcMW = windGenPotentialMW + solarGenMW + chesfNoDc - baseLoadMW;
-
-    const netNeedWithDc = Math.max(0, totalLoadMW - (windGenPotentialMW + solarGenMW));
-    const chesfWithDc = computeChesfDispatchMW(netNeedWithDc, ssotCfg.chesfDispatch);
-    const totalGenPotentialMW = windGenPotentialMW + solarGenMW + chesfWithDc;
+    const netNeedBaseMW = Math.max(0, baseLoadMW - (windGenPotentialMW + solarGenMW));
+    const chesfDispatchMW = computeChesfDispatchMW(netNeedBaseMW, ssotCfg.chesfDispatch, {
+      month,
+      observedHydroMW: regData.gHydroMW[h] ?? 0,
+      observedThermalMW: regData.gThermalMW[h] ?? 0,
+    });
+    const totalGenPotentialMW = windGenPotentialMW + solarGenMW + chesfDispatchMW;
+    const marginWithoutDcMW = totalGenPotentialMW - baseLoadMW;
     const marginWithDcMW = totalGenPotentialMW - totalLoadMW;
 
-    const exportThresholdMW = config.interchangeExportLimitMW - ssotCfg.exportSolarCurtailmentCoef * solarGenMW;
+    const exportThresholdMW = Math.max(0, config.interchangeExportLimitMW - ssotCfg.exportSolarCurtailmentCoef * solarGenMW);
     const curtailmentWithoutDcMW = Math.max(0, marginWithoutDcMW - exportThresholdMW);
     const curtailmentWithDcMW = Math.max(0, marginWithDcMW - exportThresholdMW);
 
@@ -343,7 +388,7 @@ export function estimateFullYearHourly(
       windCapacityFactor: Number(windCf.toFixed(4)),
       windGenPotentialMW: Number(windGenPotentialMW.toFixed(1)),
       solarGenMW: Number(solarGenMW.toFixed(1)),
-      otherDispatchableMW: Number(chesfWithDc.toFixed(1)),
+      otherDispatchableMW: Number(chesfDispatchMW.toFixed(1)),
       totalGenPotentialMW: Number(totalGenPotentialMW.toFixed(1)),
       marginWithoutDcMW: Number(marginWithoutDcMW.toFixed(1)),
       marginWithDcMW: Number(marginWithDcMW.toFixed(1)),
@@ -535,6 +580,69 @@ export function resolveMonteCarloSummary(
     offshoreWindGW: Number((windCap.offshoreMW / 1000).toFixed(2)),
   };
 
+  const effectivePue = config.isPublishedPowerTotalGrid ? 1.0 : config.pue;
+  const matchPue = config.dcScenario === 'none' ? ssotCfg.defaultPue : effectivePue;
+  const matchUtil = config.dcScenario === 'none' ? ssotCfg.defaultUtilization : config.dcUtilization;
+
+  const isExactParams = (r: SimulatorMonteCarloGridRow) =>
+    Math.abs(r.pue - matchPue) < 1e-3 &&
+    Math.abs(r.dcUtilization - matchUtil) < 1e-3 &&
+    Math.abs(r.importLimitMW - config.interchangeImportLimitMW) < 5 &&
+    Math.abs(r.exportLimitMW - config.interchangeExportLimitMW) < 5;
+
+  const spansAxis = (
+    rows: SimulatorMonteCarloGridRow[],
+    getter: (r: SimulatorMonteCarloGridRow) => number,
+    tol: number
+  ) => {
+    if (rows.length < 2) return false;
+    const first = getter(rows[0]);
+    return rows.some((r) => Math.abs(getter(r) - first) >= tol);
+  };
+
+  const buildInterpolatedIdw = (
+    pool: SimulatorMonteCarloGridRow[],
+    includeYearAxis: boolean
+  ): MonteCarloSummary => {
+    const bounds = ssotCfg.simulatorSliderBounds;
+    const yearSpan = Math.max(1, bounds.year.max - bounds.year.min);
+    const pueSpan = Math.max(0.05, bounds.pue.max - bounds.pue.min);
+    const utilSpan = Math.max(0.05, bounds.dcUtilization.max - bounds.dcUtilization.min);
+    const impSpan = Math.max(500, bounds.interchangeImportLimitMW.max - bounds.interchangeImportLimitMW.min);
+    const expSpan = Math.max(500, bounds.interchangeExportLimitMW.max - bounds.interchangeExportLimitMW.min);
+
+    const weighted = pool
+      .map((row) => {
+        const dYear = includeYearAxis ? (row.year - config.targetYear) / yearSpan : 0;
+        const dPue = (row.pue - matchPue) / pueSpan;
+        const dUtil = (row.dcUtilization - matchUtil) / utilSpan;
+        const dImp = (row.importLimitMW - config.interchangeImportLimitMW) / impSpan;
+        const dExp = (row.exportLimitMW - config.interchangeExportLimitMW) / expSpan;
+        const dist = Math.sqrt(dYear * dYear + dPue * dPue + dUtil * dUtil + dImp * dImp + dExp * dExp);
+        return { row, dist, weight: 1 / Math.max(1e-6, dist * dist) };
+      })
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 4);
+
+    const sumW = weighted.reduce((acc, item) => acc + item.weight, 0);
+    const avg = (getter: (r: SimulatorMonteCarloGridRow) => number) =>
+      weighted.reduce((acc, item) => acc + getter(item.row) * item.weight, 0) / Math.max(1e-9, sumW);
+
+    return {
+      ...baseInfo,
+      sourceStatus: 'grid_interpolated',
+      probCriticalImportAnnualPct: Number(avg((r) => r.probExceedInterchangePct).toFixed(2)),
+      probCriticalWithoutDcPct: null,
+      loleCriticalHoursYear: Number(avg((r) => r.loleHoursYear).toFixed(1)),
+      p95PeakImportMW: Math.round(avg((r) => r.importP95MW)),
+      p50PeakImportMW: Math.round(avg((r) => r.importP50MW)),
+      expectedCurtailmentWithoutDcTWh: Number(avg((r) => r.curtailmentWithoutDcTWh).toFixed(2)),
+      expectedCurtailmentWithDcTWh: Number(avg((r) => r.curtailmentWithDcTWh).toFixed(2)),
+      curtailmentAvoidedByDcGWh: Math.round(avg((r) => r.curtailmentAvoidedGWh)),
+      requiredExtraWindGWForTargetRisk: Number(avg((r) => r.compensatoryWindGW).toFixed(2)),
+    };
+  };
+
   const grid = ssot.simulatorMonteCarloGrid ?? [];
   if (grid.length > 0) {
     const categoricalMatches = grid.filter(
@@ -546,17 +654,9 @@ export function resolveMonteCarloSummary(
     );
 
     const windMatched = categoricalMatches.filter((r) => Math.abs(r.windCapacityMW - windCap.totalMW) <= 150);
-    const pool = windMatched.length > 0 ? windMatched : categoricalMatches;
 
-    if (pool.length > 0) {
-      const effectivePue = config.isPublishedPowerTotalGrid ? 1.0 : config.pue;
-      const exact = pool.find(
-        (r) =>
-          Math.abs(r.pue - effectivePue) < 1e-3 &&
-          Math.abs(r.dcUtilization - config.dcUtilization) < 1e-3 &&
-          Math.abs(r.importLimitMW - config.interchangeImportLimitMW) < 5 &&
-          Math.abs(r.exportLimitMW - config.interchangeExportLimitMW) < 5
-      );
+    if (windMatched.length > 0) {
+      const exact = windMatched.find(isExactParams);
       if (exact) {
         const noDcCounterpart = grid.find(
           (r) =>
@@ -564,49 +664,88 @@ export function resolveMonteCarloSummary(
             r.dcScenarioId === ssotCfg.referenceScenarioKeys.dcControl &&
             r.windScenarioId === config.windScenario &&
             r.seasonalRegime === config.seasonalRegime &&
-            Math.abs(r.importLimitMW - config.interchangeImportLimitMW) < 5
+            Math.abs(r.windCapacityMW - windCap.totalMW) <= 150 &&
+            Math.abs(r.importLimitMW - config.interchangeImportLimitMW) < 5 &&
+            Math.abs(r.exportLimitMW - config.interchangeExportLimitMW) < 5
         );
         const res = fromGridRow(exact, effectiveDcLoadMW, windCap, 'grid_exact');
         res.probCriticalWithoutDcPct = noDcCounterpart ? noDcCounterpart.probExceedInterchangePct : null;
         return res;
       }
 
-      // Interpolação IDW determinística sobre os pontos da grade paramétrica do Python
-      const bounds = ssotCfg.simulatorSliderBounds;
-      const pueSpan = Math.max(0.05, bounds.pue.max - bounds.pue.min);
-      const utilSpan = Math.max(0.05, bounds.dcUtilization.max - bounds.dcUtilization.min);
-      const impSpan = Math.max(500, bounds.interchangeImportLimitMW.max - bounds.interchangeImportLimitMW.min);
-      const expSpan = Math.max(500, bounds.interchangeExportLimitMW.max - bounds.interchangeExportLimitMW.min);
+      const refRow = windMatched[0];
+      const pueDiffers = Math.abs(matchPue - refRow.pue) >= 1e-3;
+      const utilDiffers = Math.abs(matchUtil - refRow.dcUtilization) >= 1e-3;
+      const impDiffers = Math.abs(config.interchangeImportLimitMW - refRow.importLimitMW) >= 5;
+      const expDiffers = Math.abs(config.interchangeExportLimitMW - refRow.exportLimitMW) >= 5;
 
-      const weighted = pool
-        .map((row) => {
-          const dPue = (row.pue - effectivePue) / pueSpan;
-          const dUtil = (row.dcUtilization - config.dcUtilization) / utilSpan;
-          const dImp = (row.importLimitMW - config.interchangeImportLimitMW) / impSpan;
-          const dExp = (row.exportLimitMW - config.interchangeExportLimitMW) / expSpan;
-          const dist = Math.sqrt(dPue * dPue + dUtil * dUtil + dImp * dImp + dExp * dExp);
-          return { row, dist, weight: 1 / Math.max(1e-6, dist * dist) };
-        })
-        .sort((a, b) => a.dist - b.dist)
-        .slice(0, 4);
+      const supportsAxes = (rows: SimulatorMonteCarloGridRow[]) =>
+        (!pueDiffers || spansAxis(rows, (r) => r.pue, 1e-3)) &&
+        (!utilDiffers || spansAxis(rows, (r) => r.dcUtilization, 1e-3)) &&
+        (!impDiffers || spansAxis(rows, (r) => r.importLimitMW, 5)) &&
+        (!expDiffers || spansAxis(rows, (r) => r.exportLimitMW, 5));
 
-      const sumW = weighted.reduce((acc, item) => acc + item.weight, 0);
-      const avg = (getter: (r: SimulatorMonteCarloGridRow) => number) =>
-        weighted.reduce((acc, item) => acc + getter(item.row) * item.weight, 0) / Math.max(1e-9, sumW);
+      if (windMatched.length > 1 && supportsAxes(windMatched)) {
+        return buildInterpolatedIdw(windMatched, false);
+      }
 
-      return {
-        ...baseInfo,
-        sourceStatus: 'grid_interpolated',
-        probCriticalImportAnnualPct: Number(avg((r) => r.probExceedInterchangePct).toFixed(2)),
-        probCriticalWithoutDcPct: null,
-        loleCriticalHoursYear: Number(avg((r) => r.loleHoursYear).toFixed(1)),
-        p95PeakImportMW: Math.round(avg((r) => r.importP95MW)),
-        p50PeakImportMW: Math.round(avg((r) => r.importP50MW)),
-        expectedCurtailmentWithoutDcTWh: Number(avg((r) => r.curtailmentWithoutDcTWh).toFixed(2)),
-        expectedCurtailmentWithDcTWh: Number(avg((r) => r.curtailmentWithDcTWh).toFixed(2)),
-        curtailmentAvoidedByDcGWh: Math.round(avg((r) => r.curtailmentAvoidedGWh)),
-        requiredExtraWindGWForTargetRisk: Number(avg((r) => r.compensatoryWindGW).toFixed(2)),
-      };
+      // Para anos intermediários sem fatia paramétrica local (ex.: 2026/2027), interpola 5D com anos-âncora vizinhos
+      const sameCategoryAcrossYears = grid.filter((r) => {
+        if (
+          r.dcScenarioId !== config.dcScenario ||
+          r.windScenarioId !== config.windScenario ||
+          r.seasonalRegime !== config.seasonalRegime
+        ) {
+          return false;
+        }
+        const expectedYearWind = computeInstalledWindCapacityMW(
+          {
+            targetYear: r.year,
+            windScenario: config.windScenario,
+            includeOffshorePost2031: config.includeOffshorePost2031,
+          },
+          ssotCfg
+        );
+        return Math.abs(r.windCapacityMW - expectedYearWind.totalMW) <= 150;
+      });
+
+      if (sameCategoryAcrossYears.length > 1 && supportsAxes(sameCategoryAcrossYears)) {
+        return buildInterpolatedIdw(sameCategoryAcrossYears, true);
+      }
+    } else {
+      // Caso a capacidade eólica (ex.: High sem offshore = 44,4 GW) esteja entre trajetórias da grade, interpola por GW
+      const sameYearParamsPool = grid
+        .filter(
+          (r) =>
+            r.year === config.targetYear &&
+            r.dcScenarioId === config.dcScenario &&
+            r.seasonalRegime === config.seasonalRegime &&
+            isExactParams(r)
+        )
+        .sort((a, b) => a.windCapacityMW - b.windCapacityMW);
+
+      if (sameYearParamsPool.length >= 2) {
+        const lower = [...sameYearParamsPool].reverse().find((r) => r.windCapacityMW <= windCap.totalMW);
+        const upper = sameYearParamsPool.find((r) => r.windCapacityMW >= windCap.totalMW);
+        if (lower && upper && upper.windCapacityMW > lower.windCapacityMW) {
+          const t = (windCap.totalMW - lower.windCapacityMW) / (upper.windCapacityMW - lower.windCapacityMW);
+          const lerp = (getter: (r: SimulatorMonteCarloGridRow) => number) =>
+            getter(lower) * (1 - t) + getter(upper) * t;
+          return {
+            ...baseInfo,
+            sourceStatus: 'grid_interpolated',
+            probCriticalImportAnnualPct: Number(lerp((r) => r.probExceedInterchangePct).toFixed(2)),
+            probCriticalWithoutDcPct: null,
+            loleCriticalHoursYear: Number(lerp((r) => r.loleHoursYear).toFixed(1)),
+            p95PeakImportMW: Math.round(lerp((r) => r.importP95MW)),
+            p50PeakImportMW: Math.round(lerp((r) => r.importP50MW)),
+            expectedCurtailmentWithoutDcTWh: Number(lerp((r) => r.curtailmentWithoutDcTWh).toFixed(2)),
+            expectedCurtailmentWithDcTWh: Number(lerp((r) => r.curtailmentWithDcTWh).toFixed(2)),
+            curtailmentAvoidedByDcGWh: Math.round(lerp((r) => r.curtailmentAvoidedGWh)),
+            requiredExtraWindGWForTargetRisk: Number(lerp((r) => r.compensatoryWindGW).toFixed(2)),
+          };
+        }
+      }
     }
   }
 
@@ -622,9 +761,7 @@ export function resolveMonteCarloSummary(
   if (config.seasonalRegime === 'annual_blend' && isNominalPueUtil && isNominalLimits) {
     if (config.targetYear === ssotCfg.targetEndYear && (ssot.monteCarlo12Scenarios2035?.length ?? 0) > 0) {
       const exactRow = ssot.monteCarlo12Scenarios2035!.find(
-        (r) =>
-          r.dcScenarioId === config.dcScenario &&
-          (r.windScenarioId === config.windScenario || Math.abs(r.windCapacityMW - windCap.totalMW) <= 150)
+        (r) => r.dcScenarioId === config.dcScenario && Math.abs(r.windCapacityMW - windCap.totalMW) <= 150
       );
       if (exactRow) {
         const noDcRow = ssot.monteCarlo12Scenarios2035!.find(
