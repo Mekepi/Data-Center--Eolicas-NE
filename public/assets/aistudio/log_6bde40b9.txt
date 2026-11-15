@@ -1,0 +1,122 @@
+py scripts/05_forecast_wind_cf_and_curtailment.py
+>> py scripts/run_pipeline.py --only-from 07
+>> py -m unittest -v
+>> npm run test
+>> npm run dev
+========================================================================
+Script 05: Modelos B (CF Eólico) e C (Curtailment) — Validação Cega 2025
+========================================================================
+
+Benchmark Out-of-Time 2025 — Modelo B (Fator de Capacidade Eólico Potencial):
+                              horizonte                                           arquitetura  mae_cf  rmse_cf  r2_score  mae_potencia_equiv_mw
+       Operativo Curto Prazo (1h-Ahead)                            Baseline Linear · Ridge L2  0.0211   0.0277    0.9783                  632.1
+       Operativo Curto Prazo (1h-Ahead) Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)  0.0171   0.0225    0.9857                  511.8
+       Operativo Curto Prazo (1h-Ahead)      Challenger Não-Linear · Histogram GBDT (Árvores)  0.0203   0.0272    0.9791                  607.1
+Regime Diário / Sazonal (24h Day-Ahead)                            Baseline Linear · Ridge L2  0.0810   0.1031    0.6985                 2422.9
+Regime Diário / Sazonal (24h Day-Ahead) Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)  0.0799   0.1018    0.7060                 2391.9
+Regime Diário / Sazonal (24h Day-Ahead)      Challenger Não-Linear · Histogram GBDT (Árvores)  0.0806   0.1026    0.7011                 2412.7
+
+Benchmark Out-of-Time 2025 — Modelo C (Curtailment Eólico 2 Estágios):
+                                              arquitetura  roc_auc  brier_score  f1_score  mae_global_mw  r2_volume  energia_cortada_real_2025_twh  energia_cortada_pred_2025_twh
+               Baseline Linear · Logística + Ridge Hurdle   0.9479       0.0853    0.9213          710.5     0.9172                           25.7                          22.53
+Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2)   0.9520       0.0782    0.9270          634.5     0.9340                           25.7                          23.24
+   Challenger Não-Linear · Histogram GBDT Hurdle Completo   0.9293       0.0994    0.9086         1083.3     0.7551                           25.7                          18.74
+
+[SUCESSO] Métricas B/C e perfis comparativos 2025 exportados em: D:\github\Data-Center---E-licas-NE\reports
+========================================================================
+Orquestrador PTC3567 · Execução Sequencial da Esteira Analítica
+========================================================================
+  - [07] 07_sensitivity_and_final_report.py — Sensibilidade Passo 5 & Relatório Final
+  - [ssot] sync_frontend_ssot.py — Sincronização SSOT Frontend
+
+[PIPELINE -> 07] Iniciando 07_sensitivity_and_final_report.py (Sensibilidade Passo 5 & Relatório Final)...
+[INFO] 1. Executando Análise de Sensibilidade de Transmissão SIN via Motor Monte Carlo (2035)...
+[INFO]    -> Salvo: D:\github\Data-Center---E-licas-NE\reports\sensibilidade_transmissao_intercambio_2035.csv
+[INFO] 2. Executando Análise H2V vs. Data Centers 24/7 via Motor Monte Carlo (2035)...
+[INFO]    -> Salvo: D:\github\Data-Center---E-licas-NE\reports\sensibilidade_h2v_eletrointensivos_2035.csv
+[INFO] 3. Calculando Indicadores Separados ANEEL (Capacidade) vs. ONS (Geração Efetiva) 2015–2035...
+[INFO]    -> Salvo: D:\github\Data-Center---E-licas-NE\reports\indicadores_participacao_eolica_aneel_vs_ons_2015_2035.csv
+[INFO] 4. Relatório Executivo Final Consolidado gerado em: D:\github\Data-Center---E-licas-NE\reports\relatorio_final_consolidado_ptc3567_grupo6.md
+[SSOT] Frontend sincronizado com sucesso:
+  - JSON runtime: D:\github\Data-Center---E-licas-NE\public\data\pipeline-ssot.json
+  - Bundle TS:    D:\github\Data-Center---E-licas-NE\src\data\generated\pipelineSsot.ts
+  - Projetos DC:  14 | Subestações: 9 | Cenários MC: 12 | Scripts: 7
+[INFO] Passo 5 (Script 07) concluído e SSOT do Frontend sincronizado com sucesso.
+[PIPELINE -> 07] Concluído em 6.20s.
+
+[PIPELINE -> ssot] Iniciando sync_frontend_ssot.py (Sincronização SSOT Frontend)...
+[SSOT] Frontend sincronizado com sucesso:
+  - JSON runtime: D:\github\Data-Center---E-licas-NE\public\data\pipeline-ssot.json
+  - Bundle TS:    D:\github\Data-Center---E-licas-NE\src\data\generated\pipelineSsot.ts
+  - Projetos DC:  14 | Subestações: 9 | Cenários MC: 12 | Scripts: 7
+[PIPELINE -> ssot] Concluído em 0.95s.
+
+[SUCESSO] Pipeline concluído (2 etapas em 7.16s).
+test_build_ssot_payload_parity_with_official_scripts_and_reports (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_build_ssot_payload_parity_with_official_scripts_and_reports) ... ok
+test_c2_3_grid_and_hourly_baseline_contracts_and_optional_loading (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_3_grid_and_hourly_baseline_contracts_and_optional_loading) ... ok
+test_c2_3_script_06_defines_8760h_and_parametric_grid_exporters (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_3_script_06_defines_8760h_and_parametric_grid_exporters) ... ok
+test_c2_5_anti_hardcode_guardrails_across_scripts_and_frontend (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_5_anti_hardcode_guardrails_across_scripts_and_frontend) ... ok
+test_c2_5_config_and_uicatalog_complete_contract (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c2_5_config_and_uicatalog_complete_contract) ... ok
+test_c3_1_causal_grid_features_symmetrical_weighting_and_calibration (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c3_1_causal_grid_features_symmetrical_weighting_and_calibration) ... ok
+test_c3_2_seasonal_chesf_dispatch_solar_h2v_offshore_and_grid_parity (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_c3_2_seasonal_chesf_dispatch_solar_h2v_offshore_and_grid_parity) ... ok
+test_cross_consistency_validator_catches_tx_h2v_md_and_substation_drift (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_cross_consistency_validator_catches_tx_h2v_md_and_substation_drift) ... ok
+test_external_metadata_and_orchestrator_stage_resolution (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_external_metadata_and_orchestrator_stage_resolution) ... ========================================================================
+Orquestrador PTC3567 · Execução Sequencial da Esteira Analítica
+========================================================================
+  - [02] 02_build_dc_and_offshore_scenarios.py — Cenários Data Centers & Eólica
+  - [03] 03_feature_engineering_anova.py — Feature Engineering & ANOVA
+  - [04] 04_forecast_demanda_base.py — Modelo A · Demanda Base
+  - [05] 05_forecast_wind_cf_and_curtailment.py — Modelos B & C · CF e Curtailment
+  - [06] 06_monte_carlo_balance_2035.py — Monte Carlo 2035 (12 Cenários + Subestações)
+  - [07] 07_sensitivity_and_final_report.py — Sensibilidade Passo 5 & Relatório Final
+  - [ssot] sync_frontend_ssot.py — Sincronização SSOT Frontend
+
+[DRY-RUN] Nenhuma etapa foi executada.
+ok
+test_live_report_cross_consistency_when_regenerated_post_passo_2 (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_live_report_cross_consistency_when_regenerated_post_passo_2) ... ok
+test_model_c_stage_c1_wires_residual_mlp_classifier (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_model_c_stage_c1_wires_residual_mlp_classifier) ... ok
+test_model_c_stage_c2_supports_silu_tail_extrapolation (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_model_c_stage_c2_supports_silu_tail_extrapolation) ... ok
+test_read_csv_records_safe_handles_semicolon_bom_and_blank_rows (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_read_csv_records_safe_handles_semicolon_bom_and_blank_rows) ... ok
+test_resolve_substations_with_composite_key_prevents_voltage_collision (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_resolve_substations_with_composite_key_prevents_voltage_collision) ... ok
+test_safe_parsers_handle_blanks_nan_inf_and_ptbr_numbers (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_safe_parsers_handle_blanks_nan_inf_and_ptbr_numbers) ... ok
+test_scripts_01_to_07_align_with_config_and_resmlp_c2_2 (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_scripts_01_to_07_align_with_config_and_resmlp_c2_2) ... ok
+test_sync_frontend_ssot_blocks_write_when_cross_consistency_fails (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_sync_frontend_ssot_blocks_write_when_cross_consistency_fails) ... ok
+test_sync_frontend_ssot_writes_matching_json_and_ts (scripts.test_sync_frontend_ssot.TestSyncFrontendSsot.test_sync_frontend_ssot_writes_matching_json_and_ts) ... [SSOT] Frontend sincronizado com sucesso:
+  - JSON runtime: C:\Users\sandr\AppData\Local\Temp\tmps7ond00o\pipeline-ssot.json
+  - Bundle TS:    C:\Users\sandr\AppData\Local\Temp\tmps7ond00o\pipelineSsot.ts
+  - Projetos DC:  14 | Subestações: 9 | Cenários MC: 12 | Scripts: 7
+ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 5.025s
+
+OK
+
+> react-example@0.0.0 test
+> npx tsx --test src/utils/energyModel.test.ts
+
+✔ computeDataCenterLoadMW applies PUE only when power is IT load, avoiding double PUE when total grid power is published (2.0338ms)
+✔ computeWindGenerationMW converts capacity factor and installed MW properly (0.3306ms)
+✔ computeDcRampFactor grows monotonically across configured horizon (0.499ms)
+✔ computeInstalledWindCapacityMW includes offshore wind only from offshoreCommercialStartYear onward when enabled (0.404ms)
+✔ evaluateScenario generates exact 8760h real-time series for every year 2025..2035 and preserves hourly fidelity across multi-scale slices (641.3241ms)
+✔ Passo C3-2: computeChesfDispatchMW enforces wet/dry seasonality, thermal inflexibility, hydro blend, and water-constrained hourly parity (82.2322ms)
+✔ resolveMonteCarloSummary uses Python grid (exact + IDW interpolation) or SSOT anchors, never synthetic JS fallback (2.4455ms)
+✔ DATA_CENTER_PIPELINE conforms to official Northeast constraints and composite substation keys (2.4852ms)
+✔ ANOVA_TEST_RESULTS and MONTHLY_WIND_PROFILES statistically validate Northeast wind seasonality (2.5982ms)
+✔ Passo 3 Out-of-Time 2025 benchmarks confirm non-linear models outperform linear baselines across Models A, B, and C (1.1007ms)
+✔ Passo 4 Monte Carlo 2035 12-scenario matrix and compensatory wind curve validate physical trade-offs (0.7064ms)
+✔ Passo 5 sensitivity datasets validate transmission expansion, H2V flexible synergy, and ANEEL vs ONS indicators (2.955ms)
+✔ SSOT parity and anti-hardcode check: JSON, TS bundle, live Python scripts, config, and uiCatalog stay synchronized (12.5494ms)
+✔ Passo 4 convergence: evaluateScenario(BASE_CONFIG, PIPELINE_SSOT) converges dynamically to live SSOT Central x Intermediate anchor (0.6415ms)
+✔ Passo 4 dynamic SSOT scaling: resolveEffectiveDcLoadMW matches scenarioAnnualRamp, scales with PUE/utilization without double PUE, and computeInstalledWindCapacityMW honors injected config (0.4141ms)
+✔ Passo 5 csvExport helpers escape quotes, preserve nullish blanks, and prepend UTF-8 BOM with semicolon delimiter (2.4483ms)
+✔ Passo 5 computeFeaturesAnovaKpis derives consistent SSOT KPIs for panel subcomponents (2.7015ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1367.8406

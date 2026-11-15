@@ -268,7 +268,7 @@
         },
         {
           "requires": ["best_c_nl"],
-          "template": "Modelo C Hurdle Não-Linear (GBDT + ResMLP): ROC-AUC = {best_c_nl_roc_auc}, Brier = {best_c_nl_brier}, F1 = {best_c_nl_f1} e R² Volume = {best_c_nl_r2_vol}.",
+          "template": "Modelo C Hurdle Não-Linear (ResMLP C1+C2 Platt/SiLU): ROC-AUC = {best_c_nl_roc_auc}, Brier = {best_c_nl_brier}, F1 = {best_c_nl_f1} e R² Volume = {best_c_nl_r2_vol}.",
           "fallback": "Modelo C Hurdle em 2 estágios validado no teste cego de 2025."
         }
       ]

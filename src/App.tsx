@@ -142,9 +142,9 @@ const AppShell: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col overflow-x-clip">
       {/* Cabeçalho Principal Limpo e Científico */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium">
                 <span>PTC3567 · Grupo 6</span>
@@ -160,14 +160,14 @@ const AppShell: React.FC = () => {
               </h1>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-2.5 text-xs">
               <div className="px-3 py-1.5 bg-slate-100 rounded-md text-slate-700 font-medium tabular-nums">
                 Checklist de Bases: {checkedCount}/{totalCatalogDbs} verificadas
               </div>
               <button
                 type="button"
                 onClick={handleExportCatalogCsv}
-                className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {exportFeedback ?? 'Exportar Guia de Fontes (.csv)'}
               </button>
@@ -175,7 +175,7 @@ const AppShell: React.FC = () => {
           </div>
 
           {/* Barra de Navegação */}
-          <nav aria-label="Navegação principal" className="mt-4 flex flex-wrap gap-2">
+          <nav aria-label="Navegação principal" className="mt-3 flex flex-wrap gap-1.5">
             {navItems.map((tab) => {
               const isActive = activeTab === tab.id;
               return (
@@ -183,7 +183,7 @@ const AppShell: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-3.5 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     isActive
                       ? 'bg-sky-700 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'

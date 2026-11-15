@@ -438,8 +438,11 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
             <h3 id="heading-bench-c" className="text-lg font-bold text-slate-900 mt-0.5">
               Arquitetura Hurdle em 2 Estágios: Probabilidade P(Corte &gt; {cfg.curtailmentFlagThresholdMW} MW) e Volume Cortado (MWh)
             </h3>
+            <p className="text-xs text-slate-600 mt-1">
+              Estágio C1 (classificador calibrado por Platt out-of-fold) acoplado ao Estágio C2 (regressor de volume com ativação <span className="font-mono">SiLU</span> para caudas de excedente).
+            </p>
           </div>
-          <span className="text-xs font-mono text-slate-600 tabular-nums">
+          <span className="text-xs font-mono text-slate-600 tabular-nums shrink-0">
             {cfg.baselineYear - 1} Real:{' '}
             {kpis.ind2024 ? `${kpis.ind2024.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh` : '—'} ·{' '}
             {cfg.baselineYear} Real:{' '}
@@ -453,11 +456,12 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
               <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase">
                 <th className="py-3 pr-4">Arquitetura Hurdle (Estágio 1 + Estágio 2)</th>
                 <th className="py-3 px-3">Família</th>
-                <th className="py-3 px-3 font-mono">ROC-AUC (Detecção)</th>
-                <th className="py-3 px-3 font-mono">Brier Score</th>
+                <th className="py-3 px-3 font-mono">ROC-AUC</th>
+                <th className="py-3 px-3 font-mono">Brier</th>
                 <th className="py-3 px-3 font-mono">F1-Score</th>
-                <th className="py-3 px-3 font-mono">MAE Global (MW)</th>
-                <th className="py-3 pl-3 font-mono">R² Volume</th>
+                <th className="py-3 px-3 font-mono">MAE Global</th>
+                <th className="py-3 px-3 font-mono">R² Volume</th>
+                <th className="py-3 pl-3 font-mono">Energia {cfg.baselineYear} (Pred. / Real)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700">
@@ -471,10 +475,14 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
                   <td className="py-3.5 px-3 font-mono font-bold text-sky-900">{row.rocAuc.toFixed(4)}</td>
                   <td className="py-3.5 px-3 font-mono font-semibold text-emerald-800">{row.brierScore.toFixed(4)}</td>
                   <td className="py-3.5 px-3 font-mono text-slate-800">{row.f1Score.toFixed(4)}</td>
-                  <td className="py-3.5 px-3 font-mono font-semibold text-slate-900">
+                  <td className="py-3.5 px-3 font-mono font-semibold text-slate-900 whitespace-nowrap">
                     {row.maeGlobalMW.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MW
                   </td>
-                  <td className="py-3.5 pl-3 font-mono font-bold text-slate-900">{row.r2Volume.toFixed(4)}</td>
+                  <td className="py-3.5 px-3 font-mono font-bold text-slate-900">{row.r2Volume.toFixed(4)}</td>
+                  <td className="py-3.5 pl-3 font-mono font-semibold text-amber-900 whitespace-nowrap">
+                    {row.predCurtailed2025TWh.toFixed(2).replace('.', ',')} /{' '}
+                    {row.realCurtailed2025TWh.toFixed(2).replace('.', ',')} TWh
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -270,8 +270,8 @@ export const FeaturesAndAnovaView: React.FC = () => {
               (Transmissão / H2V)
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Modelos lineares e não-lineares (<span className="font-mono">{ssot.lineage.comparativeNonLinearArchitecture}</span>,{' '}
-              <span className="font-mono">ResidualMLPClassifier</span> L-BFGS-B e{' '}
+              Modelos lineares e não-lineares (<span className="font-mono">{ssot.lineage.comparativeNonLinearArchitecture}</span>{' '}
+              <span className="font-mono">tanh/SiLU</span>, <span className="font-mono">ResidualMLPClassifier</span> L-BFGS-B + Platt e{' '}
               <span className="font-mono">HistogramGBDT</span> em <span className="font-mono">numpy/scipy</span>)
               treinados em{' '}
               <strong>
@@ -372,7 +372,7 @@ export const FeaturesAndAnovaView: React.FC = () => {
             </span>
             <span className="text-xs text-slate-600 mt-0.5 block">
               {kpis.cBest
-                ? `Brier = ${kpis.cBest.brierScore.toFixed(4).replace('.', ',')} · F1 = ${kpis.cBest.f1Score.toFixed(4).replace('.', ',')} (${kpis.cBest.realCurtailed2025TWh.toFixed(2).replace('.', ',')} TWh em 2025)`
+                ? `Brier = ${kpis.cBest.brierScore.toFixed(4).replace('.', ',')} · R² Vol = ${kpis.cBest.r2Volume.toFixed(4).replace('.', ',')} (${kpis.cBest.predCurtailed2025TWh.toFixed(2).replace('.', ',')} vs ${kpis.cBest.realCurtailed2025TWh.toFixed(2).replace('.', ',')} TWh)`
                 : 'SSOT Model C'}
             </span>
           </div>

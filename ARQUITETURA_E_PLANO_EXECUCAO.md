@@ -1,9 +1,9 @@
 # Documento Base de Arquitetura e Plano Sequencial de Execução (Ciclo 3)
 
 **Projeto:** Balanço Eólico & Data Centers NE 2035 (PTC3567 · Grupo 6)  
-**Estado Atual:** Ciclos 1–2 + Passos C3-1 e C3-2 concluídos + **Execução científica parcial C3-3 materializada e SSOT desbloqueado** (`18/18` testes Python OK · `16/17` testes TS OK · Aguardando reexecução rápida `--only-from 05` para fechar `r2_volume` do Estágio C2 e iniciar Passo C3-4)  
+**Estado Atual:** **Ciclo 3 Integralmente Concluído e Congelado (`C3-1` a `C3-4` `[x]`)** · `18/18` testes Python OK · `17/17` subtestes TS OK · `tsc --noEmit` & `vite build` OK · Inspeção visual em navegador (`1440×900` e `390×844`) com `0` erros de console  
 **Data de Referência:** 2026-11-15  
-**Finalidade:** Documentar exclusivamente a arquitetura vigente do sistema, o diagnóstico técnico quantitativo de entrada e os próximos passos sequenciais do **Ciclo 3** (engenharia elétrica, ciência de dados e calibração física dos modelos).
+**Finalidade:** Documentar exclusivamente a arquitetura vigente do sistema, o diagnóstico técnico quantitativo consolidado e o fechamento sequencial do **Ciclo 3** (engenharia elétrica, ciência de dados, calibração física dos modelos e verificação ponta a ponta).
 
 ---
 
@@ -28,11 +28,11 @@ Toda a parametrização numérica, física e editorial converge em fonte única 
 - `scripts/07_sensitivity_and_final_report.py`: análises de sensibilidade `TX-01..TX-05` e `H2V-01..H2V-05` via `simulate_block_bootstrap`, indicadores ANEEL vs. ONS `2015–2035`, relatório técnico Markdown parametrizado e disparo de `sync_frontend_ssot()`.
 - `scripts/run_pipeline.py`: orquestrador único (`01 -> 02 -> 03 -> 04 -> 05 -> 06 -> 07 -> ssot`) com `--skip-ingest`, `--only-from` e `--dry-run`.
 - `scripts/sync_frontend_ssot.py`: gerador do contrato SSOT dual (`public/data/pipeline-ssot.json` + `src/data/generated/pipelineSsot.ts`), com parsers defensivos PT-BR/EN, checagem cruzada bloqueante `validate_ssot_cross_consistency` e embarque literal de `scripts/*.py` e `config`.
-- `scripts/test_sync_frontend_ssot.py`: suíte `unittest` (17 testes) em Python puro (stdlib) validando parsers, orquestrador, chave composta de subestações, consistência cruzada, contratos do simulador, guardrails C3-1/C3-2 e anti-hardcode.
+- `scripts/test_sync_frontend_ssot.py`: suíte `unittest` (18 testes) em Python puro (stdlib) validando parsers, orquestrador, chave composta de subestações, consistência cruzada, contratos do simulador, guardrails C3-1/C3-2/C3-3 (incluindo derivadas/extrapolação `SiLU`) e anti-hardcode.
 
 ### 1.3 Artefatos de Dados, Relatórios e Contratos SSOT (`/data`, `/reports`, `/public`)
 - `data/raw/` e `data/scenarios/`: cadastro de data centers, série de concentração por subestação e matriz anual `matriz_cenarios_dc_eolica_2026_2035.csv`. *(CSVs massivos do ONS e `data/processed/*.csv` são gerados localmente em ambiente Python científico e ignorados no Git.)*
-- `reports/`: 18 CSVs analíticos (incluindo `serie_base_horaria_8760h_ons.csv` e `grade_simulador_monte_carlo_2025_2035.csv` com 536+ linhas) + `relatorio_final_consolidado_ptc3567_grupo6.md`.
+- `reports/`: 18 CSVs analíticos (incluindo `serie_base_horaria_8760h_ons.csv` e `grade_simulador_monte_carlo_2025_2035.csv` com `696` linhas) + `relatorio_final_consolidado_ptc3567_grupo6.md`.
 - `public/data/hourly-baseline-8760.json`: série horária real de `8.760 h` em formato colunar compacto (`annual_blend`, `dry_windy`, `wet_calm`) validada por digest SHA-256 (`hoursCount = 8760`).
 - `public/data/pipeline-ssot.json` & `src/data/generated/pipelineSsot.ts`: artefatos SSOT sincronizados (`schemaVersion = 2.0.0`).
 - `public/assets/`: documento PDF de referência do Plano Orientador.
@@ -63,16 +63,17 @@ Toda a parametrização numérica, física e editorial converge em fonte única 
 | **Modelo B · CF Eólico (`1h`)** | Ridge `MAE 0,0211` (`632,1 MW`, `R² 0,9783`) | `MAE 0,0171` (`511,8 MW`, `R² 0,9857`) | `MAE 0,0203` (`607,1 MW`, `R² 0,9791`) | ResMLP vence |
 | **Modelo B · CF Eólico (`24h`)** | Ridge `MAE 0,0810` (`2.422,9 MW`, `R² 0,6985`) | `MAE 0,0799` (`2.391,9 MW`, `R² 0,7060`) | `MAE 0,0806` (`2.412,7 MW`, `R² 0,7011`) | ResMLP vence |
 | **Modelo C · Estágio C1 (Ocorrência)** | Logística `ROC-AUC 0,9479` (`Brier 0,0853`, `F1 0,9213`) | `ROC-AUC 0,9520` (`Brier 0,0782`, `F1 0,9270`) | `ROC-AUC 0,9293` (`Brier 0,0994`, `F1 0,9086`) | **Gate C1 fechado (ResMLP vence em AUC, Brier e F1)** |
-| **Modelo C · Estágio C2 (Volume)** | Ridge `R² 0,9172` (`MAE 710,5 MW`, `22,53 TWh`) | `MAE 700,2 MW` (vence!), `R² 0,9165` (`22,00 TWh`, déficit `-0,0007` na cauda) | `R² 0,7551` (`MAE 1.083,3 MW`, `18,74 TWh`) | **Upgrade C2 aplicado (`activation="silu"` não-saturante); reexecutar `--only-from 05`** |
+| **Modelo C · Estágio C2 (Volume)** | Ridge `R² 0,9172` (`MAE 710,5 MW`, `22,53 TWh`) | `MAE 634,5 MW` · `RMSE 966,8 MW` · **`R² 0,9340`** (`23,24 TWh`) | `R² 0,7551` (`MAE 1.083,3 MW`, `18,74 TWh`) | **Gate C2 fechado (ResMLP SiLU vence em MAE, RMSE, R² e TWh)** |
 
-### 2.2 Saneamento Materializado em Passo C3-3 (Rodadas 1–2) e Estado dos Testes
-- **Materializado e validado no repositório após execução científica:**
+### 2.2 Saneamento Materializado em Passo C3-3 (Concluído) e Estado dos Testes
+- **Materializado e validado no repositório após execução científica (`log_6bde40b9.txt`):**
   1. `public/data/hourly-baseline-8760.json` (`digest = 077346f9d62b5361`) e `reports/serie_base_horaria_8760h_ons.csv`: **`gHydroMW` populado** (`1.750,4` a `7.395,4 MW`, média `3.228,56 MW`).
   2. Paridade `2035` 100% exata entre `matriz_cenarios_monte_carlo_2035.csv` (`Central × Intermediária`: `10,0%`, `LOLE 62,7 h`, `P95 8.439,5 MW`, `10,91 TWh`, `3.930,8 GWh`, `+6,85 GW`), `evolucao_anual_risco_2026_2035.csv`, `TX-03`, `H2V-01` e `grade_simulador_monte_carlo_2025_2035.csv` (`696` linhas com variantes offshore pós-2031).
-  3. **Diagnóstico e correções aplicadas após a rodada 2 (`log_473f367f.txt`):**
-     - `scripts/sync_frontend_ssot.py`: corrigido `validate_ssot_cross_consistency` para exigir paridade de `windCapacityMW` ao comparar com `MC12` (evitando falso conflito das variantes offshore `44.400 MW` / `38.200 MW`) e preservar `"none"` via `safe_str(..., REFERENCE_SCENARIO_KEYS["dcControl"])`. SSOT sincronizado (`public/data/pipeline-ssot.json` + `src/data/generated/pipelineSsot.ts`).
-     - **Fechamento do Estágio C2 (`ml_models_numpy.py`, `config.py`, `05_forecast_wind_cf_and_curtailment.py`):** a primeira calibração (`CV + reg_l2_skip + ensemble`) fez o `ResMLP Hurdle` vencer em **MAE Global** (`700,2 < 710,5 MW`) e saltar de `R² 0,9143 -> 0,9165`, ficando a apenas **`0,0007`** de `0,9172` (Ridge) porque `tanh` satura em `±1` nas horas extremas de `2025` (`+3σ..+5σ`, `25,70 TWh` reais vs. `9,04 TWh` em 2024). Adicionada opção `activation="silu"` (`z · sigmoid(z)`) no `ResidualMLPRegressor` exclusivamente para o Estágio C2 (`regL2Skip = 4e-3`, `regL2Grid` até `4e-1`, `maxIter = 200`), preservando extrapolação linear na cauda sem compressão e mantendo `tanh` nos Modelos A e B.
-- **Estado atual das suítes:** `18/18` testes Python (`unittest`) aprovados no contêiner; `16/17` subtestes TypeScript (`energyModel.test.ts`) aprovados (`rocAuc`, `brierScore`, `f1Score` e `maeGlobal` do Modelo C já vencem o linear!) — restando apenas a asserção `nonLinearHurdle.r2Volume > linearHurdle.r2Volume` no Subteste 10 após reexecução rápida `--only-from 05` no ambiente Python científico.
+  3. **SSOT & Validação Cruzada (`scripts/sync_frontend_ssot.py`):** corrigido `validate_ssot_cross_consistency` (`windCapacityMW` + `dcControl = "none"`) e sincronizado SSOT com `0` violações (ressincronizado em C3-4 após ajuste editorial em `pipeline_metadata.json`).
+  4. **Fechamento completo do Modelo C (`ResMLP Hurdle C1+C2`):** após adoção de `activation="silu"` (`z · sigmoid(z)`) no Estágio C2 (`ml_models_numpy.py`, `config.py`, `05_forecast_wind_cf_and_curtailment.py`), o modelo não-linear superou o baseline linear em **todos** os critérios:
+     - **Estágio C1:** `ROC-AUC = 0,9520` (vs. `0,9479`), `Brier = 0,0782` (vs. `0,0853`), `F1 = 0,9270` (vs. `0,9213`).
+     - **Estágio C2:** `MAE Global = 634,5 MW` (vs. `710,5 MW`), `RMSE Global = 966,8 MW` (vs. `1.082,6 MW`), `R² Volume = 0,9340` (vs. `0,9172`) e energia anual prevista de `23,24 TWh` (vs. `22,53 TWh` linear e `25,70 TWh` reais).
+- **Estado final das verificações (pós-C3-4):** `18/18` testes Python (`unittest`) aprovados · `17/17` subtestes TypeScript (`energyModel.test.ts`) aprovados · `tsc --noEmit` e `vite build` aprovados · Inspeção em Chromium (`1440×900` e `390×844`) sem erros de console e com zero overflow horizontal.
 
 ---
 
@@ -101,20 +102,20 @@ Toda a parametrização numérica, física e editorial converge em fonte única 
 - **Critério de aceite:** Paridade física documentada entre `06_monte_carlo_balance_2035.py` e `src/utils/energyModel.ts`, além de consistência numérica `TX-03 == H2V-01 == Central × Intermediária == Evolução Anual 2035` (validado).
 
 ### Passo C3-3 — Execução Científica Completa, Materialização de Artefatos e Validação Cruzada
-- **Status:** `[~]` **Rodadas 1–2 materializadas (01–07 + SSOT sincronizado, `18/18` Python OK)** · Aguardando reexecução rápida a partir da Etapa `05` com `activation="silu"` para fechar `r2_volume` do Estágio C2.
-- **Comando-alvo rápido (~65s; Etapas 01–04 e 06 já materializadas):**
-  `py scripts/05_forecast_wind_cf_and_curtailment.py && py scripts/run_pipeline.py --only-from 07`
-- **Ações técnicas concluídas vs. pendente:**
+- **Status:** `[x]` **Concluído e validado em 2026-11-15 (`log_6bde40b9.txt`, `18/18` Python OK · `17/17` TypeScript OK).**
+- **Ações técnicas concluídas:**
   1. `[x]` Confirmado `gHydroMW > 0` populado em `public/data/hourly-baseline-8760.json` e `reports/serie_base_horaria_8760h_ons.csv`.
   2. `[x]` Confirmada paridade absoluta de `2035` entre `evolucao_anual_risco_2026_2035.csv`, `matriz_cenarios_monte_carlo_2035.csv`, `TX-03` e `H2V-01`, bem como 696 cenários com trajetórias offshore pós-2031 na grade `grade_simulador_monte_carlo_2025_2035.csv`.
-  3. `[x]` Corrigido `validate_ssot_cross_consistency` (`windCapacityMW` + `dcControl = "none"`) e sincronizado SSOT com 0 violações.
-  4. `[ ]` Reexecutar Etapa `05` -> `07` -> `ssot` em ambiente Python científico com `activation="silu"` no Estágio C2 para confirmar `nonLinearHurdle.r2Volume > linearHurdle.r2Volume` e fechar `17/17` em `npx tsx --test src/utils/energyModel.test.ts`.
-- **Critério de aceite:** `py -m unittest -v` **100% verde (`18/18`)** e `npm run test` **100% verde (`17/17`, incluindo Subteste 10 completo)**.
+  3. `[x]` Corrigido `validate_ssot_cross_consistency` (`windCapacityMW` + `dcControl = "none"`) e sincronizado SSOT com `0` violações.
+  4. `[x]` Reexecutada Etapa `05 -> 07 -> ssot` com `activation="silu"` no Estágio C2, confirmando `nonLinearHurdle.r2Volume (0,9340) > linearHurdle.r2Volume (0,9172)` e fechando `18/18` em `unittest` e `17/17` em `energyModel.test.ts`.
+- **Critério de aceite:** `py -m unittest -v` **100% verde (`18/18`)** e `npm run test` **100% verde (`17/17`)** — **ATENDIDO**.
 
 ### Passo C3-4 — Fechamento Frontend, Verificação Ponta a Ponta e Congelamento de Entrega
+- **Status:** `[x]` **Concluído e validado em 2026-11-15 (`18/18` Python OK · `17/17` TypeScript OK · Build/Lint OK · Browser Chromium OK).**
 - **Objetivo:** Validar na interface real todos os fluxos impactados pelas calibrações do Ciclo 3 e congelar o código sem dívidas de build ou regressões visuais.
-- **Arquivos-alvo:** `src/components/Validation2025Panel.tsx`, `src/components/ObjectiveAndSimulatorView.tsx`, `src/utils/energyModel.test.ts`, `scripts/test_sync_frontend_ssot.py`.
-- **Ações técnicas:**
-  1. Atualizar tooltips, legendas e diagnósticos de Modelo C / despacho hidrotérmico nos painéis frontend exclusivamente a partir de `ssot`, caso novos campos/métricas entrem no contrato `PipelineSsotBundle`.
-  2. Executar bateria completa de qualidade (`unittest`, `tsx --test`, `tsc --noEmit`, `vite build`) e inspeção visual/funcional em navegador real (`http://localhost:3000`) com 0 erros de console e 0 estilos inline.
-- **Critério de aceite:** Build de produção limpo, todos os testes Python e TypeScript aprovados sem exceções e interface refletindo integralmente os resultados calibrados do Ciclo 3.
+- **Arquivos atualizados:** `scripts/pipeline_metadata.json`, `src/components/Validation2025Panel.tsx`, `src/components/FeaturesAndAnovaView.tsx`, `src/components/ObjectiveAndSimulatorView.tsx`, `src/App.tsx` + bundle SSOT ressincronizado.
+- **Ações técnicas concluídas:**
+  1. `[x]` Atualizados diagnósticos do Modelo C (`ResMLP Hurdle C1+C2` com calibração Platt e ativação `SiLU`), KPI 3 e coluna `Energia 2025 (Pred. / Real)` (`23,24 / 25,70 TWh` vs. `22,53 / 25,70 TWh`) exclusivamente a partir do SSOT, além de legenda clara do toggle offshore pós-2031 e do despacho sazonal Chesf na barra horária.
+  2. `[x]` Refinada barra de navegação principal (`App.tsx`) em linha única no desktop (`1440px`) e cabeçalho não fixo no mobile (`390×844`) para preservar área útil de leitura, com zero overflow horizontal e zero `style={{`.
+  3. `[x]` Executada bateria completa (`python3 -m unittest`, `npx tsx --test src/utils/energyModel.test.ts`, `tsc --noEmit`, `vite build`) e inspeção visual em Chromium (`http://localhost:3000`) confirmando `hourly-baseline-8760.json` ativo (`8.760 h`), todas as abas/sub-abas funcionais e `0` erros/avisos de console.
+- **Critério de aceite:** Build de produção limpo, todos os testes Python e TypeScript aprovados sem exceções e interface refletindo integralmente os resultados calibrados do Ciclo 3 — **ATENDIDO**.

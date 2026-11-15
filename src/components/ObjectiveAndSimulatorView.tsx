@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   buildDefaultSimulationConfig,
   buildHourlyPlotBuckets,
+  computeInstalledWindCapacityMW,
   evaluateScenario,
   type DataCenterScenarioId,
   type HourlyPoint,
@@ -93,6 +94,23 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
   const result = useMemo(
     () => evaluateScenario(config, ssot, hourlyBaseline),
     [config, ssot, hourlyBaseline]
+  );
+
+  const potentialOffshoreGW = useMemo(
+    () =>
+      Number(
+        (
+          computeInstalledWindCapacityMW(
+            {
+              targetYear: config.targetYear,
+              windScenario: config.windScenario,
+              includeOffshorePost2031: true,
+            },
+            cfg
+          ).offshoreMW / 1000
+        ).toFixed(1)
+      ),
+    [config.targetYear, config.windScenario, cfg]
   );
 
   const windowLength = result.hourlySeries.length;
@@ -358,12 +376,12 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
 
         {/* Matriz sintética dos 4 blocos */}
         <div className="mt-8 pt-6 border-t border-slate-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2 mb-4">
             <h2 className="text-sm font-semibold text-slate-900">
               Resultados Empíricos dos Modelos Preditivos (Teste Cego {cfg.baselineYear}) e Monte Carlo{' '}
               {cfg.targetEndYear}
             </h2>
-            <div className="flex flex-wrap items-center gap-4 text-xs">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs shrink-0">
               {onNavigateToModels && (
                 <button
                   type="button"
@@ -437,7 +455,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                   </td>
                   <td className="py-3 pl-4 font-mono text-xs font-semibold text-amber-800">
                     {ssotSummary.cBest
-                      ? `ROC-AUC = ${ssotSummary.cBest.rocAuc.toFixed(4)} · Brier = ${ssotSummary.cBest.brierScore.toFixed(4)} · F1 = ${ssotSummary.cBest.f1Score.toFixed(4)} · R² Vol = ${ssotSummary.cBest.r2Volume.toFixed(4)}`
+                      ? `ROC-AUC = ${ssotSummary.cBest.rocAuc.toFixed(4)} · Brier = ${ssotSummary.cBest.brierScore.toFixed(4)} · F1 = ${ssotSummary.cBest.f1Score.toFixed(4)} · R² Vol = ${ssotSummary.cBest.r2Volume.toFixed(4)} (${ssotSummary.cBest.predCurtailed2025TWh.toFixed(2)} vs ${ssotSummary.cBest.realCurtailed2025TWh.toFixed(2)} TWh)`
                       : 'Sincronizado via SSOT'}
                   </td>
                 </tr>
@@ -568,7 +586,13 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                 className="rounded border-slate-300 text-sky-700 focus:ring-sky-600"
               />
               <span>
-                Somar Eólica Offshore pós-{cfg.offshoreStartYear} ({result.monteCarlo.offshoreWindGW} GW)
+                Somar Eólica Offshore pós-{cfg.offshoreStartYear} (
+                {config.includeOffshorePost2031
+                  ? `${result.monteCarlo.offshoreWindGW.toFixed(1)} GW ativos`
+                  : config.targetYear < cfg.offshoreCommercialStartYear
+                    ? `inicia em ${cfg.offshoreCommercialStartYear}`
+                    : `+${potentialOffshoreGW.toFixed(1)} GW em ${config.targetYear}`}
+                )
               </span>
             </label>
           </div>
@@ -1168,7 +1192,7 @@ export const ObjectiveAndSimulatorView: React.FC<ObjectiveAndSimulatorViewProps>
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block">Solar + Chesf Desp.</span>
+                      <span className="text-slate-500 block">Solar + Chesf (Sazonal)</span>
                       <span className="font-mono font-semibold text-slate-900">
                         {(activePoint.solarGenMW + activePoint.otherDispatchableMW).toLocaleString('pt-BR')} MW
                       </span>
