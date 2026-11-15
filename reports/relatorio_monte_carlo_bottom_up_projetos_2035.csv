@@ -1,2 +1,2 @@
 target_year,n_iterations,projetos_ativos_media,dc_load_p50_mw,dc_load_p90_mw,dc_load_p95_mw,prob_exceder_intercambio_pct,importacao_p50_mw,importacao_p95_mw,curtailment_com_dc_twh_ano,expansao_eolica_compensatoria_gw
-2035,1000,11.3,2328.5,2994.4,3189.7,11.3,3601.2,8652.9,8.72,7.87
+2035,1000,11.3,2328.5,2994.4,3189.7,12.9,3415.0,8678.2,9.57,7.99

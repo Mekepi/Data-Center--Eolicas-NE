@@ -11,5 +11,10 @@ is_weekend,-0.248,-0.003,0.105
 faixa_solar_pico,0.034,-0.204,0.23
 excedente_renovavel_mw,0.316,0.553,0.7
 razao_renovavel_carga,0.386,0.538,0.722
+folga_escoamento_sin_mw,-0.325,-0.524,-0.708
+excesso_sobre_escoamento_mw,0.112,0.188,0.822
+despacho_total_est_excesso_mw,0.177,0.236,0.844
+interacao_solar_eolica_mw,0.278,0.09,0.685
+g_hidro_roll_mean_24h,0.298,-0.103,-0.34
 wind_speed_lag1_approx,-0.057,0.964,0.385
 cf_lag1_squared,-0.036,0.959,0.46

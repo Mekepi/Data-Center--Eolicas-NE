@@ -1,12 +1,12 @@
 cenario_nome,cenario_dc,target_year,dc_load_mw,wind_onshore_mw,wind_offshore_mw,wind_capacity_mw,prob_exceder_intercambio_pct,lole_horas_criticas_ano,importacao_p50_mw,importacao_p90_mw,importacao_p95_mw,margem_minima_p5_mw,curtailment_sem_dc_twh_ano,curtailment_com_dc_twh_ano,curtailment_evitado_gwh_ano,reducao_curtailment_pct,expansao_eolica_compensatoria_gw,cenario_eolica,regime_sazonal
-Trajetória Central 2025,central,2025,0.0,29600.0,0.0,29600.0,0.0,0.0,0.0,2053.8,2547.3,-2547.3,8.56,8.56,0.0,0.0,0.0,intermediate,annual_blend
-Trajetória Central 2026,central,2026,67.0,29600.0,0.0,29600.0,0.0,0.0,366.0,2416.6,3026.9,-3026.9,8.4,8.26,140.1,1.7,0.0,intermediate,annual_blend
-Trajetória Central 2027,central,2027,242.8,30541.2,0.0,30541.2,0.0,0.0,623.9,2746.7,3421.1,-3421.1,9.29,8.77,525.5,5.7,0.0,intermediate,annual_blend
-Trajetória Central 2028,central,2028,580.2,31356.4,0.0,31356.4,0.0,0.0,1069.3,3250.1,4175.8,-4175.8,10.01,8.75,1259.5,12.6,0.0,intermediate,annual_blend
-Trajetória Central 2029,central,2029,1124.2,32129.9,0.0,32129.9,0.2,0.3,1722.1,3966.3,5145.8,-5145.8,10.65,8.26,2390.0,22.4,0.0,intermediate,annual_blend
-Trajetória Central 2030,central,2030,1501.5,32877.5,0.0,32877.5,1.6,4.2,2205.4,4527.9,5965.0,-5965.0,11.24,8.08,3159.9,28.1,0.0,intermediate,annual_blend
-Trajetória Central 2031,central,2031,1596.8,33606.5,0.0,33606.5,3.5,13.1,2428.3,4983.4,6523.0,-6523.0,11.77,8.37,3393.0,28.8,0.0,intermediate,annual_blend
-Trajetória Central 2032,central,2032,1596.8,34320.9,0.0,34320.9,5.1,22.9,2571.3,5421.8,7009.7,-7009.7,12.25,8.81,3438.2,28.1,0.05,intermediate,annual_blend
-Trajetória Central 2033,central,2033,1596.8,35023.5,0.0,35023.5,6.9,34.4,2722.2,5888.3,7514.4,-7514.4,12.68,9.21,3470.5,27.4,2.45,intermediate,annual_blend
-Trajetória Central 2034,central,2034,1596.8,35716.1,0.0,35716.1,7.8,48.2,2875.1,6404.5,8037.4,-8037.4,13.06,9.57,3490.7,26.7,4.94,intermediate,annual_blend
-Trajetória Central 2035,central,2035,1596.8,36400.0,0.0,36400.0,9.6,66.4,3035.8,6939.2,8579.2,-8579.2,13.4,9.9,3499.9,26.1,7.52,intermediate,annual_blend
+Trajetória Central 2025,central,2025,0.0,29600.0,0.0,29600.0,0.0,0.0,0.0,2146.4,2618.0,-2618.0,9.64,9.64,0.0,0.0,0.0,intermediate,annual_blend
+Trajetória Central 2026,central,2026,67.0,29600.0,0.0,29600.0,0.0,0.0,0.0,2519.8,3211.1,-3211.1,9.59,9.43,162.1,1.7,0.0,intermediate,annual_blend
+Trajetória Central 2027,central,2027,242.8,30541.2,0.0,30541.2,0.0,0.0,71.9,2910.2,3684.3,-3684.3,10.57,9.96,604.8,5.7,0.0,intermediate,annual_blend
+Trajetória Central 2028,central,2028,580.2,31356.4,0.0,31356.4,0.0,0.0,543.1,3478.2,4240.1,-4240.1,11.34,9.89,1443.9,12.7,0.0,intermediate,annual_blend
+Trajetória Central 2029,central,2029,1124.2,32129.9,0.0,32129.9,0.5,0.7,1219.2,4272.6,5153.0,-5153.0,12.02,9.29,2731.1,22.7,0.0,intermediate,annual_blend
+Trajetória Central 2030,central,2030,1501.5,32877.5,0.0,32877.5,2.3,5.2,1734.1,4949.5,5962.2,-5962.2,12.63,9.03,3599.6,28.5,0.0,intermediate,annual_blend
+Trajetória Central 2031,central,2031,1596.8,33606.5,0.0,33606.5,3.8,13.7,2001.6,5335.5,6521.7,-6521.7,13.19,9.33,3853.0,29.2,0.0,intermediate,annual_blend
+Trajetória Central 2032,central,2032,1596.8,34320.9,0.0,34320.9,4.8,22.3,2187.9,5703.2,6899.7,-6899.7,13.68,9.79,3892.4,28.4,0.0,intermediate,annual_blend
+Trajetória Central 2033,central,2033,1596.8,35023.5,0.0,35023.5,7.0,32.7,2379.4,6157.6,7370.6,-7370.6,14.12,10.2,3917.8,27.7,1.76,intermediate,annual_blend
+Trajetória Central 2034,central,2034,1596.8,35716.1,0.0,35716.1,8.0,45.2,2576.5,6576.7,7895.9,-7895.9,14.51,10.58,3930.2,27.1,4.27,intermediate,annual_blend
+Trajetória Central 2035,central,2035,1596.8,36400.0,0.0,36400.0,10.0,62.7,2785.5,6992.2,8439.5,-8439.5,14.84,10.91,3930.8,26.5,6.85,intermediate,annual_blend
