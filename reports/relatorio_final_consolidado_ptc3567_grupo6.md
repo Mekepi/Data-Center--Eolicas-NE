@@ -37,8 +37,8 @@ Todos os modelos foram implementados em Python utilizando exclusivamente `numpy`
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Modelo A (Script 04)** | Demanda Base $L_{\text{base}}(t)$ (1h-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 159,1 MW** · **MAPE = 1,22%** · $R^2 = 0,9719$ | Redução de **28,6%** no erro MAE |
 | **Modelo A (Script 04)** | Demanda Base $L_{\text{base}}(t)$ (24h Day-Ahead) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 310,2 MW** · **MAPE = 2,38%** · $R^2 = 0,8763$ | Captura interação térmica × dia útil |
-| **Modelo B (Script 05)** | Fator de Capacidade Potencial $CF_{\text{pot}}(t)$ (1h) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 0,0173** (516,5 MW) · **$R^2 = 0,9854$** | Captura potência cúbica $v^3$ de Betz |
-| **Modelo C (Script 05)** | *Curtailment* Eólico Real ONS (Hurdle 2 Estágios) | `HistogramGBDT` + `ResMLP` | `Logistic` + `Ridge` | **ROC-AUC = 0,9520** · **Brier = 0,0782** · **F1 = 0,9270** | **$R^2$ Volume = 0,9143** (vs 0,9172 linear) |
+| **Modelo B (Script 05)** | Fator de Capacidade Potencial $CF_{\text{pot}}(t)$ (1h) | `ResidualMLPRegressor` | `LinearRidgeModel` | **MAE = 0,0171** (511,8 MW) · **$R^2 = 0,9857$** | Captura potência cúbica $v^3$ de Betz |
+| **Modelo C (Script 05)** | *Curtailment* Eólico Real ONS (Hurdle 2 Estágios) | `ResMLP Hurdle` (C1+C2) | `Logistic` + `Ridge` | **ROC-AUC = 0,9520** · **Brier = 0,0782** · **F1 = 0,9270** | **$R^2$ Volume = 0,9165** (vs 0,9172 linear) |
 
 ---
 
