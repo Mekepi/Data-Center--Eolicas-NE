@@ -1,10 +1,10 @@
 etapa,horizonte,arquitetura,familia,mae_cf,rmse_cf,r2_score,mae_potencia_equiv_mw,treino_horas,teste_2025_horas,roc_auc,brier_score,f1_score,mae_global_mw,rmse_global_mw,mae_horas_corte_mw,r2_volume,energia_cortada_real_2025_twh,energia_cortada_pred_2025_twh
 Modelo B - Fator de Capacidade CF(t),Operativo Curto Prazo (1h-Ahead),Baseline Linear · Ridge L2,Linear,0.0211,0.0277,0.9783,632.1,87476,8760,,,,,,,,,
-Modelo B - Fator de Capacidade CF(t),Operativo Curto Prazo (1h-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),0.0172,0.0226,0.9855,514.9,87476,8760,,,,,,,,,
-Modelo B - Fator de Capacidade CF(t),Operativo Curto Prazo (1h-Ahead),Challenger Não-Linear · Histogram GBDT (Árvores),Não-Linear (NumPy GBDT),0.0203,0.0272,0.9791,607.6,87476,8760,,,,,,,,,
+Modelo B - Fator de Capacidade CF(t),Operativo Curto Prazo (1h-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),0.0173,0.0227,0.9853,517.5,87476,8760,,,,,,,,,
+Modelo B - Fator de Capacidade CF(t),Operativo Curto Prazo (1h-Ahead),Challenger Não-Linear · Histogram GBDT (Árvores),Não-Linear (NumPy GBDT),0.0203,0.0272,0.9791,607.1,87476,8760,,,,,,,,,
 Modelo B - Fator de Capacidade CF(t),Regime Diário / Sazonal (24h Day-Ahead),Baseline Linear · Ridge L2,Linear,0.081,0.1031,0.6985,2422.9,87476,8760,,,,,,,,,
-Modelo B - Fator de Capacidade CF(t),Regime Diário / Sazonal (24h Day-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),0.0801,0.1021,0.7042,2397.1,87476,8760,,,,,,,,,
-Modelo B - Fator de Capacidade CF(t),Regime Diário / Sazonal (24h Day-Ahead),Challenger Não-Linear · Histogram GBDT (Árvores),Não-Linear (NumPy GBDT),0.0806,0.1026,0.7014,2411.8,87476,8760,,,,,,,,,
+Modelo B - Fator de Capacidade CF(t),Regime Diário / Sazonal (24h Day-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),0.0801,0.1022,0.7039,2397.6,87476,8760,,,,,,,,,
+Modelo B - Fator de Capacidade CF(t),Regime Diário / Sazonal (24h Day-Ahead),Challenger Não-Linear · Histogram GBDT (Árvores),Não-Linear (NumPy GBDT),0.0806,0.1026,0.7011,2412.7,87476,8760,,,,,,,,,
 Modelo C - Curtailment Eólico (2 Estágios),Estrutural Físico Horário (Exógeno p/ 2035),Baseline Linear · Logística + Ridge Hurdle,Linear,,,,,11712,8760,0.9289,0.1208,0.8863,1482.2,2441.4,1946.7,0.579,25.7,15.21
-Modelo C - Curtailment Eólico (2 Estágios),Estrutural Físico Horário (Exógeno p/ 2035),Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2),Não-Linear (SciPy L-BFGS-B),,,,,11712,8760,0.9289,0.1208,0.8863,1296.8,2072.2,1692.6,0.6967,25.7,17.44
-Modelo C - Curtailment Eólico (2 Estágios),Estrutural Físico Horário (Exógeno p/ 2035),Challenger Não-Linear · Histogram GBDT Hurdle Completo,Não-Linear (NumPy GBDT),,,,,11712,8760,0.9146,0.1371,0.8653,1459.6,2429.6,1910.9,0.583,25.7,15.44
+Modelo C - Curtailment Eólico (2 Estágios),Estrutural Físico Horário (Exógeno p/ 2035),Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2),Não-Linear (SciPy L-BFGS-B),,,,,11712,8760,0.9051,0.151,0.8616,1385.1,2206.6,1811.6,0.6561,25.7,16.43
+Modelo C - Curtailment Eólico (2 Estágios),Estrutural Físico Horário (Exógeno p/ 2035),Challenger Não-Linear · Histogram GBDT Hurdle Completo,Não-Linear (NumPy GBDT),,,,,11712,8760,0.9097,0.1419,0.8611,1465.6,2453.9,1919.0,0.5746,25.7,15.38

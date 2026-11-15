@@ -1,7 +1,7 @@
 etapa,horizonte,arquitetura,familia,mae_mw,rmse_mw,mape_pct,r2_score,mae_ponta_18h_21h_mw,treino_horas,teste_2025_horas
 Modelo A - Carga Base NE,Operativo Curto Prazo (1h-Ahead),Baseline Linear · Ridge L2,Linear,222.89,290.28,1.7,0.9479,236.55,87476,8760
-Modelo A - Carga Base NE,Operativo Curto Prazo (1h-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),159.61,214.03,1.22,0.9717,166.67,87476,8760
+Modelo A - Carga Base NE,Operativo Curto Prazo (1h-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),158.51,212.37,1.22,0.9721,168.46,87476,8760
 Modelo A - Carga Base NE,Operativo Curto Prazo (1h-Ahead),Challenger Não-Linear · Histogram GBDT (Árvores),Não-Linear (NumPy GBDT),187.45,256.23,1.41,0.9594,201.99,87476,8760
 Modelo A - Carga Base NE,Programação Diária (24h Day-Ahead),Baseline Linear · Ridge L2,Linear,398.48,545.99,3.07,0.8155,316.52,87476,8760
-Modelo A - Carga Base NE,Programação Diária (24h Day-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),310.01,446.55,2.38,0.8766,264.03,87476,8760
+Modelo A - Carga Base NE,Programação Diária (24h Day-Ahead),Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B),Não-Linear (SciPy L-BFGS-B),309.59,446.46,2.37,0.8767,263.19,87476,8760
 Modelo A - Carga Base NE,Programação Diária (24h Day-Ahead),Challenger Não-Linear · Histogram GBDT (Árvores),Não-Linear (NumPy GBDT),349.47,492.05,2.68,0.8502,318.61,87476,8760

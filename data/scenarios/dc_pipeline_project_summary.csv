@@ -1,4 +1,18 @@
 ano,id_projeto,nome_projeto,estado,municipio,subestacao_conexao,tensao_conexao_kv,cenario_enquadramento,probabilidade_concretizacao,fator_rampa,potencia_it_mw,potencia_rede_total_mw,demanda_efetiva_mw
+2025,DC-CE-01,Scala Campus Fortaleza / Pecém - Fase 1,CE,Caucaia / ZPE Pecém,SE Caucaia,230,conservative,0.95,0.0,100.0,125.0,0.0
+2025,DC-CE-02,V.tal Hyperscale 'Big Lobster' Praia do Futuro,CE,Fortaleza,SE Fortaleza II,230,conservative,1.0,0.0,20.0,25.6,0.0
+2025,DC-CE-03,V.tal Mega Campus 'Maresia' Fortaleza,CE,Fortaleza,SE Pici,230,conservative,0.9,0.0,180.0,223.2,0.0
+2025,DC-PE-01,Ascenty Suape Hyperscale Campus I,PE,Cabo de Santo Agostinho,SE Suape II,230,conservative,0.9,0.0,120.0,153.6,0.0
+2025,DC-CE-04,Elea Digital Campus Fortaleza,CE,Fortaleza,SE Pici,69,conservative,0.95,0.0,30.0,39.0,0.0
+2025,DC-PB-01,HostDime Nordeste Tier IV Campus,PB,João Pessoa,SE João Pessoa,69,conservative,1.0,0.0,15.0,19.8,0.0
+2025,DC-CE-05,Scala Campus Fortaleza / Pecém - Fase 2,CE,São Gonçalo do Amarante,SE Pecém II,500,central,0.85,0.0,350.0,427.0,0.0
+2025,DC-PE-02,Ascenty Suape Hyperscale Campus II,PE,Ipojuca,SE Suape II,230,central,0.8,0.0,200.0,250.0,0.0
+2025,DC-CE-06,ODATA / Aligned Ceará Hyperscale Gateway,CE,Caucaia,SE Caucaia,230,central,0.8,0.0,150.0,186.0,0.0
+2025,DC-RN-01,Natal / Extremoz Subsea Gateway Hyperscale,RN,Extremoz,SE Extremoz II,230,central,0.75,0.0,180.0,226.8,0.0
+2025,DC-BA-01,Salvador / Camaçari Industrial Hyperscale,BA,Camaçari,SE Camaçari,230,central,0.75,0.0,250.0,320.0,0.0
+2025,DC-CE-07,ZPE Pecém AI Hyperscale GigaCluster - Fase 1,CE,São Gonçalo do Amarante,SE Pecém II,500,high,0.6,0.0,700.0,840.0,0.0
+2025,DC-CE-08,ZPE Pecém AI Hyperscale GigaCluster - Fase 2,CE,São Gonçalo do Amarante,SE Pecém II,500,high,0.5,0.0,800.0,944.0,0.0
+2025,DC-PE-03,Pernambuco Digital Park - Suape Expansão AI,PE,Ipojuca,SE Suape II,230,high,0.55,0.0,400.0,488.0,0.0
 2026,DC-CE-01,Scala Campus Fortaleza / Pecém - Fase 1,CE,Caucaia / ZPE Pecém,SE Caucaia,230,conservative,0.95,0.333,100.0,125.0,33.3
 2026,DC-CE-02,V.tal Hyperscale 'Big Lobster' Praia do Futuro,CE,Fortaleza,SE Fortaleza II,230,conservative,1.0,0.5,20.0,25.6,10.2
 2026,DC-CE-03,V.tal Mega Campus 'Maresia' Fortaleza,CE,Fortaleza,SE Pici,230,conservative,0.9,0.0,180.0,223.2,0.0

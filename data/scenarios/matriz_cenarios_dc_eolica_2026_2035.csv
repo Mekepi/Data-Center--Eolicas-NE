@@ -1,4 +1,16 @@
 ano,cenario_dc,potencia_it_dc_mw,carga_efetiva_dc_mw,projetos_ativos,cenario_eolica,eolica_onshore_mw,eolica_offshore_mw,eolica_total_mw
+2025,none,0.0,0.0,0,base,29600.0,0.0,29600.0
+2025,none,0.0,0.0,0,intermediate,29600.0,0.0,29600.0
+2025,none,0.0,0.0,0,high,29600.0,0.0,29600.0
+2025,conservative,465.0,0.0,0,base,29600.0,0.0,29600.0
+2025,conservative,465.0,0.0,0,intermediate,29600.0,0.0,29600.0
+2025,conservative,465.0,0.0,0,high,29600.0,0.0,29600.0
+2025,central,1595.0,0.0,0,base,29600.0,0.0,29600.0
+2025,central,1595.0,0.0,0,intermediate,29600.0,0.0,29600.0
+2025,central,1595.0,0.0,0,high,29600.0,0.0,29600.0
+2025,high,3495.0,0.0,0,base,29600.0,0.0,29600.0
+2025,high,3495.0,0.0,0,intermediate,29600.0,0.0,29600.0
+2025,high,3495.0,0.0,0,high,29600.0,0.0,29600.0
 2026,none,0.0,0.0,0,base,29600.0,0.0,29600.0
 2026,none,0.0,0.0,0,intermediate,29600.0,0.0,29600.0
 2026,none,0.0,0.0,0,high,29600.0,0.0,29600.0
