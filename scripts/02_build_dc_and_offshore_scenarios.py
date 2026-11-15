@@ -24,6 +24,14 @@ from config import (
     REPORTS_DIR,
     BASE_WIND_ONSHORE_2026_MW,
     WIND_EXPANSION_ONSHORE_MW,
+    OFFSHORE_SCENARIO_MW_POST_2031,
+    WIND_RAMP_EXPONENT,
+    PROJECTION_START_YEAR,
+    RAMP_START_YEAR,
+    TARGET_END_YEAR,
+    OFFSHORE_START_YEAR,
+    OFFSHORE_COMMERCIAL_START_YEAR,
+    REFERENCE_SCENARIO_KEYS,
     DEFAULT_PUE,
     DEFAULT_UTILIZATION,
 )
@@ -66,17 +74,18 @@ def compute_project_ramp_for_year(
 
 def compute_bottom_up_dc_loads_by_year(
     df_pipeline: pd.DataFrame,
-    anos: List[int] = list(range(2026, 2036)),
+    anos: Optional[List[int]] = None,
     utilization: float = DEFAULT_UTILIZATION,
     aplicar_atrasos: bool = False,
 ) -> pd.DataFrame:
     """
-    Simula ano a ano a demanda ativa de cada projeto individual na rede básica.
+    Simula ano a ano (2025..2035) a demanda ativa de cada projeto individual na rede básica.
     Respeita a regra da Seção 5: se a potência publicada já for a carga total na rede, omite o PUE.
     """
+    target_years = anos if anos is not None else list(range(PROJECTION_START_YEAR, TARGET_END_YEAR + 1))
     records = []
 
-    for ano in anos:
+    for ano in target_years:
         for _, row in df_pipeline.iterrows():
             atraso = row["atraso_esperado_anos"] if aplicar_atrasos else 0.0
             ramp = compute_project_ramp_for_year(
@@ -123,7 +132,12 @@ def compute_scenario_aggregate_loads(df_annual_projects: pd.DataFrame) -> pd.Dat
     - High (Stress Test): conservative + central + high
     - None: 0.0 MW
     """
-    cenarios = ["none", "conservative", "central", "high"]
+    cenarios = [
+        REFERENCE_SCENARIO_KEYS["dcControl"],
+        REFERENCE_SCENARIO_KEYS["dcConservative"],
+        REFERENCE_SCENARIO_KEYS["dcCentral"],
+        REFERENCE_SCENARIO_KEYS["dcHigh"],
+    ]
     years = sorted(df_annual_projects["ano"].unique())
     records = []
 
@@ -131,17 +145,21 @@ def compute_scenario_aggregate_loads(df_annual_projects: pd.DataFrame) -> pd.Dat
         df_y = df_annual_projects[df_annual_projects["ano"] == y]
 
         for sc in cenarios:
-            if sc == "none":
+            if sc == REFERENCE_SCENARIO_KEYS["dcControl"]:
                 carga_mw = 0.0
                 it_mw = 0.0
                 n_proj = 0
-            elif sc == "conservative":
-                sub = df_y[df_y["cenario_enquadramento"] == "conservative"]
+            elif sc == REFERENCE_SCENARIO_KEYS["dcConservative"]:
+                sub = df_y[df_y["cenario_enquadramento"] == sc]
                 carga_mw = sub["demanda_efetiva_mw"].sum()
                 it_mw = sub["potencia_it_mw"].sum()
                 n_proj = len(sub[sub["demanda_efetiva_mw"] > 0])
-            elif sc == "central":
-                sub = df_y[df_y["cenario_enquadramento"].isin(["conservative", "central"])]
+            elif sc == REFERENCE_SCENARIO_KEYS["dcCentral"]:
+                sub = df_y[
+                    df_y["cenario_enquadramento"].isin(
+                        [REFERENCE_SCENARIO_KEYS["dcConservative"], REFERENCE_SCENARIO_KEYS["dcCentral"]]
+                    )
+                ]
                 carga_mw = sub["demanda_efetiva_mw"].sum()
                 it_mw = sub["potencia_it_mw"].sum()
                 n_proj = len(sub[sub["demanda_efetiva_mw"] > 0])
@@ -164,21 +182,28 @@ def compute_scenario_aggregate_loads(df_annual_projects: pd.DataFrame) -> pd.Dat
 
 def compute_wind_installed_trajectory(
     target_year: int,
-    scenario_id: str = "intermediate",
+    scenario_id: str = REFERENCE_SCENARIO_KEYS["windIntermediate"],
     include_offshore_post_2031: bool = False,
 ) -> Dict[str, float]:
     """
     Calcula a capacidade eólica total dividida entre Onshore (SIGA/ANEEL) e Offshore (IBAMA/MME).
-    Eólicas Offshore possuem lead time ambiental/portuário extenso e entram gradualmente após 2031.
+    Eólicas Offshore possuem lead time ambiental/portuário extenso e entram gradualmente após OFFSHORE_START_YEAR.
     """
-    year_frac = max(0.0, min(1.0, (target_year - 2026) / 9.0))
-    onshore_add = WIND_EXPANSION_ONSHORE_MW.get(scenario_id, 0.0) * (year_frac ** 0.9)
+    ramp_span = max(1.0, float(TARGET_END_YEAR - RAMP_START_YEAR))
+    year_frac = max(0.0, min(1.0, (target_year - RAMP_START_YEAR) / ramp_span))
+    onshore_add = WIND_EXPANSION_ONSHORE_MW.get(scenario_id, 0.0) * (year_frac ** WIND_RAMP_EXPONENT)
     onshore_mw = BASE_WIND_ONSHORE_2026_MW + onshore_add
 
     offshore_mw = 0.0
-    if include_offshore_post_2031 and target_year >= 2032:
-        offshore_progress = (target_year - 2031) / 4.0  # 2032..2035
-        mult = 3600.0 if scenario_id == "high" else 1800.0 if scenario_id == "intermediate" else 800.0
+    if include_offshore_post_2031 and target_year >= OFFSHORE_COMMERCIAL_START_YEAR:
+        offshore_span = max(1.0, float(TARGET_END_YEAR - OFFSHORE_START_YEAR))
+        offshore_progress = (target_year - OFFSHORE_START_YEAR) / offshore_span
+        mult = float(
+            OFFSHORE_SCENARIO_MW_POST_2031.get(
+                scenario_id,
+                OFFSHORE_SCENARIO_MW_POST_2031[REFERENCE_SCENARIO_KEYS["windBase"]],
+            )
+        )
         offshore_mw = mult * offshore_progress
 
     return {
@@ -189,7 +214,10 @@ def compute_wind_installed_trajectory(
     }
 
 
-def compute_substation_load_concentration(df_annual_projects: pd.DataFrame, target_year: int = 2035) -> pd.DataFrame:
+def compute_substation_load_concentration(
+    df_annual_projects: pd.DataFrame,
+    target_year: int = TARGET_END_YEAR,
+) -> pd.DataFrame:
     """
     Identifica os barramentos mais impactados na Rede Básica do Nordeste (SE Pecém II, SE Caucaia, SE Suape II, etc.).
     """
@@ -209,7 +237,11 @@ def generate_full_scenario_matrix(df_dc_scenarios: pd.DataFrame) -> pd.DataFrame
     """
     Cruza cada cenário de Data Center com as trajetórias de expansão eólica (Base, Intermediário, Alto).
     """
-    wind_scenarios = ["base", "intermediate", "high"]
+    wind_scenarios = [
+        REFERENCE_SCENARIO_KEYS["windBase"],
+        REFERENCE_SCENARIO_KEYS["windIntermediate"],
+        REFERENCE_SCENARIO_KEYS["windHigh"],
+    ]
     records = []
 
     for _, row in df_dc_scenarios.iterrows():
@@ -221,7 +253,9 @@ def generate_full_scenario_matrix(df_dc_scenarios: pd.DataFrame) -> pd.DataFrame
 
         for w_scen in wind_scenarios:
             w_cap = compute_wind_installed_trajectory(
-                ano, w_scen, include_offshore_post_2031=(w_scen == "high")
+                ano,
+                w_scen,
+                include_offshore_post_2031=(w_scen == REFERENCE_SCENARIO_KEYS["windHigh"]),
             )
             records.append({
                 "ano": ano,
@@ -246,17 +280,17 @@ def main():
     # 1. Carregar pipeline nominal
     pipeline_df = load_data_center_pipeline()
 
-    # 2. Simular demanda individual ano a ano (2026-2035)
+    # 2. Simular demanda individual ano a ano (2025-2035)
     df_annual_projects = compute_bottom_up_dc_loads_by_year(pipeline_df)
     proj_summary_path = SCENARIOS_DATA_DIR / "dc_pipeline_project_summary.csv"
     df_annual_projects.to_csv(proj_summary_path, index=False)
     print(f"[PROJETOS] Resumo anual individual gravado em: {proj_summary_path}")
 
     # 3. Concentração espacial por subestação da Rede Básica
-    substations_df = compute_substation_load_concentration(df_annual_projects, target_year=2035)
+    substations_df = compute_substation_load_concentration(df_annual_projects, target_year=TARGET_END_YEAR)
     substations_path = SCENARIOS_DATA_DIR / "dc_substation_load_concentration.csv"
     substations_df.to_csv(substations_path, index=False)
-    print(f"\nConcentração Geográfica por Subestação em 2035 (Total: {substations_df['demanda_efetiva_2035_mw'].sum():.1f} MW):")
+    print(f"\nConcentração Geográfica por Subestação em {TARGET_END_YEAR} (Total: {substations_df['demanda_efetiva_2035_mw'].sum():.1f} MW):")
     print(substations_df.to_string(index=False))
 
     # 4. Agregar por cenários e cruzar com eólica
@@ -266,10 +300,10 @@ def main():
     df_full_matrix.to_csv(matrix_path, index=False)
     print(f"\n[SUCESSO] Matriz de cenários cruzados gerada com {len(df_full_matrix)} linhas em: {matrix_path}")
 
-    # 5. Exibir Projeções para 2035
-    df_2035 = df_full_matrix[df_full_matrix["ano"] == 2035]
-    print("\nResumo das Projeções Bottom-Up para 2035:")
-    print(df_2035[["cenario_dc", "carga_efetiva_dc_mw", "projetos_ativos", "cenario_eolica", "eolica_total_mw"]].drop_duplicates().to_string(index=False))
+    # 5. Exibir Projeções para TARGET_END_YEAR
+    df_target = df_full_matrix[df_full_matrix["ano"] == TARGET_END_YEAR]
+    print(f"\nResumo das Projeções Bottom-Up para {TARGET_END_YEAR}:")
+    print(df_target[["cenario_dc", "carga_efetiva_dc_mw", "projetos_ativos", "cenario_eolica", "eolica_total_mw"]].drop_duplicates().to_string(index=False))
 
 
 if __name__ == "__main__":

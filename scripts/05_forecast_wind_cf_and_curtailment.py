@@ -15,6 +15,7 @@ Objetivo:
   curva média horária 00h–23h Real vs. Predito) para auditoria e visualização na interface.
 """
 
+import json
 import sys
 from typing import Dict, List, Tuple
 import numpy as np
@@ -23,6 +24,10 @@ import pandas as pd
 from config import (
     PROCESSED_DATA_DIR,
     REPORTS_DIR,
+    SCRIPTS_DIR,
+    COFF_REGIME_START_DATE,
+    COFF_START_YEAR,
+    ML_MODEL_PARAMS,
 )
 from ml_models_numpy import (
     LinearRidgeModel,
@@ -101,6 +106,11 @@ def evaluate_model_b_wind_cf(
     rows: List[Dict[str, object]] = []
     preds_map: Dict[str, np.ndarray] = {}
 
+    seed = int(ML_MODEL_PARAMS["seed"])
+    b_mlp_cfg = ML_MODEL_PARAMS["modelBResMlp"]
+    b_gbdt_cfg = ML_MODEL_PARAMS["modelBGbdt"]
+    b_ridge_alpha = max(1.0, float(ML_MODEL_PARAMS["ridgeAlpha"]) - 2.0)
+
     for horizon_label, cand_cols, key_suffix in [
         ("Operativo Curto Prazo (1h-Ahead)", FEATURES_CF_1H, "1h"),
         ("Regime Diário / Sazonal (24h Day-Ahead)", FEATURES_CF_24H, "24h"),
@@ -110,17 +120,27 @@ def evaluate_model_b_wind_cf(
         X_te = test_df[feats].to_numpy(dtype=float)
 
         candidates = [
-            ("Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=8.0), f"ridge_{key_suffix}"),
+            ("Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=b_ridge_alpha), f"ridge_{key_suffix}"),
             (
                 "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
                 "Não-Linear (SciPy L-BFGS-B)",
-                ResidualMLPRegressor(hidden_units=20, reg_l2=1e-3, max_iter=130, seed=42),
+                ResidualMLPRegressor(
+                    hidden_units=int(b_mlp_cfg["hiddenUnits"]),
+                    reg_l2=float(b_mlp_cfg["regL2"]),
+                    max_iter=int(b_mlp_cfg["maxIter"]),
+                    seed=seed,
+                ),
                 f"resmlp_{key_suffix}",
             ),
             (
                 "Challenger Não-Linear · Histogram GBDT (Árvores)",
                 "Não-Linear (NumPy GBDT)",
-                HistogramGBDTRegressor(n_estimators=80, learning_rate=0.08, max_depth=4, min_samples_leaf=50),
+                HistogramGBDTRegressor(
+                    n_estimators=int(b_gbdt_cfg["nEstimators"]),
+                    learning_rate=float(b_gbdt_cfg["learningRate"]),
+                    max_depth=int(b_gbdt_cfg["maxDepth"]),
+                    min_samples_leaf=int(b_gbdt_cfg["minSamplesLeaf"]),
+                ),
                 f"gbdt_{key_suffix}",
             ),
         ]
@@ -164,9 +184,9 @@ def evaluate_model_c_curtailment(
     # Usar o regime operativo pós-agosto/2023 dentro do conjunto de treino (< 2025) para evitar viés
     # de época em que o SIN operava sob outra malha e sem geração solar distribuída relevante
     ts_train = pd.to_datetime(train_df["ts"])
-    train_coff = train_df[ts_train >= pd.Timestamp("2023-09-01")].reset_index(drop=True)
+    train_coff = train_df[ts_train >= pd.Timestamp(COFF_REGIME_START_DATE)].reset_index(drop=True)
     if len(train_coff) < 2000:
-        train_coff = train_df[train_df["year"] >= 2023].reset_index(drop=True)
+        train_coff = train_df[train_df["year"] >= COFF_START_YEAR].reset_index(drop=True)
 
     feats = [c for c in FEATURES_CURTAILMENT if c in train_coff.columns]
     X_tr = train_coff[feats].to_numpy(dtype=float)
@@ -177,22 +197,40 @@ def evaluate_model_c_curtailment(
     y_te_flag = test_df["flag_curtailment"].to_numpy(dtype=int)
     y_te_vol = test_df["curtailment_mw"].to_numpy(dtype=float)
 
+    seed = int(ML_MODEL_PARAMS["seed"])
+    prob_threshold = float(ML_MODEL_PARAMS["modelCProbThreshold"])
+    c1_log_cfg = ML_MODEL_PARAMS["modelCStageC1Logistic"]
+    c1_mlp_cfg = ML_MODEL_PARAMS["modelCStageC1ResMlp"]
+    c1_gbdt_cfg = ML_MODEL_PARAMS["modelCStageC1Gbdt"]
+    c2_mlp_cfg = ML_MODEL_PARAMS["modelCStageC2ResMlp"]
+    c2_gbdt_cfg = ML_MODEL_PARAMS["modelCStageC2Gbdt"]
+
     # 1. Estágio de Classificação: Logística L-BFGS-B vs. ResMLP Classifier vs. Histogram GBDT Classifier
-    clf_lin = LogisticLBFGSModel(reg_l2=1e-3, max_iter=200).fit(X_tr, y_tr_flag)
+    clf_lin = LogisticLBFGSModel(
+        reg_l2=float(c1_log_cfg["regL2"]),
+        max_iter=int(c1_log_cfg["maxIter"]),
+    ).fit(X_tr, y_tr_flag)
     prob_lin = clf_lin.predict_proba(X_te)
-    cm_lin = compute_classification_metrics(y_te_flag, prob_lin, threshold=0.45)
+    cm_lin = compute_classification_metrics(y_te_flag, prob_lin, threshold=prob_threshold)
 
     clf_mlp = ResidualMLPClassifier(
-        hidden_units=16, reg_l2=8e-4, reg_l2_skip=1e-3, max_iter=180, seed=42
+        hidden_units=int(c1_mlp_cfg["hiddenUnits"]),
+        reg_l2=float(c1_mlp_cfg["regL2"]),
+        reg_l2_skip=float(c1_mlp_cfg["regL2Skip"]),
+        max_iter=int(c1_mlp_cfg["maxIter"]),
+        seed=seed,
     ).fit(X_tr, y_tr_flag)
     prob_mlp = clf_mlp.predict_proba(X_te)
-    cm_mlp = compute_classification_metrics(y_te_flag, prob_mlp, threshold=0.45)
+    cm_mlp = compute_classification_metrics(y_te_flag, prob_mlp, threshold=prob_threshold)
 
     clf_gbdt = HistogramGBDTClassifier(
-        n_estimators=85, learning_rate=0.07, max_depth=4, min_samples_leaf=40
+        n_estimators=int(c1_gbdt_cfg["nEstimators"]),
+        learning_rate=float(c1_gbdt_cfg["learningRate"]),
+        max_depth=int(c1_gbdt_cfg["maxDepth"]),
+        min_samples_leaf=int(c1_gbdt_cfg["minSamplesLeaf"]),
     ).fit(X_tr, y_tr_flag)
     prob_gbdt = clf_gbdt.predict_proba(X_te)
-    cm_gbdt = compute_classification_metrics(y_te_flag, prob_gbdt, threshold=0.45)
+    cm_gbdt = compute_classification_metrics(y_te_flag, prob_gbdt, threshold=prob_threshold)
 
     # 2. Estágio de Volume Hurdle/Direto: Ridge L2 vs. ResMLP vs. Histogram GBDT
     # No modelo Hurdle calibrado: E[Corte(t)] = clip(Reg_Positivo(X_t), 0, G_eol_pot) * P(Corte_t)
@@ -202,18 +240,26 @@ def evaluate_model_c_curtailment(
     g_pot_te = test_df["g_eolica_potencial_mw"].to_numpy(dtype=float)
 
     # Baseline Linear Hurdle (Logística + Ridge condicional)
-    reg_lin = LinearRidgeModel(alpha=20.0).fit(X_tr_pos, y_tr_pos)
+    reg_lin = LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"]) * 2.0).fit(X_tr_pos, y_tr_pos)
     vol_cond_lin = np.clip(reg_lin.predict(X_te), 0.0, g_pot_te)
     pred_vol_lin = np.clip(prob_lin * vol_cond_lin, 0.0, g_pot_te)
 
     # Challenger Não-Linear 1: Rede Neural ResMLP Hurdle (ResMLP Classifier * ResMLP Regressor condicional)
-    reg_mlp = ResidualMLPRegressor(hidden_units=24, reg_l2=2e-3, max_iter=150, seed=42).fit(X_tr_pos, y_tr_pos)
+    reg_mlp = ResidualMLPRegressor(
+        hidden_units=int(c2_mlp_cfg["hiddenUnits"]),
+        reg_l2=float(c2_mlp_cfg["regL2"]),
+        max_iter=int(c2_mlp_cfg["maxIter"]),
+        seed=seed,
+    ).fit(X_tr_pos, y_tr_pos)
     vol_cond_mlp = np.clip(reg_mlp.predict(X_te), 0.0, g_pot_te)
     pred_vol_mlp = np.clip(prob_mlp * vol_cond_mlp, 0.0, g_pot_te)
 
     # Challenger Não-Linear 2: Histogram GBDT Hurdle (GBDT Classifier * GBDT Regressor condicional)
     reg_gbdt = HistogramGBDTRegressor(
-        n_estimators=90, learning_rate=0.07, max_depth=4, min_samples_leaf=35
+        n_estimators=int(c2_gbdt_cfg["nEstimators"]),
+        learning_rate=float(c2_gbdt_cfg["learningRate"]),
+        max_depth=int(c2_gbdt_cfg["maxDepth"]),
+        min_samples_leaf=int(c2_gbdt_cfg["minSamplesLeaf"]),
     ).fit(X_tr_pos, y_tr_pos)
     vol_cond_gbdt = np.clip(reg_gbdt.predict(X_te), 0.0, g_pot_te)
     pred_vol_gbdt = np.clip(prob_gbdt * vol_cond_gbdt, 0.0, g_pot_te)
@@ -284,12 +330,12 @@ def export_2025_comparative_profiles(
         "g_eolica_potencial_mw", "curtailment_mw", "flag_curtailment",
     ]].copy()
 
-    # Integrar predições do Modelo A (se já geradas pelo Script 04)
+    # Integrar predições da arquitetura campeã ResMLP para os Modelos A, B e C
     pred_a_path = PROCESSED_DATA_DIR / "predicoes_2025_modelo_a.csv"
     if pred_a_path.exists():
         pa = pd.read_csv(pred_a_path)
         comp["pred_load_lin_mw"] = pa["pred_l_base_ridge_24h_mw"].to_numpy(dtype=float)
-        comp["pred_load_nonlin_mw"] = pa["pred_l_base_gbdt_24h_mw"].to_numpy(dtype=float)
+        comp["pred_load_nonlin_mw"] = pa["pred_l_base_resmlp_24h_mw"].to_numpy(dtype=float)
         comp["pred_load_1h_nonlin_mw"] = pa["pred_l_base_resmlp_1h_mw"].to_numpy(dtype=float)
     else:
         comp["pred_load_lin_mw"] = comp["l_base_mw"]
@@ -297,13 +343,14 @@ def export_2025_comparative_profiles(
         comp["pred_load_1h_nonlin_mw"] = comp["l_base_mw"]
 
     comp["pred_cf_lin"] = preds_b["ridge_1h"]
-    comp["pred_cf_nonlin"] = preds_b["gbdt_1h"]
-    comp["pred_cf_24h_nonlin"] = preds_b["gbdt_24h"]
+    comp["pred_cf_nonlin"] = preds_b["resmlp_1h"]
+    comp["pred_cf_24h_nonlin"] = preds_b["resmlp_24h"]
     comp["pred_curt_lin_mw"] = preds_c["vol_lin"]
     comp["pred_curt_nonlin_mw"] = preds_c["vol_mlp"]
     comp["pred_curt_prob_nonlin"] = preds_c["prob_mlp"]
 
-    meses_curtos = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+    meta_payload = json.loads((SCRIPTS_DIR / "pipeline_metadata.json").read_text(encoding="utf-8"))
+    meses_curtos = meta_payload["uiCatalog"]["monthShortNames"]
     monthly_rows = []
     for m in range(1, 13):
         sub = comp[comp["month"] == m]

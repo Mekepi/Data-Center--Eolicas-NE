@@ -24,6 +24,9 @@ from scipy.stats import f_oneway
 from config import (
     PROCESSED_DATA_DIR,
     REPORTS_DIR,
+    HISTORY_START_YEAR,
+    COFF_START_YEAR,
+    TRAIN_CUTOFF_YEAR,
 )
 
 
@@ -38,7 +41,7 @@ def create_temporal_and_harmonic_features(df: pd.DataFrame) -> pd.DataFrame:
     out["dayofweek"] = ts.dt.dayofweek
     out["month"] = ts.dt.month
     out["year"] = ts.dt.year
-    out["year_trend"] = (out["year"] - 2015) + (out["month"] - 1.0) / 12.0
+    out["year_trend"] = (out["year"] - HISTORY_START_YEAR) + (out["month"] - 1.0) / 12.0
     out["is_weekend"] = (ts.dt.dayofweek >= 5).astype(int)
 
     # Harmônicos cíclicos de hora (24h e 12h)
@@ -179,14 +182,14 @@ def run_comprehensive_anova_tests(df: pd.DataFrame) -> pd.DataFrame:
             )
         )
 
-    # Para Curtailment, avaliar na janela real de Constrained-Off do ONS (2023-2025)
-    df_coff = df[df["year"] >= 2023]
+    # Para Curtailment, avaliar na janela real de Constrained-Off do ONS
+    df_coff = df[df["year"] >= COFF_START_YEAR]
     if "curtailment_mw" in df_coff.columns and df_coff["curtailment_mw"].sum() > 0:
         results.append(
             _compute_exact_anova_row(
                 df_coff["curtailment_mw"],
                 df_coff["hour"],
-                "Curtailment Eólico Real (curtailment_mw · 2023-2025)",
+                f"Curtailment Eólico Real (curtailment_mw · {COFF_START_YEAR}-{TRAIN_CUTOFF_YEAR})",
                 "Faixa Horária do Dia (24 horas)",
                 "Pico severo de constrained-off entre 09h e 16h pela rampa solar diurna simultânea à geração eólica",
             )
@@ -205,7 +208,7 @@ def compute_monthly_wind_profile(df: pd.DataFrame) -> pd.DataFrame:
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
     ]
     records = []
-    df_coff = df[df["year"] >= 2023]
+    df_coff = df[df["year"] >= COFF_START_YEAR]
 
     for m in range(1, 13):
         sub = df[df["month"] == m]
@@ -256,7 +259,7 @@ def compute_feature_correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
         "cf_lag1_squared",
     ]
     available_feats = [f for f in feature_candidates if f in df.columns]
-    df_coff = df[df["year"] >= 2023]
+    df_coff = df[df["year"] >= COFF_START_YEAR]
 
     corr_records = []
     for f in available_feats:
@@ -277,12 +280,12 @@ def compute_feature_correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
 def split_train_test_datasets(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Executa a partição temporal formal aprovada:
-    - Treino: 2015 a 2024 (10 anos completos)
-    - Teste Cego Out-of-Time: 2025 (1 ano completo, 8.760 horas)
+    - Treino: HISTORY_START_YEAR a TRAIN_CUTOFF_YEAR - 1
+    - Teste Cego Out-of-Time: TRAIN_CUTOFF_YEAR
     """
     ts = pd.to_datetime(df["ts"])
-    train_df = df[ts.dt.year < 2025].reset_index(drop=True)
-    test_df = df[ts.dt.year == 2025].reset_index(drop=True)
+    train_df = df[ts.dt.year < TRAIN_CUTOFF_YEAR].reset_index(drop=True)
+    test_df = df[ts.dt.year == TRAIN_CUTOFF_YEAR].reset_index(drop=True)
     return train_df, test_df
 
 

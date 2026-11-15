@@ -35,12 +35,29 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from config import (
+    ANEEL_PROJECTED_YEARS,
+    ANNUAL_LOAD_GROWTH_RATE,
+    ANNUAL_SOLAR_GROWTH_RATE,
+    BASELINE_YEAR,
+    DEFAULT_H2V_COMPARISON_MW,
+    H2V_SENSITIVITY_SPECS,
+    HOURS_PER_YEAR,
     INTERCHANGE_EXPORT_LIMIT_MW,
     INTERCHANGE_IMPORT_LIMIT_MW,
+    MODERN_BLOCK_START_YEAR,
+    MONTE_CARLO_PARAMS,
+    PECEM_H2V_HUB_SHARE,
+    PECEM_SUBSTATION_NAME,
     PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
+    REFERENCE_SCENARIO_KEYS,
     REPORTS_DIR,
     SCENARIOS_DATA_DIR,
+    SOLAR_CAP_FROM_MEAN_FACTOR,
+    SOLAR_CAP_MIN_MW,
+    TARGET_END_YEAR,
+    THERMAL_HYDRO_INSTALLED_CAP_MW,
+    TX_SENSITIVITY_SPECS,
 )
 
 _mc_mod = importlib.import_module("06_monte_carlo_balance_2035")
@@ -50,9 +67,6 @@ simulate_block_bootstrap = _mc_mod.simulate_block_bootstrap
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
-
-# Repartição geográfica de referência dos eletrolisadores entre ZPE Pecém (75%) e Suape (25%)
-PECEM_H2V_HUB_SHARE = 0.75
 
 
 def _fmt_pt(value: float, decimals: int = 1) -> str:
@@ -76,14 +90,16 @@ def _load_required_csv(path: Path, label: str) -> pd.DataFrame:
 
 
 def _extract_central_interm_2035(df_scen_matrix: pd.DataFrame) -> tuple[float, float, float]:
-    """Lê carga DC Central e capacidade eólica Intermediária em 2035 da Etapa 02."""
+    """Lê carga DC Central e capacidade eólica Intermediária em TARGET_END_YEAR da Etapa 02."""
     sub = df_scen_matrix[
-        (df_scen_matrix["ano"] == 2035)
-        & (df_scen_matrix["cenario_dc"] == "central")
-        & (df_scen_matrix["cenario_eolica"] == "intermediate")
+        (df_scen_matrix["ano"] == TARGET_END_YEAR)
+        & (df_scen_matrix["cenario_dc"] == REFERENCE_SCENARIO_KEYS["dcCentral"])
+        & (df_scen_matrix["cenario_eolica"] == REFERENCE_SCENARIO_KEYS["windIntermediate"])
     ]
     if sub.empty:
-        raise ValueError("Cenário (ano=2035, central, intermediate) ausente em matriz_cenarios_dc_eolica_2026_2035.csv")
+        raise ValueError(
+            f"Cenário (ano={TARGET_END_YEAR}, central, intermediate) ausente em matriz_cenarios_dc_eolica_2026_2035.csv"
+        )
     row = sub.iloc[0]
     return (
         float(row["carga_efetiva_dc_mw"]),
@@ -130,62 +146,28 @@ def load_pipeline_inputs() -> Dict[str, pd.DataFrame]:
 def run_transmission_sensitivity_2035(
     df_master: pd.DataFrame,
     df_scen_matrix: pd.DataFrame,
-    n_iterations: int = 1000,
-    seed: int = 42,
+    n_iterations: int = int(MONTE_CARLO_PARAMS["iterationsMain"]),
+    seed: int = int(MONTE_CARLO_PARAMS["seed"]),
 ) -> pd.DataFrame:
     """
     Executa a análise de sensibilidade 2035 (Cenário Central DC × Eólica SIGA Intermediária)
-    reutilizando exatamente o motor Block-Bootstrap do Script 06 para TX-01..TX-05.
-    TX-03 usa INTERCHANGE_IMPORT_LIMIT_MW / INTERCHANGE_EXPORT_LIMIT_MW e deve reproduzir
-    exatamente os resultados da linha Central × Intermediária de matriz_cenarios_monte_carlo_2035.csv.
+    reutilizando exatamente o motor Block-Bootstrap do Script 06 para TX_SENSITIVITY_SPECS.
     """
     logger.info("1. Executando Análise de Sensibilidade de Transmissão SIN via Motor Monte Carlo (2035)...")
 
     arrays = _prepare_seasonal_blocks(df_master)
     central_dc_mw, interm_onshore_mw, interm_offshore_mw = _extract_central_interm_2035(df_scen_matrix)
 
-    tx_specs = [
-        (
-            "TX-01 (Restrição Severa / Atraso de Obras)",
-            5500.0,
-            8000.0,
-            "Malha atual sob contingência N-1 sem novos reforços de 500 kV",
-        ),
-        (
-            "TX-02 (Limite Conservador Operativo)",
-            6250.0,
-            8750.0,
-            "Reforços parciais de compensação síncrona/estática sem novas LTs",
-        ),
-        (
-            "TX-03 (Referência Base PDE / ONS 2035)",
-            float(INTERCHANGE_IMPORT_LIMIT_MW),
-            float(INTERCHANGE_EXPORT_LIMIT_MW),
-            (
-                f"Malha de referência do estudo "
-                f"(Import {INTERCHANGE_IMPORT_LIMIT_MW / 1000.0:.1f} GW / Export {INTERCHANGE_EXPORT_LIMIT_MW / 1000.0:.1f} GW)"
-            ).replace(".", ","),
-        ),
-        (
-            "TX-04 (Expansão 500 kV NE–SE/CO Planejada)",
-            8000.0,
-            11000.0,
-            "Entrada das novas LTs 500 kV Graça Aranha–Silvânia e reforços Chesf",
-        ),
-        (
-            "TX-05 (Bipolo HVDC + Malha 500 kV Completa)",
-            9000.0,
-            12500.0,
-            "Expansão plena HVDC Bipolo Nordeste–Sudeste + escoamento de 12,5 GW",
-        ),
-    ]
-
     rows: List[Dict[str, Any]] = []
-    for cfg_id, imp_lim, exp_lim, desc in tx_specs:
+    for spec in TX_SENSITIVITY_SPECS:
+        cfg_id = str(spec["configId"])
+        imp_lim = float(spec["importLimitMW"])
+        exp_lim = float(spec["exportLimitMW"])
+        desc = str(spec["description"])
         res = simulate_block_bootstrap(
             cenario_nome=cfg_id,
-            cenario_dc_id="central",
-            target_year=2035,
+            cenario_dc_id=REFERENCE_SCENARIO_KEYS["dcCentral"],
+            target_year=TARGET_END_YEAR,
             dc_load_mw=central_dc_mw,
             wind_onshore_mw=interm_onshore_mw,
             wind_offshore_mw=interm_offshore_mw,
@@ -194,6 +176,7 @@ def run_transmission_sensitivity_2035(
             arrays=arrays,
             import_limit_mw=imp_lim,
             export_limit_mw=exp_lim,
+            cenario_eolica_id=REFERENCE_SCENARIO_KEYS["windIntermediate"],
         )
         rows.append(
             {
@@ -222,66 +205,33 @@ def run_h2v_and_datacenter_synergy_2035(
     df_master: pd.DataFrame,
     df_scen_matrix: pd.DataFrame,
     df_subs: pd.DataFrame,
-    n_iterations: int = 1000,
-    seed: int = 42,
+    n_iterations: int = int(MONTE_CARLO_PARAMS["iterationsMain"]),
+    seed: int = int(MONTE_CARLO_PARAMS["seed"]),
 ) -> pd.DataFrame:
     """
     Executa a análise da Seção 10 do Plano Orientador e Decisão 04 do Grupo 6 via núcleo
-    estocástico Block-Bootstrap do Script 06:
-      - H2V operando em Baseload Inflexível (92% contínuo) vs.
-      - H2V operando com Modulação Flexível Grid-Following (12% na calmaria/ponta noturna,
-        55% em faixa intermediária e 100% no excedente eólico/solar).
-    H2V-01 (h2v_nominal_mw = 0) coincide numericamente com TX-03 e Central × Intermediária.
+    estocástico Block-Bootstrap do Script 06 com base em H2V_SENSITIVITY_SPECS.
     """
     logger.info("2. Executando Análise H2V vs. Data Centers 24/7 via Motor Monte Carlo (2035)...")
 
     arrays = _prepare_seasonal_blocks(df_master)
     central_dc_mw, interm_onshore_mw, interm_offshore_mw = _extract_central_interm_2035(df_scen_matrix)
 
-    pecem_rows = df_subs[df_subs["subestacao_conexao"] == "SE Pecém II"]
+    pecem_rows = df_subs[df_subs["subestacao_conexao"] == PECEM_SUBSTATION_NAME]
     if pecem_rows.empty:
-        raise ValueError("Subestação 'SE Pecém II' ausente em dc_substation_load_concentration.csv")
+        raise ValueError(f"Subestação '{PECEM_SUBSTATION_NAME}' ausente em dc_substation_load_concentration.csv")
     pecem_dc_base_mw = float(pecem_rows["demanda_efetiva_2035_mw"].sum())
 
-    h2v_configs = [
-        (
-            "H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6)",
-            0.0,
-            False,
-            "Sem H2V (Isolamento de Data Centers)",
-        ),
-        (
-            "H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)",
-            1000.0,
-            False,
-            "Baseload Inflexível (92% contínuo)",
-        ),
-        (
-            "H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)",
-            1000.0,
-            True,
-            "Modulação Dinâmica (12% na calmaria / 100% no excedente)",
-        ),
-        (
-            "H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)",
-            2000.0,
-            False,
-            "Baseload Inflexível (92% contínuo)",
-        ),
-        (
-            "H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)",
-            2000.0,
-            True,
-            "Modulação Dinâmica (12% na calmaria / 100% no excedente)",
-        ),
-    ]
-
     rows: List[Dict[str, Any]] = []
-    for scen_id, h2v_nom_mw, is_flex, regime_desc in h2v_configs:
+    for spec in H2V_SENSITIVITY_SPECS:
+        scen_id = str(spec["scenarioId"])
+        h2v_nom_mw = float(spec["h2vNominalMW"])
+        is_flex = bool(spec["h2vFlexible"])
+        regime_desc = str(spec["operatingRegime"])
         res = simulate_block_bootstrap(
             cenario_nome=scen_id,
-            cenario_dc_id="central",
-            target_year=2035,
+            cenario_dc_id=REFERENCE_SCENARIO_KEYS["dcCentral"],
+            target_year=TARGET_END_YEAR,
             dc_load_mw=central_dc_mw,
             wind_onshore_mw=interm_onshore_mw,
             wind_offshore_mw=interm_offshore_mw,
@@ -292,6 +242,7 @@ def run_h2v_and_datacenter_synergy_2035(
             export_limit_mw=float(INTERCHANGE_EXPORT_LIMIT_MW),
             h2v_nominal_mw=h2v_nom_mw,
             h2v_flexible=is_flex,
+            cenario_eolica_id=REFERENCE_SCENARIO_KEYS["windIntermediate"],
         )
         h2v_avg_mw = float(res["h2v_avg_mw"])
         absorbed_total_twh = round(float(res["curtailment_evitado_gwh_ano"]) / 1000.0, 2)
@@ -352,18 +303,18 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
         .sort_values("year")
     )
 
-    hydro_therm_cap = 15350.0  # Parque Chesf + UTEs NE (capacidade firme instalada)
+    hydro_therm_cap = float(THERMAL_HYDRO_INSTALLED_CAP_MW)
     rows: List[Dict[str, Any]] = []
 
     for _, r in annual_hist.iterrows():
         yr = int(r["year"])
         wind_cap = float(r["cap_eolica_mw"])
-        solar_cap_est = max(120.0, float(r["gen_solar_mw"]) * 3.85)
+        solar_cap_est = max(float(SOLAR_CAP_MIN_MW), float(r["gen_solar_mw"]) * float(SOLAR_CAP_FROM_MEAN_FACTOR))
         total_installed_cap_ne = wind_cap + solar_cap_est + hydro_therm_cap
 
         wind_gen = float(r["gen_eolica_verificada_mw"])
         total_gen_ne = wind_gen + float(r["gen_solar_mw"]) + float(r["gen_hidro_mw"]) + float(r["gen_termica_mw"])
-        curt_twh = float(r["curtailment_mw"]) * 8760.0 / 1e6
+        curt_twh = float(r["curtailment_mw"]) * float(HOURS_PER_YEAR) / 1e6
 
         share_cap_aneel_pct = round((wind_cap / total_installed_cap_ne) * 100.0, 2)
         share_gen_ons_pct = round((wind_gen / max(1.0, total_gen_ne)) * 100.0, 2)
@@ -384,13 +335,13 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
             }
         )
 
-    # Parâmetros empíricos da janela moderna (2022–2025) e de 2025 para derivação das projeções 2028–2035
-    df_2025 = df_hist_base[df_hist_base["year"] == 2025].copy()
+    # Parâmetros empíricos da janela moderna (MODERN_BLOCK_START_YEAR..BASELINE_YEAR) para derivação das projeções
+    df_2025 = df_hist_base[df_hist_base["year"] == BASELINE_YEAR].copy()
     if df_2025.empty:
         max_yr = int(df_hist_base["year"].max())
         df_2025 = df_hist_base[df_hist_base["year"] == max_yr].copy()
 
-    df_modern = df_hist_base[df_hist_base["year"] >= 2022]
+    df_modern = df_hist_base[df_hist_base["year"] >= MODERN_BLOCK_START_YEAR]
     if df_modern.empty:
         df_modern = df_hist_base
     cf_pot_ref = float(df_modern["cf_eolica"].mean())
@@ -399,13 +350,13 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
     cf_2025_arr = df_2025["cf_eolica"].to_numpy(dtype=float)
     solar_2025_arr = df_2025["g_solar_mw"].fillna(0.0).to_numpy(dtype=float)
     solar_2025_mean_mw = float(np.mean(solar_2025_arr))
-    solar_2025_cap_mw = max(120.0, solar_2025_mean_mw * 3.85)
+    solar_2025_cap_mw = max(float(SOLAR_CAP_MIN_MW), solar_2025_mean_mw * float(SOLAR_CAP_FROM_MEAN_FACTOR))
 
-    for yr in [2028, 2030, 2032, 2035]:
+    for yr in ANEEL_PROJECTED_YEARS:
         scen_row = df_scen_matrix[
             (df_scen_matrix["ano"] == yr)
-            & (df_scen_matrix["cenario_dc"] == "central")
-            & (df_scen_matrix["cenario_eolica"] == "intermediate")
+            & (df_scen_matrix["cenario_dc"] == REFERENCE_SCENARIO_KEYS["dcCentral"])
+            & (df_scen_matrix["cenario_eolica"] == REFERENCE_SCENARIO_KEYS["windIntermediate"])
         ]
         tl_row = df_timeline[df_timeline["target_year"] == yr]
         if scen_row.empty or tl_row.empty:
@@ -416,16 +367,16 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
 
         w_mw = float(scen_row.iloc[0]["eolica_total_mw"])
         curt_twh = round(float(tl_row.iloc[0]["curtailment_com_dc_twh_ano"]), 2)
-        years_ahead = max(0, yr - 2025)
-        solar_growth = 1.0 + 0.045 * years_ahead
-        load_growth = 1.031 ** years_ahead
+        years_ahead = max(0, yr - BASELINE_YEAR)
+        solar_growth = 1.0 + ANNUAL_SOLAR_GROWTH_RATE * years_ahead
+        load_growth = (1.0 + ANNUAL_LOAD_GROWTH_RATE) ** years_ahead
 
         proj_solar_cap_mw = solar_2025_cap_mw * solar_growth
         total_cap_mw = w_mw + proj_solar_cap_mw + hydro_therm_cap
         share_cap = round((w_mw / total_cap_mw) * 100.0, 2)
 
         wind_pot_gen_mw = w_mw * cf_pot_ref
-        curt_mw_avg = (curt_twh * 1e6) / 8760.0
+        curt_mw_avg = (curt_twh * 1e6) / float(HOURS_PER_YEAR)
         wind_eff_gen_mw = max(0.0, wind_pot_gen_mw - curt_mw_avg)
 
         proj_solar_gen_arr = solar_2025_arr * solar_growth
@@ -527,7 +478,7 @@ def write_final_consolidated_markdown_report(
     test_hours = int(df_model_a["teste_2025_horas"].iloc[0])
 
     base_load_2025_mw = float(df_test2025["l_base_mw"].mean())
-    base_load_2035_mw = base_load_2025_mw * (1.031 ** 10)
+    base_load_2035_mw = base_load_2025_mw * ((1.0 + ANNUAL_LOAD_GROWTH_RATE) ** (TARGET_END_YEAR - BASELINE_YEAR))
 
     n_dc_projects = int(len(df_dc_raw))
     total_it_mw = float(df_dc_raw["potencia_it_mw"].sum())
@@ -545,7 +496,8 @@ def write_final_consolidated_markdown_report(
     base_wind_mw = float(mc_sorted["wind_capacity_mw"].min())
     high_wind_mw = float(mc_sorted["wind_capacity_mw"].max())
     interm_row_scen = df_scen_matrix[
-        (df_scen_matrix["ano"] == 2035) & (df_scen_matrix["cenario_eolica"] == "intermediate")
+        (df_scen_matrix["ano"] == TARGET_END_YEAR)
+        & (df_scen_matrix["cenario_eolica"] == REFERENCE_SCENARIO_KEYS["windIntermediate"])
     ].iloc[0]
     interm_wind_mw = float(interm_row_scen["eolica_total_mw"])
 
@@ -555,11 +507,11 @@ def write_final_consolidated_markdown_report(
             raise ValueError(f"Cenário ({dc_id}, wind={w_mw}) não encontrado em matriz_cenarios_monte_carlo_2035.csv")
         return sub.iloc[0]
 
-    mc_none_base = _find_mc("none", base_wind_mw)
-    mc_central_base = _find_mc("central", base_wind_mw)
-    mc_central_interm = _find_mc("central", interm_wind_mw)
-    mc_central_high = _find_mc("central", high_wind_mw)
-    mc_high_interm = _find_mc("high", interm_wind_mw)
+    mc_none_base = _find_mc(REFERENCE_SCENARIO_KEYS["dcControl"], base_wind_mw)
+    mc_central_base = _find_mc(REFERENCE_SCENARIO_KEYS["dcCentral"], base_wind_mw)
+    mc_central_interm = _find_mc(REFERENCE_SCENARIO_KEYS["dcCentral"], interm_wind_mw)
+    mc_central_high = _find_mc(REFERENCE_SCENARIO_KEYS["dcCentral"], high_wind_mw)
+    mc_high_interm = _find_mc(REFERENCE_SCENARIO_KEYS["dcHigh"], interm_wind_mw)
 
     central_dc_mw = float(mc_central_base["dc_load_mw"])
     base_wind_gw = base_wind_mw / 1000.0
@@ -614,14 +566,14 @@ def write_final_consolidated_markdown_report(
         c_nl_df["arquitetura"].str.contains("ResMLP").any()
     ) else c_nl_df.iloc[0]
 
-    # Concentração em SE Pecém II e comparativo H2V 2,0 GW
-    pecem_share_pct = float(df_subs[df_subs["subestacao_conexao"] == "SE Pecém II"]["participacao_pct"].sum())
+    # Concentração em PECEM_SUBSTATION_NAME e comparativo H2V
+    pecem_share_pct = float(df_subs[df_subs["subestacao_conexao"] == PECEM_SUBSTATION_NAME]["participacao_pct"].sum())
     h2v_base = df_h2v[df_h2v["carga_h2v_nominal_mw"] == 0.0].iloc[0]
     h2v_2gw_inflex = df_h2v[
-        (df_h2v["carga_h2v_nominal_mw"] == 2000.0) & df_h2v["cenario_id"].str.contains("Inflexível")
+        (df_h2v["carga_h2v_nominal_mw"] == DEFAULT_H2V_COMPARISON_MW) & df_h2v["cenario_id"].str.contains("Inflexível")
     ].iloc[0]
     h2v_2gw_flex = df_h2v[
-        (df_h2v["carga_h2v_nominal_mw"] == 2000.0) & df_h2v["cenario_id"].str.contains("Flexível")
+        (df_h2v["carga_h2v_nominal_mw"] == DEFAULT_H2V_COMPARISON_MW) & df_h2v["cenario_id"].str.contains("Flexível")
     ].iloc[0]
 
     imp_limit_str = _fmt_int_pt(int(round(INTERCHANGE_IMPORT_LIMIT_MW)))

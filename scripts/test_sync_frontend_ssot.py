@@ -7,11 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, Dict
+from unittest import mock
 
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
+import sync_frontend_ssot as sync_mod
 from config import SCRIPTS_DIR
 from run_pipeline import main as run_pipeline_main, resolve_stages
 from sync_frontend_ssot import (
@@ -51,6 +53,7 @@ def _make_consistent_synthetic_payload() -> Dict[str, Any]:
         "monteCarlo12Scenarios2035": [
             {
                 "dcScenarioId": "central",
+                "windScenarioId": "intermediate",
                 "windCapacityMW": 36400.0,
                 "probExceedInterchangePct": 11.4,
                 "importP95MW": 7450.2,
@@ -113,6 +116,7 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertEqual(safe_float("-", 0.0), 0.0)
         self.assertAlmostEqual(safe_float("12,75"), 12.75)
         self.assertAlmostEqual(safe_float("1.596,8"), 1596.8)
+        self.assertAlmostEqual(safe_float("1,234.56"), 1234.56)
 
         self.assertEqual(safe_int("2035.0", 0), 2035)
         self.assertEqual(safe_int("", 230), 230)
@@ -144,6 +148,9 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertEqual(len(meta["dcProjectNotes"]), 14)
         self.assertGreaterEqual(len(meta["featureMetadata"]), 14)
         self.assertEqual(len(meta["scriptsCatalog"]), 7)
+        self.assertEqual(len(meta["uiCatalog"]["databasesCatalog"]), 10)
+        self.assertEqual(len(meta["uiCatalog"]["groupDecisions"]), 4)
+        self.assertEqual(len(meta["uiCatalog"]["observationWindows"]), 5)
 
         all_stages = resolve_stages()
         self.assertEqual([s.stage_id for s in all_stages], ["01", "02", "03", "04", "05", "06", "07", "ssot"])
@@ -224,10 +231,21 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertEqual(len(payload["monthlyWindProfiles"]), 12)
         self.assertEqual(len(payload["hourlyValidation2025Profile"]), 24)
         self.assertEqual(len(payload["monteCarlo12Scenarios2035"]), 12)
+        for row in payload["monteCarlo12Scenarios2035"]:
+            self.assertIn(row["windScenarioId"], {"base", "intermediate", "high"})
+        self.assertEqual(payload["annualRiskTimeline2026_2035"][0]["year"], 2026)
         self.assertEqual(len(payload["annualRiskTimeline2026_2035"]), 10)
         self.assertEqual(len(payload["transmissionSensitivity2035"]), 5)
         self.assertEqual(len(payload["h2vSynergySensitivity2035"]), 5)
         self.assertEqual(len(payload["scriptsPipeline"]), 7)
+        self.assertEqual(len(payload["bundleDigest"]), 16)
+        self.assertEqual(payload["config"]["hoursPerYear"], 8760)
+        self.assertEqual(payload["config"]["projectionStartYear"], 2025)
+        self.assertEqual(payload["config"]["targetEndYear"], 2035)
+        self.assertEqual(payload["lineage"]["comparativeNonLinearArchitecture"], "Rede Neural ResMLP")
+        self.assertIsInstance(payload["lineage"]["localRawCachePresent"], bool)
+        self.assertEqual(len(payload["uiCatalog"]["databasesCatalog"]), 10)
+        self.assertEqual(len(payload["uiCatalog"]["groupDecisions"]), 4)
 
         # Every script starterCode must match the real disk file in scripts/*.py verbatim (ignoring CRLF/LF checkout differences)
         for spec in payload["scriptsPipeline"]:
@@ -291,6 +309,205 @@ class TestSyncFrontendSsot(unittest.TestCase):
             ts_text = ts_out.read_text(encoding="utf-8")
             self.assertIn("export const PIPELINE_SSOT: PipelineSsotBundle =", ts_text)
 
+    def test_sync_frontend_ssot_blocks_write_when_cross_consistency_fails(self) -> None:
+        bad_payload = _make_consistent_synthetic_payload()
+        bad_payload["transmissionSensitivity2035"][0]["probCriticalImportPct"] = 99.9
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            json_out = tmp_dir / "pipeline-ssot.json"
+            ts_out = tmp_dir / "pipelineSsot.ts"
+            with mock.patch.object(sync_mod, "build_ssot_payload", return_value=bad_payload):
+                with self.assertRaisesRegex(ValueError, "Bloqueio SSOT"):
+                    sync_frontend_ssot(json_out_path=json_out, ts_out_path=ts_out, validate=True)
+            self.assertFalse(json_out.exists())
+            self.assertFalse(ts_out.exists())
+
+    def test_scripts_01_to_07_align_with_config_and_resmlp_c2_2(self) -> None:
+        for script_path in sorted(SCRIPTS_DIR.glob("0[1-7]_*.py")):
+            src = script_path.read_text(encoding="utf-8")
+            self.assertIn("from config import", src, f"{script_path.name} deve importar parâmetros de config.py")
+
+        s05 = (SCRIPTS_DIR / "05_forecast_wind_cf_and_curtailment.py").read_text(encoding="utf-8")
+        export_section = s05.split("def export_2025_comparative_profiles", 1)[1]
+        self.assertIn('pa["pred_l_base_resmlp_24h_mw"]', export_section)
+        self.assertIn('preds_b["resmlp_1h"]', export_section)
+        self.assertIn('preds_b["resmlp_24h"]', export_section)
+        self.assertNotIn("pred_l_base_gbdt_24h_mw", export_section)
+        self.assertNotIn('preds_b["gbdt_1h"]', export_section)
+
+        s06 = (SCRIPTS_DIR / "06_monte_carlo_balance_2035.py").read_text(encoding="utf-8")
+        self.assertIn("PROJECTION_START_YEAR", s06)
+        self.assertIn("float(HOURS_PER_YEAR) / float(block_size_hours)", s06)
+        self.assertNotIn("* 52.0", s06)
+        self.assertNotIn("/ 0.21", s06)
+
+        s07 = (SCRIPTS_DIR / "07_sensitivity_and_final_report.py").read_text(encoding="utf-8")
+        self.assertIn("TX_SENSITIVITY_SPECS", s07)
+        self.assertIn("H2V_SENSITIVITY_SPECS", s07)
+        self.assertIn("ANEEL_PROJECTED_YEARS", s07)
+
+    def test_c2_3_grid_and_hourly_baseline_contracts_and_optional_loading(self) -> None:
+        base_payload = build_ssot_payload()
+        self.assertEqual(base_payload["config"]["hourlyBaselineJsonUrl"], "/data/hourly-baseline-8760.json")
+        self.assertIn("simulatorMonteCarloGrid", base_payload)
+        self.assertIsInstance(base_payload["lineage"]["hourlyBaselineAvailable"], bool)
+        self.assertIsInstance(base_payload["lineage"]["simulatorGridAvailable"], bool)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            missing_baseline = tmp_dir / "missing_baseline.json"
+            missing_grid = tmp_dir / "missing_grid.csv"
+            empty_payload = build_ssot_payload(
+                baseline_json_path=missing_baseline,
+                simulator_grid_path=missing_grid,
+            )
+            self.assertEqual(empty_payload["simulatorMonteCarloGrid"], [])
+            self.assertFalse(empty_payload["lineage"]["hourlyBaselineAvailable"])
+            self.assertEqual(empty_payload["lineage"]["hourlyBaselineDigest"], "")
+            self.assertEqual(empty_payload["lineage"]["hourlyBaselineHoursCount"], 0)
+            self.assertFalse(empty_payload["lineage"]["simulatorGridAvailable"])
+            self.assertEqual(empty_payload["lineage"]["simulatorGridRowsCount"], 0)
+
+            # Simula artefatos reais gerados pela Etapa 06 (8.760h + grade paramétrica)
+            hours = 8760
+            regime_block = {
+                "lBaseMW": [12500.0] * hours,
+                "cfWind": [0.45] * hours,
+                "gSolarMW": [1200.0] * hours,
+                "gHydroMW": [3500.0] * hours,
+                "gThermalMW": [900.0] * hours,
+                "curtailmentMW": [850.0] * hours,
+            }
+            baseline_obj = {
+                "schemaVersion": "1.0.0",
+                "hoursCount": hours,
+                "baselineYear": 2025,
+                "digest": "abc123def4567890",
+                "month": [1] * hours,
+                "day": [1] * hours,
+                "hour": [h % 24 for h in range(hours)],
+                "regimes": {
+                    "annual_blend": regime_block,
+                    "dry_windy": regime_block,
+                    "wet_calm": regime_block,
+                },
+            }
+            baseline_file = tmp_dir / "hourly-baseline-8760.json"
+            baseline_file.write_text(json.dumps(baseline_obj), encoding="utf-8")
+
+            mc_ref = next(
+                r
+                for r in base_payload["monteCarlo12Scenarios2035"]
+                if r["dcScenarioId"] == "central" and r["windScenarioId"] == "intermediate"
+            )
+            grid_file = tmp_dir / "grade_simulador_monte_carlo_2025_2035.csv"
+            grid_file.write_text(
+                "year,dc_scenario,wind_scenario,seasonal_regime,pue,dc_utilization,import_limit_mw,export_limit_mw,"
+                "dc_load_mw,wind_capacity_mw,prob_exceder_intercambio_pct,lole_horas_criticas_ano,"
+                "importacao_p50_mw,importacao_p95_mw,curtailment_sem_dc_twh_ano,curtailment_com_dc_twh_ano,"
+                "curtailment_evitado_gwh_ano,expansao_eolica_compensatoria_gw\n"
+                f"2035,central,intermediate,annual_blend,1.28,0.8,7000.0,9500.0,"
+                f"{mc_ref['dcLoadMW']},{mc_ref['windCapacityMW']},{mc_ref['probExceedInterchangePct']},"
+                f"{mc_ref['loleCriticalHoursYear']},{mc_ref['importP50MW']},{mc_ref['importP95MW']},"
+                f"{mc_ref['curtailmentWithoutDcTWh']},{mc_ref['curtailmentWithDcTWh']},"
+                f"{mc_ref['curtailmentAvoidedGWh']},{mc_ref['compensatoryWindExpansionGW']}\n",
+                encoding="utf-8",
+            )
+
+            populated_payload = build_ssot_payload(
+                baseline_json_path=baseline_file,
+                simulator_grid_path=grid_file,
+            )
+            self.assertTrue(populated_payload["lineage"]["hourlyBaselineAvailable"])
+            self.assertEqual(populated_payload["lineage"]["hourlyBaselineDigest"], "abc123def4567890")
+            self.assertEqual(populated_payload["lineage"]["hourlyBaselineHoursCount"], 8760)
+            self.assertTrue(populated_payload["lineage"]["simulatorGridAvailable"])
+            self.assertEqual(populated_payload["lineage"]["simulatorGridRowsCount"], 1)
+            self.assertEqual(len(populated_payload["simulatorMonteCarloGrid"]), 1)
+
+            # Se divergir de monteCarlo12Scenarios2035, validate_ssot_cross_consistency bloqueia
+            drifted_payload = copy.deepcopy(populated_payload)
+            drifted_payload["simulatorMonteCarloGrid"][0]["probExceedInterchangePct"] = 99.0
+            self.assertTrue(
+                any("grade vs MC12" in v for v in validate_ssot_cross_consistency(drifted_payload))
+            )
+
+    def test_c2_3_script_06_defines_8760h_and_parametric_grid_exporters(self) -> None:
+        s06 = (SCRIPTS_DIR / "06_monte_carlo_balance_2035.py").read_text(encoding="utf-8")
+        self.assertIn("def build_and_export_hourly_baseline_8760(", s06)
+        self.assertIn("def export_simulator_monte_carlo_grid(", s06)
+        self.assertIn("build_and_export_hourly_baseline_8760(df_base)", s06)
+        self.assertIn("export_simulator_monte_carlo_grid(", s06)
+        self.assertIn("HOURLY_BASELINE_JSON_PATH", s06)
+        self.assertIn("HOURLY_BASELINE_CSV_FILENAME", s06)
+        self.assertIn("SIMULATOR_GRID_CSV_FILENAME", s06)
+        self.assertIn("SEASONAL_REGIME_MONTHS", s06)
+
+    def test_c2_5_config_and_uicatalog_complete_contract(self) -> None:
+        from config import build_ons_urls, export_frontend_config_dict
+
+        src_dir = SCRIPTS_DIR.parent / "src"
+        cfg = export_frontend_config_dict()
+        self.assertEqual(cfg["projectionStartYear"], 2025)
+        self.assertEqual(cfg["baselineYear"], 2025)
+        self.assertEqual(cfg["rampStartYear"], 2026)
+        self.assertEqual(cfg["targetEndYear"], 2035)
+        self.assertEqual(cfg["hoursPerYear"], 8760)
+        self.assertEqual(cfg["daysPerYear"], 365)
+        self.assertEqual(cfg["weeksPerYear"], 52)
+        self.assertEqual(cfg["quartersPerYear"], 4)
+
+        bounds = cfg["simulatorSliderBounds"]
+        self.assertEqual(bounds["year"]["min"], 2025)
+        self.assertEqual(bounds["year"]["max"], 2035)
+        self.assertEqual(bounds["year"]["default"], 2035)
+        self.assertEqual(bounds["defaultObservationWindow"], "year")
+
+        urls = build_ons_urls()
+        self.assertIn("ons_curva_carga_2025", urls)
+        self.assertIn("ons_balanco_2025", urls)
+        self.assertIn("ons_capacidade_geracao", urls)
+        self.assertIn("ons_constrained_off_eolica_2025_12", urls)
+        self.assertNotIn("2026_10", urls["ons_constrained_off_eolica_2025_12"])
+
+        payload = build_ssot_payload()
+        ui = payload["uiCatalog"]
+        self.assertEqual([w["id"] for w in ui["observationWindows"]], ["day", "week", "month", "quarter", "year"])
+        self.assertEqual([r["id"] for r in ui["seasonalRegimes"]], ["annual_blend", "dry_windy", "wet_calm"])
+        self.assertEqual(len(ui["monthShortNames"]), 12)
+        self.assertEqual(len(ui["databasesCatalog"]), 10)
+        self.assertEqual(len(ui["groupDecisions"]), 4)
+        self.assertTrue(ui["pdfAssetPath"].endswith(".pdf"))
+        self.assertTrue(all(len(c["id"]) > 0 for c in ui["anovaCategories"]))
+        self.assertTrue(len(ui["dcScenarioCards"]) >= 3)
+        self.assertFalse((src_dir / "data" / "databasesCatalog.ts").exists())
+
+    def test_c2_5_anti_hardcode_guardrails_across_scripts_and_frontend(self) -> None:
+        src_dir = SCRIPTS_DIR.parent / "src"
+
+        # Nenhum script analítico 01..07 ou sincronizador deve reintroduzir URL fixa 2026_10
+        for py_path in sorted(SCRIPTS_DIR.glob("*.py")):
+            if py_path.name == "test_sync_frontend_ssot.py":
+                continue
+            text = py_path.read_text(encoding="utf-8")
+            self.assertNotIn("RESTRICAO_COFF_EOLICA_2026_10.csv", text, f"URL congelada em {py_path.name}")
+
+        s07 = (SCRIPTS_DIR / "07_sensitivity_and_final_report.py").read_text(encoding="utf-8")
+        self.assertIn("PECEM_H2V_HUB_SHARE", s07)
+        self.assertNotIn("PECEM_H2V_HUB_SHARE = 0.75", s07)
+
+        # Zero arquivos com style={{ ou símbolos legados em src/
+        for ts_path in list(src_dir.rglob("*.ts")) + list(src_dir.rglob("*.tsx")):
+            if ts_path.name.endswith(".test.ts") or ts_path.name == "pipelineSsot.ts":
+                continue
+            content = ts_path.read_text(encoding="utf-8")
+            self.assertNotIn("style={{", content, f"Estilo inline proibido em {ts_path.name}")
+            self.assertNotIn("simulateHourlyWeek", content, f"Símbolo legado em {ts_path.name}")
+            self.assertNotIn("DEFAULT_ENERGY_MODEL_CONFIG", content, f"Config estático legado em {ts_path.name}")
+            self.assertNotIn("GROUP_DECISIONS", content, f"Catálogo estático legado em {ts_path.name}")
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { usePipelineSsot } from '../data/pipelineSsotContext';
 import type {
   HourlyValidation2025Point,
   ModelABenchmarkRow,
@@ -21,6 +22,20 @@ interface Validation2025PanelProps {
   onExportBenchmarks: () => void;
 }
 
+function computeDomain(values: number[], paddingRatio: number, floorZero = false, minFloor?: number, maxCeil?: number): [number, number] {
+  if (values.length === 0) return [0, 1];
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const span = Math.max(1e-3, rawMax - rawMin);
+  const pad = span * paddingRatio;
+  let lo = floorZero ? 0 : rawMin - pad;
+  let hi = rawMax + pad;
+  if (minFloor !== undefined) lo = Math.max(minFloor, lo);
+  if (maxCeil !== undefined) hi = Math.min(maxCeil, hi);
+  if (hi <= lo) hi = lo + 1;
+  return [lo, hi];
+}
+
 export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
   trainHours,
   testHours,
@@ -32,7 +47,33 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
   downloadFeedback,
   onExportBenchmarks,
 }) => {
+  const { ssot } = usePipelineSsot();
+  const cfg = ssot.config;
+  const padRatio = cfg.uiThresholds.chartPaddingRatio;
   const [valChartMetric, setValChartMetric] = useState<ValidationChartMetric>('load_mw');
+
+  const domains = useMemo(() => {
+    const loadVals = hourly2025.flatMap((p) => [p.realLoadMW, p.predLoadNonLinearMW]);
+    const windVals = hourly2025.flatMap((p) => [p.realWindCfPct, p.predWindCfNonLinearPct]);
+    const curtVals = hourly2025.flatMap((p) => [
+      p.realSolarMW,
+      p.realCurtailmentMW,
+      p.predCurtailmentNonLinearMW,
+      p.predCurtailmentLinearMW,
+    ]);
+    return {
+      load: computeDomain(loadVals, padRatio, false, 0),
+      wind: computeDomain(windVals, padRatio, false, 0, 100),
+      curt: computeDomain(curtVals, padRatio, true),
+    };
+  }, [hourly2025, padRatio]);
+
+  const activeDomain =
+    valChartMetric === 'load_mw'
+      ? domains.load
+      : valChartMetric === 'wind_cf'
+        ? domains.wind
+        : domains.curt;
 
   const svgW = 860;
   const svgH = 260;
@@ -42,7 +83,8 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
   const padB = 34;
   const plotW = svgW - padL - padR;
   const plotH = svgH - padT - padB;
-  const xForH = (h: number) => padL + (h / 23) * plotW;
+  const maxHour = Math.max(1, cfg.hoursPerDay - 1);
+  const xForH = (h: number) => padL + (h / maxHour) * plotW;
 
   const buildHourlyPoints = (getter: (pt: HourlyValidation2025Point) => number, minV: number, maxV: number) =>
     hourly2025
@@ -55,15 +97,17 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Gráfico Interativo de 24h: Real 2025 vs Predito Out-of-Time 2025 */}
+      {/* Gráfico Interativo de 24h: Real vs Predito Out-of-Time */}
       <section aria-labelledby="heading-hourly-2025" className="bg-white border border-slate-200 rounded-xl p-6">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-4 border-b border-slate-200">
           <div>
             <h2 id="heading-hourly-2025" className="text-lg font-bold text-slate-900">
-              Perfil Horário Médio de 2025: Verificado ONS vs. Previsto Out-of-Time ({testHours.toLocaleString('pt-BR')} horas)
+              Perfil Horário Médio de {cfg.baselineYear}: Verificado ONS vs. Previsto Out-of-Time (
+              {testHours.toLocaleString('pt-BR')} horas)
             </h2>
             <p className="text-xs text-slate-600 mt-0.5">
-              Comparação direta entre os valores reais medidos pelo ONS em 2025 e a previsão cega dos modelos treinados até 2024.
+              Comparação direta entre os valores reais medidos pelo ONS em {cfg.baselineYear} e a previsão cega dos
+              modelos treinados de {cfg.historyStartYear} a {cfg.historyEndYear - 1}.
             </p>
           </div>
 
@@ -103,7 +147,7 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
               onClick={onExportBenchmarks}
               className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              {downloadFeedback ?? 'Exportar Métricas 2025 (.csv)'}
+              {downloadFeedback ?? `Exportar Métricas ${cfg.baselineYear} (.csv)`}
             </button>
           </div>
         </div>
@@ -113,35 +157,43 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
             <div className="flex flex-wrap items-center gap-5">
               {valChartMetric === 'load_mw' && (
                 <>
-                  <span className="font-semibold text-slate-900">Linha sólida escura: Carga Real ONS 2025 (MW)</span>
+                  <span className="font-semibold text-slate-900">
+                    Linha sólida escura: Carga Real ONS {cfg.baselineYear} (MW)
+                  </span>
                   <span className="font-semibold text-sky-700">
-                    Tracejada azul: Previsão Não-Linear ResMLP (MAPE{' '}
+                    Tracejada azul: Previsão Não-Linear {kpis.nonLinearArchLabel} (MAPE{' '}
                     {kpis.a1h ? `${kpis.a1h.mapePct.toFixed(2).replace('.', ',')}%` : '—'})
                   </span>
                 </>
               )}
               {valChartMetric === 'wind_cf' && (
                 <>
-                  <span className="font-semibold text-slate-900">Linha sólida escura: CF Potencial Real 2025 (%)</span>
+                  <span className="font-semibold text-slate-900">
+                    Linha sólida escura: CF Potencial Real {cfg.baselineYear} (%)
+                  </span>
                   <span className="font-semibold text-emerald-700">
-                    Tracejada verde: Previsão Não-Linear ResMLP (R² ={' '}
+                    Tracejada verde: Previsão Não-Linear {kpis.nonLinearArchLabel} (R² ={' '}
                     {kpis.b1h ? kpis.b1h.r2Score.toFixed(4).replace('.', ',') : '—'})
                   </span>
                 </>
               )}
               {valChartMetric === 'curtailment_mw' && (
                 <>
-                  <span className="font-semibold text-rose-700">Linha sólida vermelha: Curtailment Real ONS 2025 (MWmed)</span>
+                  <span className="font-semibold text-rose-700">
+                    Linha sólida vermelha: Curtailment Real ONS {cfg.baselineYear} (MWmed)
+                  </span>
                   <span className="font-semibold text-slate-900">
-                    Tracejada escura: Curtailment Predito Não-Linear ({kpis.cBest ? kpis.cBest.architecture : 'ResMLP Hurdle C1+C2'})
+                    Tracejada escura: Curtailment Predito Não-Linear (
+                    {kpis.cBest ? kpis.cBest.architecture : kpis.nonLinearArchLabel})
                   </span>
                   <span className="text-sky-700">Pontilhada azul: Baseline Linear Hurdle</span>
-                  <span className="text-amber-600">Linha âmbar: Geração Solar Horária 2025 (MW)</span>
+                  <span className="text-amber-600">Linha âmbar: Geração Solar Horária {cfg.baselineYear} (MW)</span>
                 </>
               )}
             </div>
             <span className="font-mono text-slate-500">
-              Média horária das {testHours.toLocaleString('pt-BR')}h de 2025 (00h–23h)
+              Média horária das {testHours.toLocaleString('pt-BR')}h de {cfg.baselineYear} (00h–
+              {String(maxHour).padStart(2, '0')}h)
             </span>
           </div>
 
@@ -149,22 +201,17 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
             <svg
               viewBox={`0 0 ${svgW} ${svgH}`}
               role="img"
-              aria-label="Perfil horário médio de 2025 comparando valores verificados pelo ONS e predições cegas"
+              aria-label={`Perfil horário médio de ${cfg.baselineYear} comparando valores verificados pelo ONS e predições cegas`}
               className="w-full h-auto min-w-[660px] select-none"
             >
               {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
                 const y = padT + frac * plotH;
-                let label = '';
-                if (valChartMetric === 'load_mw') {
-                  const v = 15000 - frac * (15000 - 11500);
-                  label = `${(v / 1000).toFixed(1)} GW`;
-                } else if (valChartMetric === 'wind_cf') {
-                  const v = 60 - frac * (60 - 30);
-                  label = `${v.toFixed(0)}%`;
-                } else {
-                  const v = 7200 - frac * 7200;
-                  label = `${(v / 1000).toFixed(1)} GW`;
-                }
+                const [lo, hi] = activeDomain;
+                const v = hi - frac * (hi - lo);
+                const label =
+                  valChartMetric === 'wind_cf'
+                    ? `${v.toFixed(1)}%`
+                    : `${(v / 1000).toFixed(1)} GW`;
                 return (
                   <g key={frac}>
                     <line x1={padL} y1={y} x2={padL + plotW} y2={y} stroke="#e2e8f0" strokeWidth="1" />
@@ -175,7 +222,7 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
                 );
               })}
 
-              {[0, 3, 6, 9, 12, 15, 18, 21, 23].map((h) => {
+              {[0, 3, 6, 9, 12, 15, 18, 21, maxHour].map((h) => {
                 const x = xForH(h);
                 return (
                   <g key={h}>
@@ -193,14 +240,14 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
                     fill="none"
                     stroke="#0f172a"
                     strokeWidth="2.4"
-                    points={buildHourlyPoints((p) => p.realLoadMW, 11500, 15000)}
+                    points={buildHourlyPoints((p) => p.realLoadMW, domains.load[0], domains.load[1])}
                   />
                   <polyline
                     fill="none"
                     stroke="#0284c7"
                     strokeWidth="2"
                     strokeDasharray="6 3"
-                    points={buildHourlyPoints((p) => p.predLoadNonLinearMW, 11500, 15000)}
+                    points={buildHourlyPoints((p) => p.predLoadNonLinearMW, domains.load[0], domains.load[1])}
                   />
                 </>
               )}
@@ -211,14 +258,14 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
                     fill="none"
                     stroke="#0f172a"
                     strokeWidth="2.4"
-                    points={buildHourlyPoints((p) => p.realWindCfPct, 30, 60)}
+                    points={buildHourlyPoints((p) => p.realWindCfPct, domains.wind[0], domains.wind[1])}
                   />
                   <polyline
                     fill="none"
                     stroke="#059669"
                     strokeWidth="2"
                     strokeDasharray="6 3"
-                    points={buildHourlyPoints((p) => p.predWindCfNonLinearPct, 30, 60)}
+                    points={buildHourlyPoints((p) => p.predWindCfNonLinearPct, domains.wind[0], domains.wind[1])}
                   />
                 </>
               )}
@@ -229,27 +276,27 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
                     fill="none"
                     stroke="#d97706"
                     strokeWidth="1.8"
-                    points={buildHourlyPoints((p) => p.realSolarMW, 0, 7200)}
+                    points={buildHourlyPoints((p) => p.realSolarMW, domains.curt[0], domains.curt[1])}
                   />
                   <polyline
                     fill="none"
                     stroke="#be123c"
                     strokeWidth="2.4"
-                    points={buildHourlyPoints((p) => p.realCurtailmentMW, 0, 7200)}
+                    points={buildHourlyPoints((p) => p.realCurtailmentMW, domains.curt[0], domains.curt[1])}
                   />
                   <polyline
                     fill="none"
                     stroke="#0f172a"
                     strokeWidth="2"
                     strokeDasharray="5 3"
-                    points={buildHourlyPoints((p) => p.predCurtailmentNonLinearMW, 0, 7200)}
+                    points={buildHourlyPoints((p) => p.predCurtailmentNonLinearMW, domains.curt[0], domains.curt[1])}
                   />
                   <polyline
                     fill="none"
                     stroke="#0284c7"
                     strokeWidth="1.6"
                     strokeDasharray="2 3"
-                    points={buildHourlyPoints((p) => p.predCurtailmentLinearMW, 0, 7200)}
+                    points={buildHourlyPoints((p) => p.predCurtailmentLinearMW, domains.curt[0], domains.curt[1])}
                   />
                 </>
               )}
@@ -262,18 +309,17 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
 
       {/* Tabelas Comparativas de Modelos Lineares vs. Não-Lineares (Modelos A, B e C) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Benchmark Modelo A (Demanda Base NE) */}
         <section aria-labelledby="heading-bench-a" className="bg-white border border-slate-200 rounded-xl p-6">
           <div className="pb-4 border-b border-slate-200">
             <p className="text-xs font-semibold uppercase tracking-wider text-sky-800">
-              Script 04 · Modelo A (Demanda Base Normal NE)
+              Script 04 · Modelo A (Demanda Base Normal {cfg.subsystemId})
             </p>
             <h3 id="heading-bench-a" className="text-lg font-bold text-slate-900 mt-0.5">
-              Benchmark Out-of-Time 2025: Linear vs. Redes Neurais & GBDT
+              Benchmark Out-of-Time {cfg.baselineYear}: Linear vs. Redes Neurais & GBDT
             </h3>
             <p className="text-xs text-slate-600 mt-1">
-              Treino: 2015–2024 ({trainHours.toLocaleString('pt-BR')} h) · Teste cego: 2025 (
-              {testHours.toLocaleString('pt-BR')} h) · Projeção PDE 2035:{' '}
+              Treino: {cfg.historyStartYear}–{cfg.historyEndYear - 1} ({trainHours.toLocaleString('pt-BR')} h) · Teste
+              cego: {cfg.baselineYear} ({testHours.toLocaleString('pt-BR')} h) · Projeção PDE {cfg.targetEndYear}:{' '}
               {kpis.projPde2035LoadMW > 0
                 ? `${kpis.projPde2035LoadMW.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MW médios`
                 : '—'}.
@@ -324,14 +370,13 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
           </div>
         </section>
 
-        {/* Benchmark Modelo B (Fator de Capacidade Eólico Potencial) */}
         <section aria-labelledby="heading-bench-b" className="bg-white border border-slate-200 rounded-xl p-6">
           <div className="pb-4 border-b border-slate-200">
             <p className="text-xs font-semibold uppercase tracking-wider text-emerald-800">
               Script 05 · Modelo B (Fator de Capacidade Eólico CF_pot)
             </p>
             <h3 id="heading-bench-b" className="text-lg font-bold text-slate-900 mt-0.5">
-              Benchmark Out-of-Time 2025: CF(t) Reconstituído (Sem Viés de Corte)
+              Benchmark Out-of-Time {cfg.baselineYear}: CF(t) Reconstituído (Sem Viés de Corte)
             </h3>
             <p className="text-xs text-slate-600 mt-1">
               Treinado sobre CF potencial = (G_verificada + Curtailment) / Cap_SIGA(t) com termos aerodinâmicos de Betz (v³).
@@ -383,7 +428,7 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
         </section>
       </div>
 
-      {/* Benchmark Modelo C (Curtailment Hurdle 2 Estágios sobre Dados Reais ONS 2023-2025) */}
+      {/* Benchmark Modelo C */}
       <section aria-labelledby="heading-bench-c" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
         <div className="pb-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
@@ -391,11 +436,13 @@ export const Validation2025Panel: React.FC<Validation2025PanelProps> = ({
               Script 05 · Modelo C (Restrição de Operação Constrained-Off Eólico Real ONS)
             </p>
             <h3 id="heading-bench-c" className="text-lg font-bold text-slate-900 mt-0.5">
-              Arquitetura Hurdle em 2 Estágios: Probabilidade P(Corte &gt; 50 MW) e Volume Cortado (MWh)
+              Arquitetura Hurdle em 2 Estágios: Probabilidade P(Corte &gt; {cfg.curtailmentFlagThresholdMW} MW) e Volume Cortado (MWh)
             </h3>
           </div>
           <span className="text-xs font-mono text-slate-600 tabular-nums">
-            2024 Real: {kpis.ind2024 ? `${kpis.ind2024.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh` : '—'} · 2025 Real:{' '}
+            {cfg.baselineYear - 1} Real:{' '}
+            {kpis.ind2024 ? `${kpis.ind2024.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh` : '—'} ·{' '}
+            {cfg.baselineYear} Real:{' '}
             {kpis.ind2025 ? `${kpis.ind2025.annualCurtailmentLossTWh.toFixed(2).replace('.', ',')} TWh` : '—'}
           </span>
         </div>

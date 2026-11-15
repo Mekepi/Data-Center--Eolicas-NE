@@ -1,186 +1,120 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { usePipelineSsot } from '../data/pipelineSsotContext';
 import { downloadTextFile } from '../utils/csvExport';
 
-export interface GroupDecisionItem {
-  id: string;
-  topic: string;
-  question: string;
-  options: { value: string; label: string; rationale: string }[];
-}
-
-export const GROUP_DECISIONS: GroupDecisionItem[] = [
-  {
-    id: 'dec-window',
-    topic: '01. Janela Histórica de Treino e Backtesting (ONS)',
-    question: 'Qual recorte temporal usar para treinar Carga Base, CF(t) e Curtailment?',
-    options: [
-      {
-        value: '2015_2025',
-        label: '2015–2024 (Treino) e 2025 (Teste Out-of-Time) — Executado no Pipeline',
-        rationale:
-          'Recorte completo de 11 anos adotado na esteira oficial, capturando ciclos El Niño/La Niña e constrained-off 2023–2025.',
-      },
-      {
-        value: '2019_2025',
-        label: '2019–2024 (Treino) e 2025 (Teste Out-of-Time) — Recorte Recente',
-        rationale:
-          'Alternativa restrita ao período pós-expansão acelerada da solar centralizada/MMGD no Nordeste.',
-      },
-    ],
-  },
-  {
-    id: 'dec-offshore',
-    topic: '02. Tratamento das Eólicas Offshore (IBAMA) até 2035',
-    question: 'Como incorporar os projetos offshore em licenciamento no IBAMA?',
-    options: [
-      {
-        value: 'stress_post_2031',
-        label: 'Apenas no Cenário Alto pós-2031 com probabilidade reduzida — Recomendado',
-        rationale:
-          'Respeita o lead time real de leilão de prismas (PUG-Offshore), licenciamento EIA/RIMA e obras marítimas/portuárias no CE e RN.',
-      },
-      {
-        value: 'onshore_only',
-        label: 'Restringir escopo base apenas a Eólicas Onshore (SIGA/ANEEL)',
-        rationale:
-          'Mais conservador e simples para o escopo mínimo da disciplina, citando offshore apenas como análise de sensibilidade.',
-      },
-    ],
-  },
-  {
-    id: 'dec-era5',
-    topic: '03. Variáveis Meteorológicas Externas (ERA5 / INMET)',
-    question: 'Incluir reanálise de vento/temperatura no Feature Engineering?',
-    options: [
-      {
-        value: 'era5_centroids',
-        label: 'Extrair 4 centróides ERA5 (BA, RN, CE, PI) p/ vento 100m e temp 2m — Recomendado',
-        rationale:
-          'Leve para baixar via CDS API (apenas 4 pontos de grade horários) e melhora substancialmente a explicação física de CF(t) e carga.',
-      },
-      {
-        value: 'lags_only',
-        label: 'Usar inicialmente apenas lags horários ONS + calendário (MVP rápido)',
-        rationale:
-          'Garante entrega rápida do pipeline de ponta a ponta na primeira sprint antes de plugar dados climáticos.',
-      },
-    ],
-  },
-  {
-    id: 'dec-dc-h2v',
-    topic: '04. Fronteira entre Data Centers e Hidrogênio Verde (Pecém/Suape)',
-    question: 'Como filtrar as Portarias do MME e a fila de acesso do ONS?',
-    options: [
-      {
-        value: 'dc_isolated_h2v_sensitivity',
-        label: 'Isolar Data Centers no modelo principal e testar H2V como disputa de rede — Recomendado',
-        rationale:
-          'Mantém foco estrito na pergunta de pesquisa do Grupo 6, mas reconhece que plantas de H2V competem pela mesma margem de subestações.',
-      },
-      {
-        value: 'dc_strict_only',
-        label: 'Considerar exclusivamente projetos declarados de Data Centers / TI',
-        rationale: 'Recorte direto sem sensibilidade cruzada com outras cargas eletrointensivas.',
-      },
-    ],
-  },
-];
-
 interface DecisionsAndPdfViewProps {
-  selectedDecisions: Record<string, string>;
-  onSelectDecision: (decisionId: string, optionValue: string) => void;
+  decisions: Record<string, string>;
+  onSelectDecision: (decisionId: string, value: string) => void;
 }
 
 export const DecisionsAndPdfView: React.FC<DecisionsAndPdfViewProps> = ({
-  selectedDecisions,
+  decisions,
   onSelectDecision,
 }) => {
   const { ssot } = usePipelineSsot();
-  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
-  const pdfPath = '/assets/aistudio/Plano_Orientador_Projeto_Data_Centers_Eolica_NE_5d71e355.pdf';
+  const groupDecisions = ssot.uiCatalog.groupDecisions;
+  const pdfPath = ssot.uiCatalog.pdfAssetPath;
+  const pdfDownloadFilename = ssot.uiCatalog.pdfDownloadFilename;
 
   const handleExportDecisionsJson = () => {
     const payload = {
       exportedAtUtc: new Date().toISOString(),
-      ssotWindow: ssot.lineage.windowLabel,
-      trainHours: ssot.lineage.trainHours,
-      testHours: ssot.lineage.testHours,
-      decisions: selectedDecisions,
+      ssotSchemaVersion: ssot.schemaVersion,
+      ssotGeneratedAtUtc: ssot.lineage.generatedAtUtc,
+      activeConfigParameters: {
+        subsystemId: ssot.config.subsystemId,
+        historyWindow: `${ssot.config.historyStartYear}-${ssot.config.historyEndYear}`,
+        baselineYear: ssot.config.baselineYear,
+        projectionWindow: `${ssot.config.projectionStartYear}-${ssot.config.targetEndYear}`,
+        hoursPerYear: ssot.config.hoursPerYear,
+        offshoreCommercialStartYear: ssot.config.offshoreCommercialStartYear,
+        pecemSubstationName: ssot.config.pecemSubstationName,
+        defaultH2vComparisonMW: ssot.config.defaultH2vComparisonMW,
+      },
+      decisions: groupDecisions.map((item) => {
+        const selectedValue = decisions[item.id] ?? item.options[0]?.value ?? '';
+        const selectedOption = item.options.find((opt) => opt.value === selectedValue) ?? item.options[0];
+        return {
+          id: item.id,
+          topic: item.topic,
+          selectedValue,
+          selectedLabel: selectedOption?.label ?? '',
+          rationale: selectedOption?.rationale ?? '',
+        };
+      }),
     };
     downloadTextFile(
       JSON.stringify(payload, null, 2),
-      'governanca_decisoes_grupo6.json',
+      'decisoes_metodologicas_grupo6.json',
       'application/json;charset=utf-8;'
     );
-    setExportFeedback('JSON exportado');
-    window.setTimeout(() => setExportFeedback(null), 2200);
   };
 
   return (
     <div className="space-y-8">
-      {/* Pauta de Tomada de Decisão do Grupo 6 */}
+      {/* Decisões em aberto para o grupo fechar */}
       <section aria-labelledby="heading-decisoes" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
-        <div className="pb-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="max-w-3xl space-y-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+          <div className="max-w-3xl space-y-1.5">
             <p className="text-xs font-medium text-sky-800">
-              Alinhamento de Escopo · Registro Local de Governança ({ssot.lineage.trainHours.toLocaleString('pt-BR')} h
-              treino · {ssot.lineage.testHours.toLocaleString('pt-BR')} h teste 2025)
+              Governança do Projeto · Alinhamento com a Esteira Python SSOT
             </p>
             <h1 id="heading-decisoes" className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
-              Matriz de Tomadas de Decisão do Grupo 6
+              Decisões Metodológicas do Grupo
             </h1>
             <p className="text-sm lg:text-base text-slate-600 leading-relaxed">
-              Registro local das diretrizes metodológicas do grupo (salvo no navegador em{' '}
-              <span className="font-mono text-xs">localStorage</span>). Alterações de premissa nos scripts{' '}
-              <span className="font-mono text-xs">01_ingest</span> a{' '}
-              <span className="font-mono text-xs">07_sensitivity</span> são executadas via pipeline Python e
-              propagadas para o painel pelo sincronizador SSOT.
+              Registre e exporte as escolhas técnicas do grupo. Os resultados exibidos nas abas de modelagem refletem a
+              configuração ativa na esteira Python/SSOT (<span className="font-mono">run_pipeline.py</span>); as
+              seleções abaixo ficam salvas no navegador (<span className="font-mono">localStorage</span>) para registro e
+              comparação entre alternativas.
             </p>
           </div>
+
           <button
             type="button"
             onClick={handleExportDecisionsJson}
-            className="px-4 py-2 text-xs font-medium text-slate-900 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
+            className="px-4 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 self-start sm:self-auto cursor-pointer"
           >
-            {exportFeedback ?? 'Exportar Diretrizes (.json)'}
+            Exportar Diretrizes (.json)
           </button>
         </div>
 
         <div className="divide-y divide-slate-200">
-          {GROUP_DECISIONS.map((item) => {
-            const currentVal = selectedDecisions[item.id] ?? item.options[0].value;
+          {groupDecisions.map((item) => {
+            const currentVal = decisions[item.id] ?? item.options[0]?.value ?? '';
             return (
-              <div key={item.id} className="py-6 space-y-3">
+              <div key={item.id} className="py-6 space-y-4">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-900">{item.topic}</h2>
-                  <p className="text-xs text-slate-600">{item.question}</p>
+                  <h2 className="text-base font-bold text-slate-900">{item.topic}</h2>
+                  <p className="text-sm text-slate-600 mt-0.5">{item.question}</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {item.options.map((opt) => {
-                    const checked = currentVal === opt.value;
+                    const selected = currentVal === opt.value;
                     return (
                       <label
                         key={opt.value}
-                        className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
-                          checked
-                            ? 'border-sky-700 bg-sky-50/50'
-                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                        className={`block p-4 rounded-lg border transition-colors cursor-pointer ${
+                          selected
+                            ? 'bg-sky-50/70 border-sky-700'
+                            : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        <input
-                          type="radio"
-                          name={item.id}
-                          value={opt.value}
-                          checked={checked}
-                          onChange={() => onSelectDecision(item.id, opt.value)}
-                          className="mt-1 text-sky-700 focus:ring-sky-600"
-                        />
-                        <span className="space-y-1">
-                          <span className="block text-sm font-medium text-slate-900">{opt.label}</span>
-                          <span className="block text-xs text-slate-600 leading-relaxed">{opt.rationale}</span>
-                        </span>
+                        <div className="flex items-start gap-2.5">
+                          <input
+                            type="radio"
+                            name={item.id}
+                            value={opt.value}
+                            checked={selected}
+                            onChange={() => onSelectDecision(item.id, opt.value)}
+                            className="mt-0.5 text-sky-700 focus:ring-sky-600"
+                          />
+                          <div className="space-y-1">
+                            <span className="text-sm font-semibold text-slate-900 block">{opt.label}</span>
+                            <span className="text-xs text-slate-600 leading-relaxed block">{opt.rationale}</span>
+                          </div>
+                        </div>
                       </label>
                     );
                   })}
@@ -191,44 +125,38 @@ export const DecisionsAndPdfView: React.FC<DecisionsAndPdfViewProps> = ({
         </div>
       </section>
 
-      {/* Documento Anexo Original: Plano Orientador do Projeto */}
-      <section aria-labelledby="heading-pdf" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Visualizador e Download do Plano Orientador Original em PDF */}
+      <section aria-labelledby="heading-pdf" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
           <div>
             <h2 id="heading-pdf" className="text-lg font-bold text-slate-900">
-              Documento de Referência: Plano Orientador do Projeto (Grupo 6)
+              Documento de Referência: Plano Orientador do Projeto (PDF)
             </h2>
-            <p className="text-xs text-slate-500">
-              PTC3567 · Ciência dos Dados em Automação e Engenharia · Impacto da expansão de data centers no balanço
-              elétrico do Nordeste
+            <p className="text-xs text-slate-600 mt-0.5">
+              Todas as diretrizes, equações e benchmarks da esteira derivam diretamente das 10 seções deste documento.
             </p>
           </div>
           <a
             href={pdfPath}
-            download="Plano_Orientador_Projeto_Data_Centers_Eolica_NE.pdf"
-            className="px-4 py-2 text-xs font-medium text-slate-900 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
+            download={pdfDownloadFilename}
+            className="px-4 py-2 text-xs font-medium text-white bg-sky-700 hover:bg-sky-800 rounded-lg transition-colors whitespace-nowrap shrink-0 self-start sm:self-auto"
           >
-            Baixar PDF Original
+            Baixar PDF Completo
           </a>
         </div>
 
-        <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-100">
-          <object
-            data={pdfPath}
-            type="application/pdf"
-            aria-label="Visualizador do Plano Orientador do Projeto em PDF"
-            className="w-full h-[560px]"
-          >
+        <div className="mt-5 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 h-[620px]">
+          <object data={pdfPath} type="application/pdf" className="w-full h-full">
             <div className="p-8 text-center space-y-3">
               <p className="text-sm text-slate-700">
-                O visualizador embutido de PDF não está disponível neste navegador.
+                Seu navegador não suporta visualização embutida de PDF neste painel.
               </p>
               <a
                 href={pdfPath}
-                download="Plano_Orientador_Projeto_Data_Centers_Eolica_NE.pdf"
+                download={pdfDownloadFilename}
                 className="inline-block px-4 py-2 text-xs font-medium text-white bg-slate-900 rounded-lg"
               >
-                Baixar PDF do Plano Orientador
+                Clique aqui para baixar o Plano Orientador (.pdf)
               </a>
             </div>
           </object>

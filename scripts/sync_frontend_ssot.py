@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import hashlib
 import json
 import math
 import re
@@ -31,24 +32,33 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 from config import (
-    BASE_HYDRO_THERMAL_MW,
     BASE_WIND_ONSHORE_2026_MW,
-    DC_SCENARIOS_IT_MW,
+    DEFAULT_H2V_COMPARISON_MW,
     DEFAULT_PUE,
     DEFAULT_UTILIZATION,
+    HISTORY_END_YEAR,
+    HISTORY_START_YEAR,
+    HOURLY_BASELINE_JSON_PATH,
+    HOURLY_BASELINE_JSON_URL,
     INTERCHANGE_EXPORT_LIMIT_MW,
     INTERCHANGE_IMPORT_LIMIT_MW,
-    OFFICIAL_DATA_URLS,
+    OFFSHORE_SCENARIO_MW_POST_2031,
     RAW_DATA_DIR,
+    REFERENCE_SCENARIO_KEYS,
     REPORTS_DIR,
     ROOT_DIR,
     SCENARIOS_DATA_DIR,
     SCRIPTS_DIR,
-    SUBSYSTEM_ID,
+    SIMULATOR_GRID_CSV_FILENAME,
+    TARGET_END_YEAR,
+    TRAIN_CUTOFF_YEAR,
+    UI_THRESHOLDS,
     WIND_EXPANSION_ONSHORE_MW,
+    export_frontend_config_dict,
 )
 
 PUBLIC_SSOT_JSON_PATH = ROOT_DIR / "public" / "data" / "pipeline-ssot.json"
+PUBLIC_HOURLY_BASELINE_JSON_PATH = HOURLY_BASELINE_JSON_PATH
 TS_SSOT_PATH = ROOT_DIR / "src" / "data" / "generated" / "pipelineSsot.ts"
 PIPELINE_METADATA_PATH = SCRIPTS_DIR / "pipeline_metadata.json"
 
@@ -73,11 +83,14 @@ def safe_float(value: Any, default: float = 0.0) -> float:
     text = str(value).strip()
     if text.lower() in {"", "nan", "none", "null", "na", "n/a", "-"}:
         return default
-    # Normaliza separador decimal caso venha no formato PT-BR sem ambiguidade de milhar
+    # Normaliza separador decimal comparando a posição relativa de ',' e '.' (PT-BR vs EN)
     if "," in text and "." not in text:
         text = text.replace(",", ".")
     elif "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
+        if text.rfind(",") > text.rfind("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
     try:
         fval = float(text)
         return default if (math.isnan(fval) or math.isinf(fval)) else fval
@@ -141,7 +154,7 @@ def load_pipeline_metadata(metadata_path: Optional[Path] = None) -> Dict[str, An
     if not target.exists():
         raise FileNotFoundError(f"Arquivo de metadados não encontrado em: {target}")
     data = json.loads(target.read_text(encoding="utf-8"))
-    for key in ("dcProjectNotes", "featureMetadata", "scriptsCatalog"):
+    for key in ("dcProjectNotes", "featureMetadata", "scriptsCatalog", "uiCatalog"):
         if key not in data:
             raise ValueError(f"Chave obrigatória '{key}' ausente em {target.name}")
     return data
@@ -158,18 +171,46 @@ def _infer_developer(
 
 
 def _classify_congestion_risk(share_pct: float, p95_mw: float) -> str:
-    if share_pct >= 20.0 or p95_mw >= 700.0:
+    thresholds = UI_THRESHOLDS["substationRisk"]
+    if share_pct >= float(thresholds["criticalSharePct"]) or p95_mw >= float(thresholds["criticalP95MW"]):
         return "Crítico"
-    if share_pct >= 6.0 or p95_mw >= 230.0:
+    if share_pct >= float(thresholds["highSharePct"]) or p95_mw >= float(thresholds["highP95MW"]):
         return "Elevado"
-    if share_pct >= 2.0 or p95_mw >= 100.0:
+    if share_pct >= float(thresholds["moderateSharePct"]) or p95_mw >= float(thresholds["moderateP95MW"]):
         return "Moderado"
     return "Baixo"
 
 
 def _format_scenario_name(raw_name: Any) -> str:
-    """Padroniza nome do cenário mantendo compatibilidade com os filtros e UI."""
-    return safe_str(raw_name).replace("Sem Data Centers (Controle)", "Sem Data Centers (Controle)")
+    """Normaliza nome do cenário mantendo compatibilidade com os filtros e UI."""
+    return safe_str(raw_name)
+
+
+def _infer_wind_scenario_id(row: Dict[str, str]) -> str:
+    """Resolve o identificador semântico eólico ('base' | 'intermediate' | 'high')."""
+    explicit = safe_str(row.get("cenario_eolica"))
+    valid_keys = {
+        REFERENCE_SCENARIO_KEYS["windBase"],
+        REFERENCE_SCENARIO_KEYS["windIntermediate"],
+        REFERENCE_SCENARIO_KEYS["windHigh"],
+    }
+    if explicit in valid_keys:
+        return explicit
+
+    wind_cap_mw = safe_float(row.get("wind_capacity_mw"))
+    base_cap = BASE_WIND_ONSHORE_2026_MW + WIND_EXPANSION_ONSHORE_MW[REFERENCE_SCENARIO_KEYS["windBase"]]
+    interm_cap = BASE_WIND_ONSHORE_2026_MW + WIND_EXPANSION_ONSHORE_MW[REFERENCE_SCENARIO_KEYS["windIntermediate"]]
+    high_cap = (
+        BASE_WIND_ONSHORE_2026_MW
+        + WIND_EXPANSION_ONSHORE_MW[REFERENCE_SCENARIO_KEYS["windHigh"]]
+        + OFFSHORE_SCENARIO_MW_POST_2031[REFERENCE_SCENARIO_KEYS["windHigh"]]
+    )
+    candidates = [
+        (abs(wind_cap_mw - base_cap), REFERENCE_SCENARIO_KEYS["windBase"]),
+        (abs(wind_cap_mw - interm_cap), REFERENCE_SCENARIO_KEYS["windIntermediate"]),
+        (abs(wind_cap_mw - high_cap), REFERENCE_SCENARIO_KEYS["windHigh"]),
+    ]
+    return min(candidates, key=lambda item: item[0])[1]
 
 
 def resolve_substations_with_p95(
@@ -228,9 +269,82 @@ def resolve_substations_with_p95(
     return substations
 
 
+def _inspect_hourly_baseline_metadata(baseline_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Lê metadados de integridade (digest SHA-256 e contagem horária) de hourly-baseline-8760.json."""
+    target = baseline_path or PUBLIC_HOURLY_BASELINE_JSON_PATH
+    if not target.exists():
+        return {
+            "available": False,
+            "url": HOURLY_BASELINE_JSON_URL,
+            "digest": "",
+            "hoursCount": 0,
+        }
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+        hours_count = safe_int(data.get("hoursCount"), 0)
+        digest = safe_str(data.get("digest"))
+        if not digest:
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()[:16]
+        regimes = data.get("regimes") if isinstance(data.get("regimes"), dict) else {}
+        valid_regimes = all(
+            isinstance(regimes.get(r), dict)
+            and len(regimes[r].get("lBaseMW", [])) == hours_count
+            and len(regimes[r].get("cfWind", [])) == hours_count
+            for r in ("annual_blend", "dry_windy", "wet_calm")
+        )
+        return {
+            "available": bool(hours_count > 0 and valid_regimes),
+            "url": HOURLY_BASELINE_JSON_URL,
+            "digest": digest if valid_regimes else "",
+            "hoursCount": hours_count if valid_regimes else 0,
+        }
+    except Exception:
+        return {
+            "available": False,
+            "url": HOURLY_BASELINE_JSON_URL,
+            "digest": "",
+            "hoursCount": 0,
+        }
+
+
+def read_simulator_grid_records(grid_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """
+    Lê a grade paramétrica pré-computada (reports/grade_simulador_monte_carlo_2025_2035.csv).
+    Retorna lista vazia caso a execução científica de 06 ainda não tenha gerado o arquivo.
+    """
+    target = grid_path or (REPORTS_DIR / SIMULATOR_GRID_CSV_FILENAME)
+    if not target.exists():
+        return []
+    return [
+        {
+            "year": safe_int(r.get("year")),
+            "dcScenarioId": safe_str(r.get("dc_scenario"), REFERENCE_SCENARIO_KEYS["dcControl"]),
+            "windScenarioId": safe_str(r.get("wind_scenario"), REFERENCE_SCENARIO_KEYS["windBase"]),
+            "seasonalRegime": safe_str(r.get("seasonal_regime"), "annual_blend"),
+            "pue": round(safe_float(r.get("pue"), DEFAULT_PUE), 2),
+            "dcUtilization": round(safe_float(r.get("dc_utilization"), DEFAULT_UTILIZATION), 2),
+            "importLimitMW": round(safe_float(r.get("import_limit_mw"), INTERCHANGE_IMPORT_LIMIT_MW), 1),
+            "exportLimitMW": round(safe_float(r.get("export_limit_mw"), INTERCHANGE_EXPORT_LIMIT_MW), 1),
+            "dcLoadMW": round(safe_float(r.get("dc_load_mw")), 1),
+            "windCapacityMW": round(safe_float(r.get("wind_capacity_mw")), 1),
+            "probExceedInterchangePct": round(safe_float(r.get("prob_exceder_intercambio_pct")), 1),
+            "loleHoursYear": round(safe_float(r.get("lole_horas_criticas_ano")), 1),
+            "importP50MW": round(safe_float(r.get("importacao_p50_mw")), 1),
+            "importP95MW": round(safe_float(r.get("importacao_p95_mw")), 1),
+            "curtailmentWithoutDcTWh": round(safe_float(r.get("curtailment_sem_dc_twh_ano")), 2),
+            "curtailmentWithDcTWh": round(safe_float(r.get("curtailment_com_dc_twh_ano")), 2),
+            "curtailmentAvoidedGWh": round(safe_float(r.get("curtailment_evitado_gwh_ano")), 1),
+            "compensatoryWindGW": round(safe_float(r.get("expansao_eolica_compensatoria_gw")), 2),
+        }
+        for r in read_csv_records_safe(target)
+    ]
+
+
 def _compute_lineage(
     model_a_rows: List[Dict[str, str]],
     input_paths: Iterable[Path],
+    baseline_meta: Optional[Dict[str, Any]] = None,
+    simulator_grid_rows_count: int = 0,
 ) -> Dict[str, Any]:
     raw_ons_files = sorted(RAW_DATA_DIR.glob("ons_*.csv"))
     total_bytes = sum(p.stat().st_size for p in RAW_DATA_DIR.glob("*.csv") if p.is_file())
@@ -242,29 +356,46 @@ def _compute_lineage(
         }
     )
 
-    train_hours = safe_int(model_a_rows[0].get("treino_horas"), 87476) if model_a_rows else 87476
-    test_hours = safe_int(model_a_rows[0].get("teste_2025_horas"), 8760) if model_a_rows else 8760
+    train_hours = safe_int(model_a_rows[0].get("treino_horas"), 0) if model_a_rows else 0
+    test_hours = safe_int(model_a_rows[0].get(f"teste_{TRAIN_CUTOFF_YEAR}_horas"), 0) if model_a_rows else 0
 
     mtimes = [p.stat().st_mtime for p in input_paths if p.exists()]
-    latest_mtime = max(mtimes) if mtimes else dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc).timestamp()
+    latest_mtime = max(mtimes) if mtimes else dt.datetime.now(dt.timezone.utc).timestamp()
     generated_iso = dt.datetime.fromtimestamp(latest_mtime, tz=dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     report_files = sorted(p.name for p in REPORTS_DIR.iterdir() if p.is_file())
+    start_yr = min(years) if years else HISTORY_START_YEAR
+    train_end_yr = (max(years) - 1) if len(years) > 1 else (HISTORY_END_YEAR - 1)
+    test_yr = max(years) if years else TRAIN_CUTOFF_YEAR
+    b_meta = baseline_meta or _inspect_hourly_baseline_metadata()
+
+    source_files = [
+        "data/raw/data_centers_pipeline_ne.csv",
+        "data/scenarios/dc_substation_load_concentration.csv",
+        "data/scenarios/matriz_cenarios_dc_eolica_2026_2035.csv",
+        *[f"reports/{name}" for name in report_files],
+    ]
+    if b_meta["available"]:
+        source_files.append("public/data/hourly-baseline-8760.json")
+
     return {
         "generatedAtUtc": generated_iso,
-        "windowLabel": f"{min(years) if years else 2015}–{(max(years) - 1) if len(years) > 1 else 2024} (Treino) · {max(years) if years else 2025} (Teste Cego Out-of-Time)",
+        "windowLabel": f"{start_yr}–{train_end_yr} (Treino) · {test_yr} (Teste Cego Out-of-Time)",
         "trainHours": train_hours,
         "testHours": test_hours,
+        "localRawCachePresent": bool(raw_ons_files),
+        "comparativeNonLinearArchitecture": "Rede Neural ResMLP",
+        "hourlyBaselineAvailable": bool(b_meta["available"]),
+        "hourlyBaselineUrl": str(b_meta["url"]),
+        "hourlyBaselineDigest": str(b_meta["digest"]),
+        "hourlyBaselineHoursCount": int(b_meta["hoursCount"]),
+        "simulatorGridAvailable": simulator_grid_rows_count > 0,
+        "simulatorGridRowsCount": int(simulator_grid_rows_count),
         "rawOnsFilesCount": len(raw_ons_files),
         "rawDataTotalMb": round(total_bytes / (1024 * 1024), 2),
-        "yearsCovered": years if years else list(range(2015, 2026)),
+        "yearsCovered": years if years else list(range(HISTORY_START_YEAR, HISTORY_END_YEAR + 1)),
         "reportFilesCount": len(report_files),
-        "sourceFiles": [
-            "data/raw/data_centers_pipeline_ne.csv",
-            "data/scenarios/dc_substation_load_concentration.csv",
-            "data/scenarios/matriz_cenarios_dc_eolica_2026_2035.csv",
-            *[f"reports/{name}" for name in report_files],
-        ],
+        "sourceFiles": source_files,
     }
 
 
@@ -288,11 +419,41 @@ def _build_scripts_pipeline(
     best_a_24h = next((r for r in model_a if "24h" in r["horizon"] and "ResMLP" in r["architecture"]), None)
     best_b_1h = next((r for r in model_b if "1h" in r["horizon"] and "ResMLP" in r["architecture"]), None)
     best_c_nl = next((r for r in model_c if "ResMLP" in r["architecture"]), None)
-    mc_central = next((r for r in mc_12 if r["dcScenarioId"] == "central" and abs(r["windCapacityMW"] - 36400) < 100), None)
-    mc_high = next((r for r in mc_12 if r["dcScenarioId"] == "high" and r["windCapacityMW"] >= 47000), None)
+    mc_central = next(
+        (
+            r
+            for r in mc_12
+            if r["dcScenarioId"] == REFERENCE_SCENARIO_KEYS["dcCentral"]
+            and r["windScenarioId"] == REFERENCE_SCENARIO_KEYS["windIntermediate"]
+        ),
+        None,
+    )
+    mc_high = next(
+        (
+            r
+            for r in mc_12
+            if r["dcScenarioId"] == REFERENCE_SCENARIO_KEYS["dcHigh"]
+            and r["windScenarioId"] == REFERENCE_SCENARIO_KEYS["windHigh"]
+        ),
+        None,
+    )
     tx_04 = next((r for r in tx_rows if r["configId"].startswith("TX-04")), None)
-    h2v_inflex = next((r for r in h2v_rows if r["h2vNominalMW"] == 2000 and "Inflexível" in r["scenarioId"]), None)
-    h2v_flex = next((r for r in h2v_rows if r["h2vNominalMW"] == 2000 and "Flexível" in r["scenarioId"]), None)
+    h2v_inflex = next(
+        (
+            r
+            for r in h2v_rows
+            if abs(r["h2vNominalMW"] - DEFAULT_H2V_COMPARISON_MW) < 1e-3 and "Inflexível" in r["scenarioId"]
+        ),
+        None,
+    )
+    h2v_flex = next(
+        (
+            r
+            for r in h2v_rows
+            if abs(r["h2vNominalMW"] - DEFAULT_H2V_COMPARISON_MW) < 1e-3 and "Flexível" in r["scenarioId"]
+        ),
+        None,
+    )
 
     available_refs: Dict[str, Any] = {
         "best_a_1h": best_a_1h,
@@ -414,17 +575,31 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
     tx_rows = payload.get("transmissionSensitivity2035", [])
     h2v_rows = payload.get("h2vSynergySensitivity2035", [])
     mc_rows = payload.get("monteCarlo12Scenarios2035", [])
+    tols = UI_THRESHOLDS["ssotValidationTolerances"]
+    interm_cap = BASE_WIND_ONSHORE_2026_MW + WIND_EXPANSION_ONSHORE_MW[REFERENCE_SCENARIO_KEYS["windIntermediate"]]
 
-    tx_03 = next((r for r in tx_rows if str(r.get("configId", "")).startswith("TX-03")), None)
+    tx_03 = next(
+        (r for r in tx_rows if str(r.get("configId", "")).startswith(REFERENCE_SCENARIO_KEYS["txReferenceIdPrefix"])),
+        None,
+    )
     h2v_01 = next(
-        (r for r in h2v_rows if float(r.get("h2vNominalMW", -1)) == 0.0 or str(r.get("scenarioId", "")).startswith("H2V-01")),
+        (
+            r
+            for r in h2v_rows
+            if float(r.get("h2vNominalMW", -1)) == 0.0
+            or str(r.get("scenarioId", "")).startswith(REFERENCE_SCENARIO_KEYS["h2vBaselineIdPrefix"])
+        ),
         None,
     )
     mc_central_interm = next(
         (
             r
             for r in mc_rows
-            if r.get("dcScenarioId") == "central" and abs(float(r.get("windCapacityMW", 0.0)) - 36400.0) < 150.0
+            if r.get("dcScenarioId") == REFERENCE_SCENARIO_KEYS["dcCentral"]
+            and (
+                r.get("windScenarioId") == REFERENCE_SCENARIO_KEYS["windIntermediate"]
+                or abs(float(r.get("windCapacityMW", 0.0)) - interm_cap) < 150.0
+            )
         ),
         None,
     )
@@ -432,15 +607,19 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
     if not tx_03 or not h2v_01 or not mc_central_interm:
         violations.append("Registros de referência TX-03, H2V-01 ou Central×Intermediária ausentes.")
     else:
+        prob_tol = float(tols["probPct"])
+        imp_tol = float(tols["importMW"])
+        curt_tol = float(tols["curtailmentTWh"])
+        comp_tol = float(tols["compGw"])
         checks = [
-            ("probCriticalImport", float(tx_03["probCriticalImportPct"]), float(mc_central_interm["probExceedInterchangePct"]), 0.1),
-            ("probCriticalImport H2V-01", float(h2v_01["probCriticalImportPct"]), float(mc_central_interm["probExceedInterchangePct"]), 0.1),
-            ("importP95MW TX-03", float(tx_03["importP95MW"]), float(mc_central_interm["importP95MW"]), 0.2),
-            ("importP95MW H2V-01", float(h2v_01["importP95MW"]), float(mc_central_interm["importP95MW"]), 0.2),
-            ("curtailmentWithDcTWh TX-03", float(tx_03["curtailmentWithDcTWh"]), float(mc_central_interm["curtailmentWithDcTWh"]), 0.02),
-            ("remainingCurtailmentTWh H2V-01", float(h2v_01["remainingCurtailmentTWh"]), float(mc_central_interm["curtailmentWithDcTWh"]), 0.02),
-            ("compensatoryWindGW TX-03", float(tx_03["compensatoryWindGW"]), float(mc_central_interm["compensatoryWindExpansionGW"]), 0.02),
-            ("compensatoryWindGW H2V-01", float(h2v_01["compensatoryWindGW"]), float(mc_central_interm["compensatoryWindExpansionGW"]), 0.02),
+            ("probCriticalImport", float(tx_03["probCriticalImportPct"]), float(mc_central_interm["probExceedInterchangePct"]), prob_tol),
+            ("probCriticalImport H2V-01", float(h2v_01["probCriticalImportPct"]), float(mc_central_interm["probExceedInterchangePct"]), prob_tol),
+            ("importP95MW TX-03", float(tx_03["importP95MW"]), float(mc_central_interm["importP95MW"]), imp_tol),
+            ("importP95MW H2V-01", float(h2v_01["importP95MW"]), float(mc_central_interm["importP95MW"]), imp_tol),
+            ("curtailmentWithDcTWh TX-03", float(tx_03["curtailmentWithDcTWh"]), float(mc_central_interm["curtailmentWithDcTWh"]), curt_tol),
+            ("remainingCurtailmentTWh H2V-01", float(h2v_01["remainingCurtailmentTWh"]), float(mc_central_interm["curtailmentWithDcTWh"]), curt_tol),
+            ("compensatoryWindGW TX-03", float(tx_03["compensatoryWindGW"]), float(mc_central_interm["compensatoryWindExpansionGW"]), comp_tol),
+            ("compensatoryWindGW H2V-01", float(h2v_01["compensatoryWindGW"]), float(mc_central_interm["compensatoryWindExpansionGW"]), comp_tol),
         ]
         for label, a_val, b_val, tol in checks:
             if abs(a_val - b_val) > tol:
@@ -465,11 +644,21 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
         None,
     )
     h2v_inflex = next(
-        (r for r in h2v_rows if float(r.get("h2vNominalMW", 0.0)) == 2000.0 and "Inflexível" in str(r.get("scenarioId", ""))),
+        (
+            r
+            for r in h2v_rows
+            if abs(float(r.get("h2vNominalMW", 0.0)) - DEFAULT_H2V_COMPARISON_MW) < 1e-3
+            and "Inflexível" in str(r.get("scenarioId", ""))
+        ),
         None,
     )
     h2v_flex = next(
-        (r for r in h2v_rows if float(r.get("h2vNominalMW", 0.0)) == 2000.0 and "Flexível" in str(r.get("scenarioId", ""))),
+        (
+            r
+            for r in h2v_rows
+            if abs(float(r.get("h2vNominalMW", 0.0)) - DEFAULT_H2V_COMPARISON_MW) < 1e-3
+            and "Flexível" in str(r.get("scenarioId", ""))
+        ),
         None,
     )
 
@@ -496,15 +685,46 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
                 f"Relatório MD não reflete H2V 2,0 GW Flexível ({expected_abs_flex} TWh / {expected_prob_flex}%)"
             )
 
+    # 4. Paridade da grade Monte Carlo 2025-2035 com matriz_cenarios_monte_carlo_2035 (quando disponível)
+    grid_rows = payload.get("simulatorMonteCarloGrid", [])
+    if grid_rows and mc_rows:
+        tols = UI_THRESHOLDS["ssotValidationTolerances"]
+        mc_by_pair = {(r.get("dcScenarioId"), r.get("windScenarioId")): r for r in mc_rows}
+        matched_nominal_rows = 0
+        for gr in grid_rows:
+            if (
+                safe_int(gr.get("year")) == TARGET_END_YEAR
+                and safe_str(gr.get("seasonalRegime")) == "annual_blend"
+                and abs(safe_float(gr.get("pue")) - DEFAULT_PUE) < 1e-3
+                and abs(safe_float(gr.get("dcUtilization")) - DEFAULT_UTILIZATION) < 1e-3
+                and abs(safe_float(gr.get("importLimitMW")) - INTERCHANGE_IMPORT_LIMIT_MW) < 1.0
+                and abs(safe_float(gr.get("exportLimitMW")) - INTERCHANGE_EXPORT_LIMIT_MW) < 1.0
+            ):
+                pair = (safe_str(gr.get("dcScenarioId")), safe_str(gr.get("windScenarioId")))
+                ref_mc = mc_by_pair.get(pair)
+                if ref_mc is not None:
+                    matched_nominal_rows += 1
+                    if abs(float(gr["probExceedInterchangePct"]) - float(ref_mc["probExceedInterchangePct"])) > float(tols["probPct"]):
+                        violations.append(f"Divergência grade vs MC12 em probExceedInterchangePct para {pair}")
+                    if abs(float(gr["importP95MW"]) - float(ref_mc["importP95MW"])) > float(tols["importMW"]):
+                        violations.append(f"Divergência grade vs MC12 em importP95MW para {pair}")
+        if matched_nominal_rows == 0:
+            violations.append("Grade simulatorMonteCarloGrid não contém pontos nominais de referência para TARGET_END_YEAR.")
+
     return violations
 
 
-def build_ssot_payload(metadata_path: Optional[Path] = None) -> Dict[str, Any]:
+def build_ssot_payload(
+    metadata_path: Optional[Path] = None,
+    baseline_json_path: Optional[Path] = None,
+    simulator_grid_path: Optional[Path] = None,
+) -> Dict[str, Any]:
     """Lê todos os artefatos oficiais do pipeline Python e monta o dicionário canônico SSOT."""
     meta_bundle = load_pipeline_metadata(metadata_path)
     dc_project_notes: Dict[str, Dict[str, str]] = meta_bundle["dcProjectNotes"]
     feature_metadata: Dict[str, Dict[str, str]] = meta_bundle["featureMetadata"]
     scripts_catalog: List[Dict[str, Any]] = meta_bundle["scriptsCatalog"]
+    ui_catalog: Dict[str, Any] = meta_bundle["uiCatalog"]
 
     dc_raw_path = RAW_DATA_DIR / "data_centers_pipeline_ne.csv"
     sub_scen_path = SCENARIOS_DATA_DIR / "dc_substation_load_concentration.csv"
@@ -525,12 +745,14 @@ def build_ssot_payload(metadata_path: Optional[Path] = None) -> Dict[str, Any]:
     h2v_path = REPORTS_DIR / "sensibilidade_h2v_eletrointensivos_2035.csv"
     ind_path = REPORTS_DIR / "indicadores_participacao_eolica_aneel_vs_ons_2015_2035.csv"
     report_md_path = REPORTS_DIR / "relatorio_final_consolidado_ptc3567_grupo6.md"
+    sim_grid_target = simulator_grid_path or (REPORTS_DIR / SIMULATOR_GRID_CSV_FILENAME)
+    baseline_target = baseline_json_path or PUBLIC_HOURLY_BASELINE_JSON_PATH
 
     tracked_inputs = [
         dc_raw_path, sub_scen_path, sub_risk_path, ramp_matrix_path,
         anova_path, monthly_path, corr_path, model_a_path, model_bc_path,
         hourly_path, mc_12_path, comp_curve_path, timeline_path, tx_path,
-        h2v_path, ind_path, report_md_path,
+        h2v_path, ind_path, report_md_path, sim_grid_target, baseline_target,
         metadata_path or PIPELINE_METADATA_PATH,
         SCRIPTS_DIR / "config.py",
         *[SCRIPTS_DIR / f for f in sorted(p.name for p in SCRIPTS_DIR.glob("[0-9][0-9]_*.py"))],
@@ -700,7 +922,8 @@ def build_ssot_payload(metadata_path: Optional[Path] = None) -> Dict[str, Any]:
     mc_12 = [
         {
             "scenarioName": _format_scenario_name(r.get("cenario_nome")),
-            "dcScenarioId": safe_str(r.get("cenario_dc"), "none"),
+            "dcScenarioId": safe_str(r.get("cenario_dc"), REFERENCE_SCENARIO_KEYS["dcControl"]),
+            "windScenarioId": _infer_wind_scenario_id(r),
             "dcLoadMW": round(safe_float(r.get("dc_load_mw")), 1),
             "windOnshoreMW": round(safe_float(r.get("wind_onshore_mw")), 1),
             "windOffshoreMW": round(safe_float(r.get("wind_offshore_mw")), 1),
@@ -805,7 +1028,14 @@ def build_ssot_payload(metadata_path: Optional[Path] = None) -> Dict[str, Any]:
         else "# Relatório Técnico Consolidado Final — PTC3567 (Grupo 6)\n"
     )
 
-    lineage = _compute_lineage(raw_model_a, tracked_inputs)
+    simulator_grid = read_simulator_grid_records(sim_grid_target)
+    baseline_meta = _inspect_hourly_baseline_metadata(baseline_target)
+    lineage = _compute_lineage(
+        raw_model_a,
+        tracked_inputs,
+        baseline_meta=baseline_meta,
+        simulator_grid_rows_count=len(simulator_grid),
+    )
     scripts_pipeline = _build_scripts_pipeline(
         scripts_catalog=scripts_catalog,
         train_hours=lineage["trainHours"],
@@ -818,20 +1048,10 @@ def build_ssot_payload(metadata_path: Optional[Path] = None) -> Dict[str, Any]:
         h2v_rows=h2v_rows,
     )
 
-    return {
-        "schemaVersion": "1.0.0",
-        "config": {
-            "subsystemId": SUBSYSTEM_ID,
-            "baseWindOnshore2026MW": BASE_WIND_ONSHORE_2026_MW,
-            "baseHydroThermalMW": BASE_HYDRO_THERMAL_MW,
-            "interchangeImportLimitMW": INTERCHANGE_IMPORT_LIMIT_MW,
-            "interchangeExportLimitMW": INTERCHANGE_EXPORT_LIMIT_MW,
-            "defaultPue": DEFAULT_PUE,
-            "defaultUtilization": DEFAULT_UTILIZATION,
-            "dcScenariosItMW": DC_SCENARIOS_IT_MW,
-            "windExpansionOnshoreMW": WIND_EXPANSION_ONSHORE_MW,
-            "officialDataUrls": OFFICIAL_DATA_URLS,
-        },
+    payload: Dict[str, Any] = {
+        "schemaVersion": "2.0.0",
+        "config": export_frontend_config_dict(),
+        "uiCatalog": ui_catalog,
         "lineage": lineage,
         "dataCentersPipeline": dc_projects,
         "substationLoadConcentration": substations,
@@ -844,6 +1064,7 @@ def build_ssot_payload(metadata_path: Optional[Path] = None) -> Dict[str, Any]:
         "modelCBenchmark2025": model_c_rows,
         "hourlyValidation2025Profile": hourly_2025,
         "monteCarlo12Scenarios2035": mc_12,
+        "simulatorMonteCarloGrid": simulator_grid,
         "compensatoryWindCurve2035": comp_curve,
         "annualRiskTimeline2026_2035": annual_timeline,
         "transmissionSensitivity2035": tx_rows,
@@ -852,14 +1073,26 @@ def build_ssot_payload(metadata_path: Optional[Path] = None) -> Dict[str, Any]:
         "passo5FinalExecutiveReportMd": report_md,
         "scriptsPipeline": scripts_pipeline,
     }
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:16]
+    return {"schemaVersion": payload["schemaVersion"], "bundleDigest": digest, **{k: v for k, v in payload.items() if k != "schemaVersion"}}
 
 
 def sync_frontend_ssot(
     json_out_path: Optional[Path] = None,
     ts_out_path: Optional[Path] = None,
+    validate: bool = True,
 ) -> Dict[str, Any]:
-    """Gera public/data/pipeline-ssot.json e src/data/generated/pipelineSsot.ts."""
+    """Gera public/data/pipeline-ssot.json e src/data/generated/pipelineSsot.ts após validar consistência cruzada."""
     payload = build_ssot_payload()
+    if validate:
+        violations = validate_ssot_cross_consistency(payload)
+        if violations:
+            raise ValueError(
+                "Bloqueio SSOT — inconsistências cruzadas detectadas antes da emissão:\n- "
+                + "\n- ".join(violations)
+            )
     json_target = json_out_path or PUBLIC_SSOT_JSON_PATH
     ts_target = ts_out_path or TS_SSOT_PATH
 

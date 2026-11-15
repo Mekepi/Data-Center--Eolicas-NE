@@ -25,6 +25,10 @@ import pandas as pd
 from config import (
     PROCESSED_DATA_DIR,
     REPORTS_DIR,
+    ANNUAL_LOAD_GROWTH_RATE,
+    BASELINE_YEAR,
+    TARGET_END_YEAR,
+    ML_MODEL_PARAMS,
 )
 from ml_models_numpy import (
     LinearRidgeModel,
@@ -79,11 +83,18 @@ FEATURES_24H_DAY_AHEAD = [
 def _eval_backtest_fold_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Dict[str, float]:
     """Worker paralelo para validação cruzada em janela expansiva (TimeSeriesSplit) no conjunto 2015-2024."""
     fold_idx, X_tr, y_tr, X_val, y_val = args
+    bt_mlp_cfg = ML_MODEL_PARAMS["modelABacktestResMlp"]
+    seed = int(ML_MODEL_PARAMS["seed"])
 
-    ridge = LinearRidgeModel(alpha=10.0).fit(X_tr, y_tr)
+    ridge = LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"])).fit(X_tr, y_tr)
     m_ridge = compute_regression_metrics(y_val, ridge.predict(X_val))
 
-    mlp = ResidualMLPRegressor(hidden_units=20, reg_l2=1e-3, max_iter=100, seed=42 + fold_idx).fit(X_tr, y_tr)
+    mlp = ResidualMLPRegressor(
+        hidden_units=int(bt_mlp_cfg["hiddenUnits"]),
+        reg_l2=float(bt_mlp_cfg["regL2"]),
+        max_iter=int(bt_mlp_cfg["maxIter"]),
+        seed=seed + fold_idx,
+    ).fit(X_tr, y_tr)
     m_mlp = compute_regression_metrics(y_val, mlp.predict(X_val))
 
     return {
@@ -101,19 +112,20 @@ def run_expanding_window_backtest(
     train_df: pd.DataFrame,
     feature_cols: List[str],
     target_col: str = "l_base_mw",
-    n_splits: int = 4,
-    val_hours: int = 24 * 90,  # Janelas trimestrais (2.160 h) por fold
+    n_splits: int = int(ML_MODEL_PARAMS["backtestSplits"]),
+    val_hours: int = int(ML_MODEL_PARAMS["backtestValHours"]),  # Janelas trimestrais (2.160 h) por fold
 ) -> pd.DataFrame:
     """Executa TimeSeriesSplit estritamente dentro da base de treino (2015-2024) em paralelo."""
     X_all = train_df[feature_cols].to_numpy(dtype=float)
     y_all = train_df[target_col].to_numpy(dtype=float)
     total = len(train_df)
+    min_train_hours = int(ML_MODEL_PARAMS["backtestMinTrainHours"])
 
     tasks = []
     for i in range(n_splits, 0, -1):
         val_end = total - (i - 1) * val_hours
         val_start = val_end - val_hours
-        if val_start < 24 * 365:
+        if val_start < min_train_hours:
             continue
         fold_num = n_splits - i + 1
         tasks.append((fold_num, X_all[:val_start], y_all[:val_start], X_all[val_start:val_end], y_all[val_start:val_end]))
@@ -147,17 +159,29 @@ def evaluate_models_out_of_time_2025(
         X_tr = train_df[feats].to_numpy(dtype=float)
         X_te = test_df[feats].to_numpy(dtype=float)
 
+        mlp_cfg = ML_MODEL_PARAMS["modelAResMlp"]
+        gbdt_cfg = ML_MODEL_PARAMS["modelAGbdt"]
         models = [
-            ("Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=10.0)),
+            ("Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"]))),
             (
                 "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
                 "Não-Linear (SciPy L-BFGS-B)",
-                ResidualMLPRegressor(hidden_units=24, reg_l2=1e-3, max_iter=140, seed=42),
+                ResidualMLPRegressor(
+                    hidden_units=int(mlp_cfg["hiddenUnits"]),
+                    reg_l2=float(mlp_cfg["regL2"]),
+                    max_iter=int(mlp_cfg["maxIter"]),
+                    seed=int(ML_MODEL_PARAMS["seed"]),
+                ),
             ),
             (
                 "Challenger Não-Linear · Histogram GBDT (Árvores)",
                 "Não-Linear (NumPy GBDT)",
-                HistogramGBDTRegressor(n_estimators=85, learning_rate=0.08, max_depth=4, min_samples_leaf=45),
+                HistogramGBDTRegressor(
+                    n_estimators=int(gbdt_cfg["nEstimators"]),
+                    learning_rate=float(gbdt_cfg["learningRate"]),
+                    max_depth=int(gbdt_cfg["maxDepth"]),
+                    min_samples_leaf=int(gbdt_cfg["minSamplesLeaf"]),
+                ),
             ),
         ]
 
@@ -201,11 +225,11 @@ def evaluate_models_out_of_time_2025(
 
 def project_load_to_2035(
     base_series_2025: pd.Series,
-    target_year: int = 2035,
-    annual_epe_growth_rate: float = 0.031,
+    target_year: int = TARGET_END_YEAR,
+    annual_epe_growth_rate: float = ANNUAL_LOAD_GROWTH_RATE,
 ) -> pd.Series:
     """Ancora a tendência estrutural da demanda base no PDE 2035 da EPE (~3,1% a.a.)."""
-    years_ahead = max(0, target_year - 2025)
+    years_ahead = max(0, target_year - BASELINE_YEAR)
     factor = (1.0 + annual_epe_growth_rate) ** years_ahead
     return (base_series_2025 * factor).round(1)
 
@@ -243,10 +267,10 @@ def main():
         .to_string(index=False)
     )
 
-    proj_2035 = project_load_to_2035(test_df["l_base_mw"], target_year=2035)
+    proj_2035 = project_load_to_2035(test_df["l_base_mw"], target_year=TARGET_END_YEAR)
     print(
-        f"\n[ANCORAGEM EPE PDE 2035] Carga Base Média NE Real 2025: {test_df['l_base_mw'].mean():,.1f} MW -> "
-        f"Projeção Estrutural 2035 (sem DCs): {proj_2035.mean():,.1f} MW (Pico: {proj_2035.max():,.1f} MW)"
+        f"\n[ANCORAGEM EPE PDE {TARGET_END_YEAR}] Carga Base Média NE Real {BASELINE_YEAR}: {test_df['l_base_mw'].mean():,.1f} MW -> "
+        f"Projeção Estrutural {TARGET_END_YEAR} (sem DCs): {proj_2035.mean():,.1f} MW (Pico: {proj_2035.max():,.1f} MW)"
     )
 
 

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { usePipelineSsot } from '../data/pipelineSsotContext';
 import type {
   AnnualRiskTimelinePoint,
   CompensatoryWindPoint,
@@ -23,6 +24,11 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
   downloadFeedback,
   onExportMc2035,
 }) => {
+  const { ssot } = usePipelineSsot();
+  const cfg = ssot.config;
+  const refs = cfg.referenceScenarioKeys;
+  const badges = cfg.uiThresholds.sensitivityBadges;
+  const targetProbMax = cfg.uiThresholds.targetImportProbMaxPct;
   const [selectedDcFilter, setSelectedDcFilter] = useState<string>('all');
 
   const filteredMcScenarios = useMemo(() => {
@@ -32,18 +38,22 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
 
   return (
     <div className="space-y-8">
-      {/* Matriz dos 12 Cenários em 2035 */}
       <section aria-labelledby="heading-mc12-matrix" className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-sky-800">
-              Script 06 · Passo 4 Concluído · Block-Bootstrap Monte Carlo em Multiprocessing
+              Script 06 · Passo 4 Concluído · Block-Bootstrap Monte Carlo em Multiprocessing (
+              {cfg.monteCarlo.iterationsMain.toLocaleString('pt-BR')} iterações)
             </p>
             <h2 id="heading-mc12-matrix" className="text-xl font-bold text-slate-900 mt-0.5">
-              Matriz Completa de Risco Operativo e Expansão Compensatória em 2035 (12 Cenários)
+              Matriz Completa de Risco Operativo e Expansão Compensatória em {cfg.targetEndYear} ({mc12Scenarios.length}{' '}
+              Cenários)
             </h2>
             <p className="text-sm text-slate-600 mt-1">
-              Cruzamento de 4 cenários de Data Centers × 3 trajetórias eólicas (SIGA + IBAMA Offshore pós-2031) com modulação hidrotérmica de ponta da Chesf (2.600–9.850 MW).
+              Cruzamento de 4 cenários de Data Centers × 3 trajetórias eólicas (SIGA + IBAMA Offshore pós-
+              {cfg.offshoreStartYear}) com modulação hidrotérmica de ponta da Chesf (
+              {cfg.chesfDispatch.floorMW.toLocaleString('pt-BR')}–{cfg.chesfDispatch.ceilingMW.toLocaleString('pt-BR')}{' '}
+              MW).
             </p>
           </div>
 
@@ -54,15 +64,15 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
               onChange={(e) => setSelectedDcFilter(e.target.value)}
               className="h-9 px-3 text-xs font-medium bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
             >
-              <option value="all">Todos os 12 Cenários (4 DC × 3 Eólica)</option>
-              <option value="none">1. Sem Data Centers (Baseline Controle)</option>
-              <option value="conservative">
+              <option value="all">Todos os {mc12Scenarios.length} Cenários (4 DC × 3 Eólica)</option>
+              <option value={refs.dcControl}>1. Sem Data Centers (Baseline Controle)</option>
+              <option value={refs.dcConservative}>
                 2. DC Conservador ({kpis.ramp2035 ? Math.round(kpis.ramp2035.conservativeMW).toLocaleString('pt-BR') : '—'} MW rede)
               </option>
-              <option value="central">
+              <option value={refs.dcCentral}>
                 3. DC Central ({kpis.ramp2035 ? Math.round(kpis.ramp2035.centralMW).toLocaleString('pt-BR') : '—'} MW rede)
               </option>
-              <option value="high">
+              <option value={refs.dcHigh}>
                 4. DC Stress Test / IA ({kpis.ramp2035 ? Math.round(kpis.ramp2035.highMW).toLocaleString('pt-BR') : '—'} MW rede)
               </option>
             </select>
@@ -72,7 +82,7 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
               onClick={onExportMc2035}
               className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
             >
-              {downloadFeedback ?? 'Exportar Matriz 2035 (.csv)'}
+              {downloadFeedback ?? `Exportar Matriz ${cfg.targetEndYear} (.csv)`}
             </button>
           </div>
         </div>
@@ -95,7 +105,7 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
             <tbody className="divide-y divide-slate-200 text-slate-700">
               {filteredMcScenarios.map((s) => {
                 const isReferenceCentral =
-                  s.dcScenarioId === 'central' && Math.abs(s.windCapacityMW - kpis.intermWindMW) < 100;
+                  s.dcScenarioId === refs.dcCentral && s.windScenarioId === refs.windIntermediate;
                 return (
                   <tr
                     key={s.scenarioName}
@@ -110,9 +120,9 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
                     </td>
                     <td
                       className={`py-3 px-2 font-mono font-bold whitespace-nowrap ${
-                        s.probExceedInterchangePct >= 15
+                        s.probExceedInterchangePct >= badges.highRiskPct
                           ? 'text-red-700'
-                          : s.probExceedInterchangePct > 5
+                          : s.probExceedInterchangePct > badges.lowRiskPct
                             ? 'text-amber-700'
                             : 'text-emerald-800'
                       }`}
@@ -144,9 +154,7 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
         </div>
       </section>
 
-      {/* Curva de Expansão Eólica Compensatória + Trajetória Anual 2026-2035 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Curva de Expansão Eólica Compensatória */}
         <section aria-labelledby="heading-comp-curve" className="bg-white border border-slate-200 rounded-xl p-6">
           <div className="pb-4 border-b border-slate-200">
             <p className="text-xs font-semibold uppercase tracking-wider text-emerald-800">
@@ -157,10 +165,10 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
               )
             </p>
             <h3 id="heading-comp-curve" className="text-lg font-bold text-slate-900 mt-0.5">
-              Curva de Expansão Eólica Compensatória vs. Curtailment em 2035
+              Curva de Expansão Eólica Compensatória vs. Curtailment em {cfg.targetEndYear}
             </h3>
             <p className="text-xs text-slate-600 mt-1">
-              Quantos GW eólicos extras acima da base ({kpis.baseWind2026GW.toFixed(1).replace('.', ',')} GW) são exigidos para reconduzir o risco de importação P(Import &gt; {kpis.importLimitGW.toFixed(0)} GW) à meta segura (&le; 5%).
+              Quantos GW eólicos extras acima da base ({kpis.baseWind2026GW.toFixed(1).replace('.', ',')} GW) são exigidos para reconduzir o risco de importação P(Import &gt; {kpis.importLimitGW.toFixed(0)} GW) à meta segura (&le; {targetProbMax.toFixed(1).replace('.', ',')}%).
             </p>
           </div>
 
@@ -177,7 +185,7 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-200 text-slate-700">
                 {compWindCurve.map((pt) => {
-                  const meetsTarget = pt.probExceedInterchangePct <= 5.5;
+                  const meetsTarget = pt.probExceedInterchangePct <= targetProbMax;
                   return (
                     <tr key={pt.extraWindGW} className={meetsTarget ? 'bg-emerald-50/40' : 'hover:bg-slate-50'}>
                       <td className="py-2.5 pr-2 font-mono font-bold text-sky-900">
@@ -205,17 +213,16 @@ export const MonteCarlo2035Panel: React.FC<MonteCarlo2035PanelProps> = ({
           </div>
         </section>
 
-        {/* Evolução Anual do Risco 2026–2035 */}
         <section aria-labelledby="heading-annual-timeline" className="bg-white border border-slate-200 rounded-xl p-6">
           <div className="pb-4 border-b border-slate-200">
             <p className="text-xs font-semibold uppercase tracking-wider text-sky-800">
-              Horizonte Decenal 2026–2035 (Cenário Central DC + SIGA Intermediário)
+              Horizonte Decenal {annualTimeline[0]?.year ?? cfg.projectionStartYear}–{cfg.targetEndYear} (Cenário Central DC + SIGA Intermediário)
             </p>
             <h3 id="heading-annual-timeline" className="text-lg font-bold text-slate-900 mt-0.5">
               Evolução Anual de Risco, Importação P95 e Curtailment Evitado
             </h3>
             <p className="text-xs text-slate-600 mt-1">
-              Acompanhamento ano a ano do crescimento vegetativo do Nordeste (EPE PDE) somado à rampa dos Data Centers.
+              Acompanhamento ano a ano do crescimento vegetativo do Nordeste (EPE PDE +{(cfg.annualLoadGrowthRate * 100).toFixed(1).replace('.', ',')}% a.a.) somado à rampa dos Data Centers.
             </p>
           </div>
 

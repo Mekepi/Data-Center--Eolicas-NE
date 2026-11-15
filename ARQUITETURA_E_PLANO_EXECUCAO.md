@@ -1,9 +1,10 @@
 # Documento Base de Arquitetura e Plano Sequencial de Execução
 
 **Projeto:** Balanço Eólico & Data Centers NE 2035 (PTC3567 · Grupo 6)  
-**Marco de Referência:** Pós-Passo 5 · Passos 1, 2, 3, `3.B` (código + SSOT), **Passo 4** e **Passo 5** concluídos em 2026-11-13  
-**Data da Última Atualização:** 2026-11-13  
-**Finalidade:** Servir como referência técnica fiel da estrutura final do código, da resolução das fragilidades arquiteturais mapeadas e do registro auditado do roteiro sequencial (Passos 1 a 5 + `3.B`).
+**Marco de Referência:** Ciclo 1 (Passos 1–5 + `3.B`) concluído em 2026-11-13 · **Ciclo 2 — Concluído integralmente (`Passos C2-1 a C2-5`) em 2026-11-14**  
+**Data da Última Atualização:** 2026-11-14  
+**Finalidade:** Servir como referência técnica fiel da arquitetura do código, do histórico auditado do Ciclo 1 (Passos 1–5 + `3.B`) e do plano sequencial de saneamento estrutural do Ciclo 2 (`C2-1` a `C2-5`).  
+**Observação de Escopo (Ciclo 2 vs. Ciclo 3):** O **Ciclo 2** foca exclusivamente na consistência estrutural Frontend ↔ Backend, eliminação total de dados simulados/sintéticos e centralização completa de constantes hardcoded. O ajuste fino de engenharia elétrica e ciência de dados dos modelos (incluindo convergência out-of-time do Estágio C1 / Subteste 8) fica explicitamente reservado para o **Ciclo 3** posterior.
 
 ---
 
@@ -42,22 +43,17 @@
 ### 1.4 Camada Frontend (`/src`)
 - `src/data/pipelineTypes.ts`: contratos TypeScript completos do bundle SSOT (`PipelineSsotBundle`).
 - `src/data/generated/pipelineSsot.ts`: snapshot TypeScript auto-gerado por `sync_frontend_ssot.py`.
-- `src/data/pipelineSsotContext.tsx`: `PipelineSsotProvider` (inicializa síncrono de `PIPELINE_SSOT` e atualiza via `fetch('/data/pipeline-ssot.json', { cache: 'no-store' })` com `isValidSsotBundle`).
-- `src/data/dataCentersPipelineCatalog.ts`, `src/data/featuresAnovaCatalog.ts`, `src/data/scriptsRoadmap.ts`: módulos *facade* tipados sobre `PIPELINE_SSOT`.
-- `src/data/databasesCatalog.ts`: catálogo estático das 10 bases oficiais (`OFFICIAL_DATABASES`).
-- `src/utils/energyModel.ts` (597 linhas) e `src/utils/energyModel.test.ts` (436 linhas · 15 subtestes via `node:test`): simulador paramétrico horário/Monte Carlo em TypeScript e testes unitários/paridade SSOT/exportadores CSV.
-- `src/utils/csvExport.ts` (54 linhas): utilitário unificado `escapeCsvCell`, `buildDelimitedCsvContent` (BOM UTF-8 + delimitador `;`), `downloadDelimitedCsv` e `downloadTextFile`.
-- `src/App.tsx` (332 linhas) e `src/components/`:
-  - `ObjectiveAndSimulatorView.tsx` (1.091 linhas)
-  - `DataCentersPipelineView.tsx` (808 linhas)
-  - `FeaturesAndAnovaView.tsx` (436 linhas — container orquestrador e faixa de KPIs) + `featuresAnovaKpis.ts` (72 linhas):
-    - `Validation2025Panel.tsx` (439 linhas)
-    - `MonteCarlo2035Panel.tsx` (258 linhas)
-    - `SensitivityPasso5Panel.tsx` (287 linhas)
-    - `AnovaCorrelationsPanel.tsx` (320 linhas)
-  - `DatabasesExplorerView.tsx` (341 linhas)
-  - `ScriptsPipelineView.tsx` (154 linhas)
-  - `DecisionsAndPdfView.tsx` (239 linhas)
+- `src/data/pipelineSsotContext.tsx`: `PipelineSsotProvider` (inicializa síncrono de `PIPELINE_SSOT`, valida digest/versão para `pipeline-ssot.json` e carrega condicionalmente `/data/hourly-baseline-8760.json` validando `hourlyBaselineDigest`).
+- `src/data/dataCentersPipelineCatalog.ts`, `src/data/featuresAnovaCatalog.ts`, `src/data/scriptsRoadmap.ts`: módulos *facade* tipados sobre `PIPELINE_SSOT`. *(O arquivo estático `src/data/databasesCatalog.ts` foi removido no C2-4 em favor de `ssot.uiCatalog.databasesCatalog`.)*
+- `src/utils/energyModel.ts` e `src/utils/energyModel.test.ts` (`16` subtestes via `node:test`): motor real-time de **8.760 h/ano** (`2025–2035`), fatiamento multi-escala (`Dia`, `Semana`, `Mês`, `Trimestre`, `Ano`), agregador `buildHourlyPlotBuckets`, resolvedor determinístico `resolveMonteCarloSummary` (grade Python / âncoras SSOT sem fallback sintético) e suíte de contrato anti-hardcode.
+- `src/utils/csvExport.ts`: utilitário unificado `escapeCsvCell`, `buildDelimitedCsvContent` (BOM UTF-8 + `;`), `downloadDelimitedCsv` e `downloadTextFile`.
+- `src/App.tsx` e `src/components/` (100% parametrizados por `ssot.config` e `ssot.uiCatalog`, com 0 atributos `style`):
+  - `ObjectiveAndSimulatorView.tsx`
+  - `DataCentersPipelineView.tsx`
+  - `FeaturesAndAnovaView.tsx` + `featuresAnovaKpis.ts` (`Validation2025Panel.tsx`, `MonteCarlo2035Panel.tsx`, `SensitivityPasso5Panel.tsx`, `AnovaCorrelationsPanel.tsx`)
+  - `DatabasesExplorerView.tsx`
+  - `ScriptsPipelineView.tsx`
+  - `DecisionsAndPdfView.tsx`
 
 ---
 
@@ -229,4 +225,178 @@
   4. Removidas de `package.json` as dependências não utilizadas (`@google/genai`, `dotenv`, `express`, `lucide-react`, `motion`, `@types/express`) e incluídas regras de exclusão em `.gitignore` para `__pycache__/`, `*.py[cod]`, `data/raw/ons_*.csv`, `data/processed/*.csv` e `.playwright-cli/`. Mantido `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` em `metadata.json` por exigência do ambiente AI Studio Build.
   5. Adicionados 2 testes unitários em `src/utils/energyModel.test.ts` cobrindo `escapeCsvCell`, `buildDelimitedCsvContent` e `computeFeaturesAnovaKpis`.
 - **Validação realizada:** `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) aprovados sem erros; `python3 -m unittest -v` (`9/9 OK`); `npx tsx --test src/utils/energyModel.test.ts` com **14/15 aprovados** (Subtestes 14 e 15 do Passo 5 verdes; apenas Subteste 8 aguarda reexecução científica `--only-from 05` já acordada); auditoria `grep` e inspeção em Chromium (`playwright-cli` 1440×900) confirmando `0` elementos com atributo `[style]`, funcionamento das 4 sub-abas de `Modelos & Monte Carlo`, renderização das barras SVG e **0 erros de console**.
+
+---
+
+## 4. Ciclo 2 — Auditoria Arquitetural e Plano de Correção (Consistência Front↔Back, Zero Dados Simulados e Zero Constantes Hardcoded)
+
+> **Status do Ciclo 2:** **Concluído integralmente em 2026-11-14 (`Passos C2-1, C2-2, C2-3, C2-4 e C2-5` aprovados)** · Prontidão para o **Ciclo 3** (ajuste científico/hiperparâmetros em ambiente Python `numpy`/`pandas`/`scipy` e materialização em disco de `hourly-baseline-8760.json` e `grade_simulador_monte_carlo_2025_2035.csv`).  
+> **Estado atual do workspace no início do Ciclo 2:** Arquivos brutos/intermediários pesados ignorados pelo `.gitignore` (`data/raw/ons_*.csv`, `data/processed/*.csv`, `scripts/__pycache__/*.pyc`) foram removidos localmente; permanecem intactos `reports/` (16 CSVs + `.md`), `data/scenarios/`, `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts`.
+
+### 4.1 Diagnóstico Consolidado da Auditoria de Código
+
+#### Eixo A — Dados Simulados / Sintéticos Residuais e Limitação de Semana Genérica
+1. **`src/utils/energyModel.ts` — Simulador Baseado em Semana Genérica Sintética (`simulateHourlyWeek` de 168 h):**
+   - Além de inventar curvas trigonométricas/gaussianas sintéticas (pico solar `8200 * (1 + 0.055 * yearsFrom2026)`, carga base `13100 * diurnalLoadShape * weekendFactor`, `hydroPeakSupport = 650`, queda sinótica fixa na hora `76`, fatores `0.44 / 0.58 / 0.27`), o modelo hoje **representa apenas uma semana genérica de 168 h**, em vez de estimar as **8.760 horas de um ano completo** escolhido pelo usuário entre **2025 e 2035**.
+   - Mesmo quando o usuário seleciona cenários nominais oficiais (cujos KPIs vêm do Script 06 via SSOT), `ObjectiveAndSimulatorView.tsx` continua exibindo essa semana sintética de 168 h e contadores semanais (`negativeMarginHoursPerWeek`, energia cortada semanal) sem permitir explorar dia, semana, mês, trimestre ou ano completo.
+2. **`src/utils/energyModel.ts` — Fallback Monte Carlo Sintético em JS (`runMonteCarloSimulation`) e Curvas Fallback:**
+   - Ao alterar qualquer premissa fora do ponto nominal (`pue`, `dcUtilization`, limites de intercâmbio, `seasonalRegime` ≠ `'annual_blend'`), o frontend abandona o motor Python e roda uma aproximação estocástica inventada sobre a semana sintética (`loadMultiplier`, `windProjectCompletion`, `dcRealization`, `annualScale = 36/38/52`, `lowWindFirmCf = 0.19/0.25`, regra `nominalDcMW * 0.35 / lowWindFirmCf`).
+   - `computeDcRampFactor` possui curva logística sintética de fallback (`0.14 + 0.86 * progress^1.35`) e `DEFAULT_ENERGY_MODEL_CONFIG` replica parâmetros de `config.py` localmente.
+3. **Fallbacks em Ingestão e Linhagem (`scripts/01_ingest_ons_aneel_epe.py` e `scripts/sync_frontend_ssot.py`):**
+   - `01_ingest_ons_aneel_epe.py` utiliza preenchimentos estáticos quando dados faltam (`dat_operacao.fillna("2014-01-01")`, `.fillna(3300.0)` MW de capacidade e `g_solar_mw.fillna(0.0)`).
+   - `_compute_lineage` em `sync_frontend_ssot.py` retorna fallbacks literais (`87476`, `8760`, `2026-01-01`, `2015..2025`) se `data/processed/` ou `data/raw/ons_*.csv` não estiverem no disco (caso atual após limpeza local, em que `rawOnsFilesCount` passa a `0`).
+4. **Testes Sintéticos (`scripts/test_sync_frontend_ssot.py`):**
+   - `_make_consistent_synthetic_payload` é restrito a testes unitários isolados; deve ser mantido estritamente separado dos testes de contrato vivo (sem *skips* silenciosos quando artefatos estiverem ausentes).
+
+#### Eixo B — Fraturas de Consistência Frontend ↔ Backend & Contrato SSOT
+1. **Semana Genérica 168 h (TS) vs. Ano Completo e KPIs Anuais 2025–2035 (Python):** No estado padrão da aplicação, os cards exibem métricas anuais do Script `06`, enquanto o gráfico e os contadores horários representam uma semana genérica sintética de 168 h e o seletor de ano exclui `2025` (começa em `2026`).
+2. **Divergência de Equações Físicas e Taxas entre JS (`energyModel.ts`) e Python (`06`/`07`):**
+   - Taxa solar e ano-base: Python (`06`, `07`) usa `0.045` (`+4,5% a.a.`) a partir de `2025`; JS usa `0.055` (`+5,5% a.a.`) a partir de `2026`.
+   - Limiar de exportação/corte e anualização: Python (`06`) aplica `export_limit_mw - 0.18 * solar_block` e fator anual `8760 / 168`; JS aplica `exportLimitMW` puro e escalas `36/38/52`. Com a adoção do **ano completo de 8.760 h** em tempo real, a integração horária anual torna-se direta (`sum(curtailment_h) / 1e6` TWh/ano e contagem exata de horas críticas entre `0..8759`), mantendo paridade com o motor estocástico Python.
+   - Inconsistência interna no próprio Python (`06`): `run_bottom_up_project_monte_carlo` ainda utiliza fator semanal `52.0` e `0.21` fixo em vez de `8760.0 / block_size` e `cf_firme_critico` parametrizado.
+3. **Divergência de Arquitetura Exportada vs. Rotulada no Modelo A/B (`05` vs. Frontend):**
+   - `05_forecast_wind_cf_and_curtailment.py` (`export_2025_comparative_profiles`) exporta `pred_load_nonlin_mw = pred_l_base_gbdt_24h_mw` e `pred_cf_nonlin = preds_b["gbdt_1h"]` (Histogram GBDT), ao passo que `Validation2025Panel.tsx`, `featuresAnovaKpis.ts` e `FeaturesAndAnovaView.tsx` rotulam as séries como **ResMLP** e as comparam com KPIs de ResMLP.
+4. **Catálogos e Governança Fora do SSOT (`databasesCatalog.ts`, `DecisionsAndPdfView.tsx`, `App.tsx`):**
+   - `OFFICIAL_DATABASES`, `PILLAR_LABELS = { all: 'Todas (10)' }` (`src/data/databasesCatalog.ts`) e `GROUP_DECISIONS` + `pdfPath` (`src/components/DecisionsAndPdfView.tsx`) estão hardcoded fora de `scripts/pipeline_metadata.json` e não trafegam pelo SSOT (`usePipelineSsot()`). Decisões 01/03 ainda exibem opções legadas ("MVP rápido", "Recomendado") sem vínculo com os parâmetros ativos em `config.py`.
+   - `checkedDbs` em `localStorage` (`App.tsx`) não reflete o status real de ingestão em `ssot.lineage`.
+5. **Validação Cruzada Não Bloqueante e Redundância de Carga do SSOT:**
+   - `validate_ssot_cross_consistency` (`sync_frontend_ssot.py`) roda apenas no `unittest`, não dentro da própria função `sync_frontend_ssot()` — permitindo gerar SSOT inconsistente sem falha no pipeline.
+   - `pipelineSsot.ts` (compilado no bundle Vite) e `public/data/pipeline-ssot.json` duplicam >100 KB (incluindo `starterCode` dos scripts `.py` e `.md`), e `PipelineSsotProvider` executa `fetch(..., { cache: 'no-store' })` incondicionalmente no mount sem comparar versão/digest.
+   - Em `sync_frontend_ssot.py`, `safe_float` assume formato PT-BR sempre que `,` e `.` coexistem, e `_format_scenario_name` contém `.replace("Sem Data Centers (Controle)", "Sem Data Centers (Controle)")` (no-op).
+
+#### Eixo C — Inventário Exaustivo de Constantes Hardcoded (Backend + Frontend)
+1. **Backend `/scripts` (fora de `scripts/config.py` e `scripts/pipeline_metadata.json`):**
+   - `scripts/config.py`: contém URL fixa antiga `RESTRICAO_COFF_EOLICA_2026_10.csv` e não centraliza anos de recorte (`START_YEAR=2015`, `END_YEAR=2025`, `COFF_START_YEAR=2023`, `COFF_REGIME_START_DATE="2023-09-01"`, `TRAIN_CUTOFF_YEAR=2025`, `CURTAILMENT_FLAG_THRESHOLD_MW=50.0`), horizonte de projeção (`PROJECTION_START_YEAR=2026`, `PROJECTION_END_YEAR=2035`, `OFFSHORE_START_YEAR=2031`), taxas PDE/solar (`ANNUAL_LOAD_GROWTH_RATE=0.031`, `ANNUAL_SOLAR_GROWTH_RATE=0.045`), coeficientes da usina Chesf, parâmetros do bootstrap (`BLOCK_SIZE_HOURS=168`, `MONTE_CARLO_ITERATIONS=1000`, `MONTE_CARLO_SEED=42`), grade TX/H2V e hiperparâmetros dos modelos.
+   - `scripts/01_ingest_ons_aneel_epe.py`: fallback `"2014-01-01"`, `3300.0` MW, `50.0` MW, anos `2015..2025` e `2023..2025`.
+   - `scripts/02_build_dc_and_offshore_scenarios.py`: `2026..2035`, `9.0`, expoente `0.9`, multiplicadores offshore `3600.0 / 1800.0 / 800.0` pós-`2031`.
+   - `scripts/04_forecast_demanda_base.py`: `annual_epe_growth_rate = 0.031`, `val_hours = 24*90`, `n_splits = 4`, hiperparâmetros inline.
+   - `scripts/05_forecast_wind_cf_and_curtailment.py`: `"2023-09-01"`, `threshold = 0.45`, lista literal `meses_curtos`, hiperparâmetros inline.
+   - `scripts/06_monte_carlo_balance_2035.py`: filtro `year >= 2022`, `block_size = 168`, curva Chesf (`2600.0`, `0.56`, `9850.0`), taxas `1.031` e `0.045`, ruídos (`0.032`, `0.86..1.02`, `0.76..1.24`, `0.09`, `0.98`, `0.90..1.08`), parâmetros H2V (`0.42`, `9..15`, `0.30`, `0.27`, `18..22`, `0.12`, `0.55`, `0.92`), `8760.0`, redução exportação `0.18`, `cf_firme_critico = 0.21 + 0.06 * offshore_share`, `52.0`, `0.21`, `36400.0`, `0.72..0.94`, `atraso * 1.5`, `extra_gw_grid`, `seed = 42`, `n_workers = 6`.
+   - `scripts/07_sensitivity_and_final_report.py`: `PECEM_H2V_HUB_SHARE = 0.75`, strings `"SE Pecém II"`, specs literais `TX-01..TX-05` e `H2V-01..H2V-05`, `hydro_therm_cap = 15350.0`, `3.85`, `120.0`, `years = [2028, 2030, 2032, 2035]`, `0.045`, `1.031`.
+   - `scripts/sync_frontend_ssot.py`: limiares de risco (`20.0, 700.0, 6.0, 230.0, 2.0, 100.0`), detecção por números mágicos (`36400`, `47000`, `2000`) em vez de IDs semânticos de cenário (`windScenarioId === 'intermediate'`), tolerâncias de validação (`0.1`, `0.2`, `0.02`), fallbacks de linhagem (`87476`, `8760`, `2026-01-01`).
+2. **Frontend `/src`:**
+   - `src/utils/energyModel.ts`: `DEFAULT_ENERGY_MODEL_CONFIG`, `0.9`, `2026..2035`, `2031`, `3600/1800/800`, `1.031`, `0.055`, e todas as constantes da curva sintética.
+   - `src/components/featuresAnovaKpis.ts`: `Math.pow(1.031, 10)` literal.
+   - `src/components/Validation2025Panel.tsx`: domínios Y fixos dos 3 gráficos SVG (`11500..15000`, `30..60`, `0..7200`) e rótulos fixos `"ResMLP"`.
+   - `src/components/ObjectiveAndSimulatorView.tsx`: limites SVG (`24000`, `6000`), `inspectedHour` inicial (`76`), bounds dos `<input type="range">` (`2026..2035`, `4500..10000 step 250`, `1.15..1.50`, `0.50..0.95`) e strings fixas (`"abaixo de 5%"`, `"14 projetos"`, `"SE Pecém II"`, `"PUE 1.18 a 1.32"`).
+   - `src/components/MonteCarlo2035Panel.tsx`: filtros por valor literal (`wind - intermWindMW < 100`), meta fixa `prob <= 5.5` e string `"2.600–9.850 MW"`.
+   - `src/components/SensitivityPasso5Panel.tsx`: filtro `h2vNominalMW === 2000`, limiares de badge (`15`, `5`, `18`), anos `2025`/`2028` e texto `"12% na calmaria / 100%"`.
+   - `src/components/DataCentersPipelineView.tsx`: índice inicial fixo `pipeline[6]`, strings `'SE Pecém II'` / `'SE Suape II'`, thresholds de barra (`40`, `15`, `* 1.8`), descrições fixas nos 3 cards de cenário.
+   - `src/components/AnovaCorrelationsPanel.tsx`: lista de categorias hardcoded, thresholds (`0.7`, `0.3`, `0.35`, `0.15`), `pValue === 0 ? '< 10⁻¹⁵'`.
+   - `src/data/databasesCatalog.ts`, `DatabasesExplorerView.tsx` (`'ibama-offshore-laf'`, `'Todas (10)'`), `DecisionsAndPdfView.tsx` (`GROUP_DECISIONS`, `pdfPath`), `App.tsx` (`STORAGE_KEY_*`, `checkedDbs` default).
+   - `src/utils/energyModel.test.ts`: mistura asserções estruturais com snapshots numéricos literais da rodada anterior (`87476`, `3495`, `29600`, `7000`, `2200`, `4100`, `1596.8`, `8440`, `25.7`).
+
+---
+
+### 4.2 Plano Sequencial de Execução — Ciclo 2
+
+> **Diretriz Fundamental de Modelagem do Simulador (Ano Completo `2025–2035` em Tempo Real):**  
+> O sistema **não** representará mais uma semana genérica (`168 h`). O simulador passará a estimar **o ano completo (`8.760 horas` — 365 dias × 24 h)** para **qualquer ano no intervalo `2025..2035`** escolhido pelo usuário em tempo real na interface, preservando **granularidade horária integral** e oferecendo troca dinâmica de janela de observação entre **Dia** (`24 h`), **Semana** (`168 h`), **Mês** (`672–744 h`), **Trimestre** (`Q1–Q4`) e **Ano** (`8.760 h`).
+
+#### Passo C2-1 — Centralização Paramétrica Total no Backend (`scripts/config.py` + `scripts/pipeline_metadata.json` + Contrato SSOT)
+- [x] **Status:** Concluído em 2026-11-14
+- **Objetivo:** Tornar `scripts/config.py` a única fonte numérica/física de todo o projeto (incluindo o horizonte completo `2025..2035` e constantes de `8.760 h/ano`) e `scripts/pipeline_metadata.json` a única fonte de catálogos/metadados editoriais, expondo um objeto `config` e `uiCatalog` completo ao Frontend.
+- **Arquivos modificados:**
+  - `scripts/config.py`
+  - `scripts/pipeline_metadata.json`
+  - `src/data/pipelineTypes.ts`
+  - `scripts/sync_frontend_ssot.py`
+  - `src/utils/energyModel.ts` (tipagem de compatibilidade `EnergyModelCoreConfig` preservando funcionamento até o Passo C2-4)
+  - `scripts/test_sync_frontend_ssot.py`
+  - `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts` (re-sincronizados via `run_pipeline.py --only-from ssot`, `schemaVersion = 2.0.0`)
+- **Ações realizadas:**
+  1. Centralizados em `scripts/config.py` todos os blocos paramétricos: janelas temporais (`HISTORY_START_YEAR=2015`, `HISTORY_END_YEAR=2025`, `BASELINE_YEAR=2025`, `PROJECTION_START_YEAR=2025`, `RAMP_START_YEAR=2026`, `TARGET_END_YEAR=2035`, `OFFSHORE_START_YEAR=2031`, `HOURS_PER_YEAR=8760`, `BLOCK_SIZE_HOURS=168`), taxas estruturais (`ANNUAL_LOAD_GROWTH_RATE=0.031`, `ANNUAL_SOLAR_GROWTH_RATE=0.045`, `EXPORT_SOLAR_CURTAILMENT_COEF=0.18`), despacho Chesf (`CHESF_DISPATCH_PARAMS`), rampa/offshore (`WIND_RAMP_EXPONENT`, `OFFSHORE_SCENARIO_MW_POST_2031`), `MONTE_CARLO_PARAMS`, `H2V_FLEX_PARAMS`, `TX_SENSITIVITY_SPECS`, `H2V_SENSITIVITY_SPECS`, `PECEM_SUBSTATION_NAME`/`PECEM_H2V_HUB_SHARE`, `ML_MODEL_PARAMS`, `SIMULATOR_SLIDER_BOUNDS` (`year: 2025..2035`, `defaultObservationWindow: "year"`), `UI_THRESHOLDS`, templates parametrizados `ONS_S3_URL_TEMPLATES` (`build_ons_urls`, removendo a URL antiga `2026_10`) e o serializador único `export_frontend_config_dict()`.
+  2. Adicionada a seção `uiCatalog` em `scripts/pipeline_metadata.json` contendo as 10 bases oficiais (`databasesCatalog`, `databasePillarLabels`), `groupDecisions` atualizadas, `pdfAssetPath`/`pdfDownloadFilename`, `observationWindows` (`day`, `week`, `month`, `quarter`, `year`), `seasonalRegimes`, `anovaCategories`, `dcScenarioCards` e chaves padrão semânticas (`defaultExpandedDatabaseId`, `defaultPipelineProjectId`, `defaultSubstationFocus`, `defaultCheckedDatabaseIds`).
+  3. Expandidos os contratos em `src/data/pipelineTypes.ts` (`PipelineConfigSnapshot`, `PipelineUiCatalog`, `ObservationWindowId`, `DatabasePillarId`, `OfficialDatabaseEntry`, `GroupDecisionItem`, `PipelineSsotBundle` com `bundleDigest` e `uiCatalog`) e atualizado `scripts/sync_frontend_ssot.py` para emitir `schemaVersion = "2.0.0"` com `bundleDigest` SHA-256 curto e `config`/`uiCatalog` integrais.
+- **Validação realizada:** `py_compile` limpo; `python3 scripts/run_pipeline.py --only-from ssot` concluído (`0,12s`); `python3 -m unittest -v` com **9/9 OK** (`0,135s`); `npx --yes tsx --test src/utils/energyModel.test.ts` com **14/15 OK** (apenas Subteste 8 reservado ao Ciclo 3); `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) verdes sem erros.
+
+#### Passo C2-2 — Alinhamento Físico/Numérico no Backend (`2025–2035`) e Gate Obrigatório no `sync_frontend_ssot.py`
+- [x] **Status:** Concluído em 2026-11-14 *(código 100% refatorado, SSOT re-sincronizado e validado; reexecução pesada dos scripts `01..07` sobre CSVs brutos aguarda ambiente científico com `numpy`/`pandas`/`scipy`)*
+- **Objetivo:** Garantir consistência matemática interna entre `01..07` e `sync_frontend_ssot.py`, cobrindo o intervalo completo `2025..2035` sem números mágicos nem falhas silenciosas.
+- **Arquivos modificados:**
+  - `scripts/01_ingest_ons_aneel_epe.py`
+  - `scripts/02_build_dc_and_offshore_scenarios.py`
+  - `scripts/03_feature_engineering_anova.py`
+  - `scripts/04_forecast_demanda_base.py`
+  - `scripts/05_forecast_wind_cf_and_curtailment.py`
+  - `scripts/06_monte_carlo_balance_2035.py`
+  - `scripts/07_sensitivity_and_final_report.py`
+  - `scripts/sync_frontend_ssot.py`
+  - `scripts/test_sync_frontend_ssot.py`
+  - `src/data/pipelineTypes.ts`
+  - `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts` (re-sincronizados via `run_pipeline.py --only-from ssot`)
+- **Ações realizadas:**
+  1. Refatorados os scripts `01`, `02`, `03`, `04`, `05`, `06` e `07` para importar integralmente os blocos paramétricos de `scripts/config.py` (janelas `2015–2025` e `2025–2035`, limiar `50 MW`, templates ONS S3, `ML_MODEL_PARAMS`, `CHESF_DISPATCH_PARAMS`, `MONTE_CARLO_PARAMS`, `H2V_FLEX_PARAMS`, `TX_SENSITIVITY_SPECS`, `H2V_SENSITIVITY_SPECS`, `PECEM_SUBSTATION_NAME` / `PECEM_H2V_HUB_SHARE` e `REFERENCE_SCENARIO_KEYS`), adicionando logs explícitos `[AVISO ETL]` em fallbacks de ingestão no Script `01`.
+  2. Estendido o horizonte padrão de `02_build_dc_and_offshore_scenarios.py` e da linha temporal de `06_monte_carlo_balance_2035.py` para iniciar em **`PROJECTION_START_YEAR` (`2025`)** com inclusão explícita da trajetória baseline `2025` até `2035`, além de emitir `cenario_eolica` semântico no resultado de `simulate_block_bootstrap(...)`.
+  3. Em `05_forecast_wind_cf_and_curtailment.py`, corrigida `export_2025_comparative_profiles` para exportar `pa["pred_l_base_resmlp_24h_mw"]`, `preds_b["resmlp_1h"]` e `preds_b["resmlp_24h"]` (alinhando integralmente Modelos A, B e C na arquitetura **ResMLP**) e carregar `monthShortNames` de `scripts/pipeline_metadata.json`.
+  4. Em `06_monte_carlo_balance_2035.py`, corrigida `run_bottom_up_project_monte_carlo` para utilizar `float(HOURS_PER_YEAR) / float(block_size_hours)` (em vez de `52.0`) e `firmWindCfBase + firmWindCfOffshoreBonus * offshore_share` (em vez de `0.21`), unificando a física com `simulate_block_bootstrap`.
+  5. Em `src/data/pipelineTypes.ts` e `scripts/sync_frontend_ssot.py`:
+     - Adicionados `windScenarioId` em `MonteCarloScenario2035Row` e `localRawCachePresent` + `comparativeNonLinearArchitecture` em `PipelineLineageSnapshot`;
+     - Substituídos filtros literais (`36400`, `47000`, `2000`) e tolerâncias fixas por `REFERENCE_SCENARIO_KEYS`, `windScenarioId`, `DEFAULT_H2V_COMPARISON_MW` e `UI_THRESHOLDS`;
+     - Corrigido `safe_float` para distinguir separadores PT-BR vs. EN (`1,234.56`), removido no-op em `_format_scenario_name` e eliminados fallbacks mascarados em `_compute_lineage` (`0` quando CSVs locais não estão no disco + flag explícita `localRawCachePresent`);
+     - Integrado **gate bloqueante** `validate_ssot_cross_consistency(payload)` dentro de `sync_frontend_ssot(..., validate=True)`, abortando com `ValueError("Bloqueio SSOT...")` antes de gravar JSON/TS caso haja qualquer divergência.
+  6. Expandida a suíte `scripts/test_sync_frontend_ssot.py` (11 testes) cobrindo `1,234.56`, `windScenarioId`, `localRawCachePresent`/`comparativeNonLinearArchitecture`, bloqueio real de escrita em inconsistência SSOT e conformidade estrutural dos scripts `01..07`.
+- **Validação realizada:** `python3 -m py_compile scripts/*.py` limpo; `python3 scripts/run_pipeline.py --only-from ssot` concluído (`0,10s`) com gate de consistência aprovado nos artefatos atuais; `python3 -m unittest -v` com **11/11 OK** (`0,084s`); `npx --yes tsx --test src/utils/energyModel.test.ts` com **14/15 OK** (apenas Subteste 8 reservado ao Ciclo 3); `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) verdes sem erros. *(Nota: os CSVs em `reports/` preservam os números do último pull até a execução de `run_pipeline.py --skip-ingest` em ambiente Python com `numpy`/`pandas`/`scipy`, que não estão instalados neste container).*
+
+#### Passo C2-3 — Exportação da Série Base Anual Real (`8.760 h` ONS) e Grade Paramétrica `2025–2035` do Motor Python
+- [x] **Status:** Concluído em 2026-11-14 *(exportadores `8.760 h` + grade `2025–2035`, contrato SSOT dual com hash SHA-256 e `PipelineSsotProvider` implementados e testados; a geração física de `hourly-baseline-8760.json`, `serie_base_horaria_8760h_ons.csv` e `grade_simulador_monte_carlo_2025_2035.csv` ocorrerá automaticamente na execução da esteira em ambiente `numpy`/`pandas`/`scipy`)*
+- **Objetivo:** Substituir definitivamente a semana genérica de 168 h e qualquer curva sintética por uma **base horária anual real completa (`8.760 h`) do ONS** + grade paramétrica `2025–2035` gerada pelo motor Python (`06`).
+- **Arquivos modificados:**
+  - `scripts/config.py`
+  - `scripts/06_monte_carlo_balance_2035.py`
+  - `scripts/pipeline_metadata.json`
+  - `scripts/sync_frontend_ssot.py`
+  - `scripts/test_sync_frontend_ssot.py`
+  - `src/data/pipelineTypes.ts`
+  - `src/data/pipelineSsotContext.tsx`
+  - `public/data/pipeline-ssot.json` e `src/data/generated/pipelineSsot.ts` (re-sincronizados via `run_pipeline.py --only-from ssot`)
+- **Ações realizadas:**
+  1. Em `scripts/config.py`, definidos os contratos e caminhos oficiais `HOURLY_BASELINE_JSON_PATH` (`public/data/hourly-baseline-8760.json`), `HOURLY_BASELINE_CSV_FILENAME` (`serie_base_horaria_8760h_ons.csv`), `SIMULATOR_GRID_CSV_FILENAME` (`grade_simulador_monte_carlo_2025_2035.csv`), `SEASONAL_REGIME_MONTHS` (`annual_blend`, `dry_windy`, `wet_calm`) e os parâmetros da grade (`iterationsSimulatorGrid`, `gridSensitivityYears`, `gridPueValues`, `gridUtilizationValues`), além da exposição de `hourlyBaselineJsonUrl` em `export_frontend_config_dict()`.
+  2. Em `scripts/06_monte_carlo_balance_2035.py`, implementadas e integradas ao `main()`:
+     - `build_and_export_hourly_baseline_8760`: gera a série horária anual real de **8.760 horas** (`00h` de 01/Jan a `23h` de 31/Dez, removendo 29/Fev) a partir de `ne_hourly_master.csv` (`annual_blend` em `2025` real; `dry_windy` e `wet_calm` selecionando por semana calendário entre `2022–2025` a semana real observada de maior/menor CF eólico), salvando `reports/serie_base_horaria_8760h_ons.csv` e o JSON colunar compacto `public/data/hourly-baseline-8760.json` com `digest` SHA-256 curto;
+     - `export_simulator_monte_carlo_grid`: executa `simulate_block_bootstrap(...)` em `multiprocessing.Pool` cobrindo toda a matriz `2025..2035 × 4 DC × 3 Eólica × 3 Regimes Sazonais` (ancorando os pontos nominais exatamente em `res_12` e `timeline_res`) + fatias paramétricas de limites de intercâmbio (`TX-01..TX-05`) e `PUE × Utilização` em `[2025, 2028, 2030, 2032, 2035]`, exportando `reports/grade_simulador_monte_carlo_2025_2035.csv`.
+  3. Em `scripts/sync_frontend_ssot.py` e `src/data/pipelineTypes.ts`, adicionados `SimulatorMonteCarloGridRow[]` (`simulatorMonteCarloGrid` no bundle SSOT — vazio quando o CSV ainda não existe em disco, sem fallbacks sintéticos), leitura e validação SHA-256/estrutural de `hourly-baseline-8760.json` via campos de linhagem (`hourlyBaselineAvailable`, `hourlyBaselineDigest`, `hourlyBaselineHoursCount`, `simulatorGridAvailable`, `simulatorGridRowsCount`), mantendo a série horária de `8.760 h` fora do bundle estático TypeScript, e validação cruzada na `validate_ssot_cross_consistency`.
+  4. Em `src/data/pipelineSsotContext.tsx`, sincronizado o carregamento de `hourly-baseline-8760.json` condicionadamente a `lineage.hourlyBaselineAvailable` com verificação de `bundleDigest` (evitando re-render redundante) e validação estrutural + digest `isValidHourlyBaseline8760Bundle`.
+  5. Em `scripts/test_sync_frontend_ssot.py` (13 testes), adicionados testes para ausência honesta vs. carga real da série `8.760 h` + grade, detecção de drift grade vs. MC12 e presença dos exportadores no Script `06`.
+- **Validação realizada:** `python3 -m py_compile scripts/*.py` limpo; `python3 scripts/run_pipeline.py --only-from ssot` concluído (`0,11s`); `python3 -m unittest -v` com **13/13 OK** (`0,227s`); `npx --yes tsx --test src/utils/energyModel.test.ts` com **14/15 OK** (apenas Subteste 8 reservado ao Ciclo 3); `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) aprovados sem erros.
+
+#### Passo C2-4 — Motor Real-Time de `8.760 h` (`2025–2035`) e Visualização Multi-Escala (`Dia | Semana | Mês | Trimestre | Ano`) no Frontend
+- [x] **Status:** Concluído e verificado em 2026-11-14
+- **Objetivo:** Permitir que o usuário escolha qualquer ano entre **2025 e 2035** e gere **em tempo real** a estimativa horária completa das **8.760 horas do ano**, navegando livremente pelas escalas **Dia**, **Semana**, **Mês**, **Trimestre** e **Ano** com granularidade horária e zero dados simulados/hardcoded.
+- **Arquivos modificados / removidos:**
+  - `src/utils/energyModel.ts` (reescrito)
+  - `src/utils/energyModel.test.ts` (compatibilizado com a API `8.760 h` / `null` honesto; suíte de contrato completa fica no C2-5)
+  - `src/App.tsx`
+  - `src/data/databasesCatalog.ts` (**removido**)
+  - `src/components/ObjectiveAndSimulatorView.tsx` (reescrito)
+  - `src/components/DatabasesExplorerView.tsx`
+  - `src/components/DecisionsAndPdfView.tsx`
+  - `src/components/DataCentersPipelineView.tsx`
+  - `src/components/FeaturesAndAnovaView.tsx` e `src/components/featuresAnovaKpis.ts`
+  - `src/components/Validation2025Panel.tsx`
+  - `src/components/MonteCarlo2035Panel.tsx`
+  - `src/components/SensitivityPasso5Panel.tsx`
+  - `src/components/AnovaCorrelationsPanel.tsx`
+  - `src/components/ScriptsPipelineView.tsx`
+- **Ações realizadas:**
+  1. Em `src/utils/energyModel.ts`, removidos integralmente `simulateHourlyWeek` (semana sintética de 168 h), `DEFAULT_ENERGY_MODEL_CONFIG` e o fallback Monte Carlo sintético em JS. Implementados `buildDefaultSimulationConfig`, `computeChesfDispatchMW`, `estimateFullYearHourly(config, hourlyBaseline, ssot)` (calculando as **8.760 horas** reais de `2025..2035` com física idêntica ao Script `06`), `sliceHourlyWindow` (`day` `1..365`, `week` `1..52`, `month` `1..12`, `quarter` `Q1..Q4`, `year` `8.760 h`), `buildHourlyPlotBuckets` e `resolveMonteCarloSummary` (consulta exata ou interpolação IDW normalizada sobre `simulatorMonteCarloGrid`, fallback exclusivo às âncoras oficiais SSOT ou `sourceStatus: 'unavailable'` com métricas `null` — nunca números sintéticos).
+  2. Em `src/components/ObjectiveAndSimulatorView.tsx`, implementados slider real-time **Ano Alvo (`2025–2035`)** com badge de ano-base empírico ONS (`2025`), seletor **Dia (`24 h`) | Semana (`168 h`) | Mês | Trimestre | Ano Completo (`8.760 h`)** com sub-seletores contextuais (`Dia 1..365`, `Sem 1..52`, `Mês`, `Q1..Q4`), envelope mín/máx sombreado para janelas `> 365 h`, inspetor horário `0..windowLength-1`, exportador `.csv` anual de `8.760 h`, seleção dinâmica do par `TX-04 / TX-05` após `txReferenceIdPrefix` e banner transparente quando `hourly-baseline-8760.json` ainda aguarda materialização pelo Python científico (`numpy`/`pandas`/`scipy`).
+  3. Removido `src/data/databasesCatalog.ts` e `GROUP_DECISIONS` estático: `App.tsx`, `DatabasesExplorerView.tsx` e `DecisionsAndPdfView.tsx` consomem integralmente `ssot.uiCatalog` e `ssot.config` via `usePipelineSsot()`.
+  4. Parametrizados 100% dos demais painéis (`Validation2025Panel.tsx` com domínios Y dinâmicos via `chartPaddingRatio`, `featuresAnovaKpis.ts`, `MonteCarlo2035Panel.tsx`, `SensitivityPasso5Panel.tsx`, `DataCentersPipelineView.tsx`, `AnovaCorrelationsPanel.tsx`, `FeaturesAndAnovaView.tsx` e `ScriptsPipelineView.tsx`), eliminando qualquer constante numérica hardcoded ou atributo inline `style`.
+- **Validação realizada:** `python3 -m unittest discover -s scripts -v` (**13/13 OK**); `npx --yes tsx --test src/utils/energyModel.test.ts` (**14/15 OK** — apenas Subteste 8 do Modelo C reservado ao Ciclo 3); `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) aprovados sem erros; validação visual e interativa em Chromium (`playwright-cli` 1440×900) cobrindo troca de ano (`2035` → `2028`), alternância das 5 escalas (`Dia | Semana | Mês | Trimestre | Ano`), todas as 6 abas principais com `0` estilos inline (`[style]`) e `0` erros/avisos de console.
+
+#### Passo C2-5 — Atualização dos Testes de Contrato e Validação Ponta a Ponta
+- [x] **Status:** Concluído e verificado em 2026-11-14
+- **Objetivo:** Garantir que `unittest` e `node:test` validem o contrato anual de `8.760 h` (`2025–2035`), as janelas multi-escala e a ausência de dados simulados ou hardcodes.
+- **Arquivos modificados:**
+  - `src/utils/energyModel.test.ts`
+  - `scripts/test_sync_frontend_ssot.py`
+  - `src/App.tsx` e `src/components/ObjectiveAndSimulatorView.tsx` (ajuste responsivo mobile `390×844`: `min-w-0`, `overflow-x-clip`, quebra de linha em botões/fórmula para zerar overflow horizontal)
+  - `ARQUITETURA_E_PLANO_EXECUCAO.md`
+- **Ações realizadas:**
+  1. Refatorado `src/utils/energyModel.test.ts` (`16` subtestes) removendo literais congelados da rodada antiga (passando a checar convergência dinâmica frente às âncoras vivas e `config`/`uiCatalog` do `PIPELINE_SSOT`) e adicionando testes de contrato para: (a) geração em tempo real de exatamente `8.760 h` válidas para **todos os anos `2025..2035`** com conservação física e limites da usina Chesf, (b) fatiamento multi-escala (`Dia`, `Semana`, `Mês`, `Trimestre`, `Ano`) preservando os valores horários exatos da série anual e envelopes `buildHourlyPlotBuckets`, (c) `resolveMonteCarloSummary` cobrindo `unavailable` honesto (`null`), `grid_exact` e `grid_interpolated` (IDW normalizado), e (d) *guardrails* anti-hardcode (`style={{` ausente, ausência de `databasesCatalog.ts`, `simulateHourlyWeek` e `DEFAULT_ENERGY_MODEL_CONFIG`).
+  2. Expandida a suíte `scripts/test_sync_frontend_ssot.py` (`15` testes) cobrindo o contrato completo de `export_frontend_config_dict()` (`2025..2035`, `8.760 h`, `build_ons_urls`), `uiCatalog`, bloqueio de escrita SSOT em inconsistência e *guardrails* anti-hardcode entre `scripts/*.py` e `src/`.
+  3. Executada validação ponta a ponta em navegador real (Chromium via `playwright-cli`) no desktop (`1440×900`) e mobile (`390×844`), corrigindo overflow horizontal de botões/tabelas no viewport mobile (`scrollW === 390`, `docOverflow === false`).
+- **Validação realizada:** `python3 -m unittest discover -s scripts -v` (**15/15 OK**); `npx --yes tsx --test src/utils/energyModel.test.ts` (**15/16 aprovados** — apenas o Subteste 9 referente à convergência ROC-AUC do Modelo C Estágio C1 segue isolado para o **Ciclo 3** em ambiente científico Python); `tsc --noEmit` (`lint_applet`) e `vite build` (`compile_applet`) aprovados sem erros; Chromium desktop/mobile com troca de ano (`2025–2035`), alternância entre `Dia`, `Semana`, `Mês`, `Trimestre` e `Ano`, **0 atributos `[style]`** e **0 erros/avisos de console**.
+
 

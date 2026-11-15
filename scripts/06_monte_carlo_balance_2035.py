@@ -21,6 +21,9 @@ Objetivo (Seções 7, 8 e 10 do Plano Orientador):
   5. risco_subestacoes_rede_basica_2035.csv (Concentração espacial P50/P95 nas subestações da Rede Básica)
 """
 
+import datetime as dt
+import hashlib
+import json
 import os
 import sys
 import multiprocessing as mp
@@ -34,23 +37,57 @@ from config import (
     PROCESSED_DATA_DIR,
     SCENARIOS_DATA_DIR,
     REPORTS_DIR,
+    HOURLY_BASELINE_JSON_PATH,
+    HOURLY_BASELINE_CSV_FILENAME,
+    SIMULATOR_GRID_CSV_FILENAME,
+    BASELINE_YEAR,
+    PROJECTION_START_YEAR,
+    TARGET_END_YEAR,
+    MODERN_BLOCK_START_YEAR,
+    BLOCK_SIZE_HOURS,
+    HOURS_PER_YEAR,
+    HOURS_PER_DAY,
+    ANNUAL_LOAD_GROWTH_RATE,
+    ANNUAL_SOLAR_GROWTH_RATE,
+    EXPORT_SOLAR_CURTAILMENT_COEF,
+    CHESF_DISPATCH_PARAMS,
+    MONTE_CARLO_PARAMS,
+    H2V_FLEX_PARAMS,
+    SEASONAL_REGIME_MONTHS,
+    TX_SENSITIVITY_SPECS,
+    BASE_WIND_ONSHORE_2026_MW,
+    WIND_EXPANSION_ONSHORE_MW,
     INTERCHANGE_IMPORT_LIMIT_MW,
     INTERCHANGE_EXPORT_LIMIT_MW,
     BASE_HYDRO_THERMAL_MW,
+    DEFAULT_PUE,
+    DEFAULT_UTILIZATION,
+    REFERENCE_SCENARIO_KEYS,
 )
 
 
-def _prepare_seasonal_blocks(base_df: pd.DataFrame) -> Dict[str, np.ndarray]:
+def _prepare_seasonal_blocks(
+    base_df: pd.DataFrame,
+    seasonal_regime: str = "annual_blend",
+) -> Dict[str, np.ndarray]:
     """
-    Extrai os vetores históricos reais (2022-2025, refletindo a estrutura moderna da matriz solar/eólica NE)
-    para reamostragem em blocos semanais (168h) preservando autocorrelação horária e sinóptica.
+    Extrai os vetores históricos reais (MODERN_BLOCK_START_YEAR..BASELINE_YEAR, refletindo a matriz solar/eólica atual)
+    para reamostragem em blocos semanais preservando autocorrelação horária e sinóptica.
+    Quando seasonal_regime != 'annual_blend', filtra os meses reais definidos em SEASONAL_REGIME_MONTHS.
     """
     df_rec = base_df.copy()
     ts = pd.to_datetime(df_rec["ts"])
     df_rec["year"] = ts.dt.year
-    modern = df_rec[df_rec["year"] >= 2022].reset_index(drop=True)
-    if len(modern) < 8760:
+    df_rec["month"] = ts.dt.month
+    modern = df_rec[df_rec["year"] >= MODERN_BLOCK_START_YEAR].reset_index(drop=True)
+    if len(modern) < HOURS_PER_YEAR:
         modern = df_rec.reset_index(drop=True)
+
+    target_months = SEASONAL_REGIME_MONTHS.get(seasonal_regime)
+    if target_months and len(target_months) < 12:
+        filtered = modern[modern["month"].isin(target_months)].reset_index(drop=True)
+        if len(filtered) >= BLOCK_SIZE_HOURS:
+            modern = filtered
 
     if "hour" in modern.columns:
         hour_arr = modern["hour"].to_numpy(dtype=np.int32)
@@ -71,14 +108,15 @@ def _compute_chesf_hydro_thermal_dispatch(
     solar_gen_mw: np.ndarray,
 ) -> np.ndarray:
     """
-    Modela a resposta operativa real das hidrelétricas da Chesf (Rio São Francisco ~10,5 GW instalados)
-    e térmicas/biomassa no Nordeste:
-    - Piso operativo de vazão mínima / inflexibilidade: ~2.600 MW
-    - Em horas de déficit líquido renovável (noite/calmaria), modula até o teto disponível de ponta (~9.850 MW).
+    Modela a resposta operativa real das hidrelétricas da Chesf (Rio São Francisco) e térmicas/biomassa no NE
+    a partir dos parâmetros centralizados em CHESF_DISPATCH_PARAMS.
     """
+    floor_mw = float(CHESF_DISPATCH_PARAMS["floorMW"])
+    slope = float(CHESF_DISPATCH_PARAMS["netNeedSlope"])
+    ceiling_mw = float(CHESF_DISPATCH_PARAMS["ceilingMW"])
     net_thermal_hydro_need = np.maximum(0.0, base_load_mw - (wind_gen_mw + solar_gen_mw))
-    modulated = 2600.0 + 0.56 * net_thermal_hydro_need
-    return np.clip(modulated, 2600.0, 9850.0)
+    modulated = floor_mw + slope * net_thermal_hydro_need
+    return np.clip(modulated, floor_mw, ceiling_mw)
 
 
 def simulate_block_bootstrap(
@@ -95,9 +133,11 @@ def simulate_block_bootstrap(
     export_limit_mw: float = INTERCHANGE_EXPORT_LIMIT_MW,
     h2v_nominal_mw: float = 0.0,
     h2v_flexible: bool = False,
+    cenario_eolica_id: str = "",
+    seasonal_regime: str = "annual_blend",
 ) -> Dict[str, Any]:
     """
-    Núcleo estocástico Block-Bootstrap (blocos semanais de 168h escalados para 8.760h/ano)
+    Núcleo estocástico Block-Bootstrap (blocos semanais escalados para base anual de HOURS_PER_YEAR)
     compartilhado entre os Passos 4 (Script 06) e 5 (Script 07: Transmissão e H2V).
     """
     rng = np.random.default_rng(seed)
@@ -106,14 +146,36 @@ def simulate_block_bootstrap(
     solar_arr = arrays["solar"]
     hour_arr = arrays.get("hour")
 
-    block_size = 168
+    block_size = int(BLOCK_SIZE_HOURS)
     n_blocks = max(1, len(cf_arr) // block_size)
 
-    years_from_2025 = max(0, target_year - 2025)
-    structural_load_growth = (1.031 ** years_from_2025)
-    solar_growth = 1.0 + 0.045 * years_from_2025
+    years_from_baseline = max(0, target_year - BASELINE_YEAR)
+    structural_load_growth = (1.0 + ANNUAL_LOAD_GROWTH_RATE) ** years_from_baseline
+    solar_growth = 1.0 + ANNUAL_SOLAR_GROWTH_RATE * years_from_baseline
     wind_capacity_mw = wind_onshore_mw + wind_offshore_mw
     offshore_share = wind_offshore_mw / max(1.0, wind_capacity_mw)
+
+    load_noise_std = float(MONTE_CARLO_PARAMS["loadNoiseStd"])
+    wind_comp_min = float(MONTE_CARLO_PARAMS["windCompletionMin"])
+    wind_comp_max = float(MONTE_CARLO_PARAMS["windCompletionMax"])
+    wind_reg_min = float(MONTE_CARLO_PARAMS["windRegimeMin"])
+    wind_reg_max = float(MONTE_CARLO_PARAMS["windRegimeMax"])
+    offshore_cf_gain = float(MONTE_CARLO_PARAMS["offshoreCfGain"])
+    cf_ceiling = float(MONTE_CARLO_PARAMS["cfCeiling"])
+    dc_jit_min = float(MONTE_CARLO_PARAMS["dcLoadJitterMin"])
+    dc_jit_max = float(MONTE_CARLO_PARAMS["dcLoadJitterMax"])
+
+    inflex_factor = float(H2V_FLEX_PARAMS["inflexibleLoadFactor"])
+    h2v_high_cf = float(H2V_FLEX_PARAMS["flexHighCfThreshold"])
+    h2v_sol_hmin = int(H2V_FLEX_PARAMS["flexSolarHourMin"])
+    h2v_sol_hmax = int(H2V_FLEX_PARAMS["flexSolarHourMax"])
+    h2v_sol_cf = float(H2V_FLEX_PARAMS["flexSolarCfThreshold"])
+    h2v_low_cf = float(H2V_FLEX_PARAMS["flexLowCfThreshold"])
+    h2v_pk_hmin = int(H2V_FLEX_PARAMS["flexPeakHourMin"])
+    h2v_pk_hmax = int(H2V_FLEX_PARAMS["flexPeakHourMax"])
+    h2v_high_f = float(H2V_FLEX_PARAMS["flexHighFactor"])
+    h2v_mid_f = float(H2V_FLEX_PARAMS["flexMidFactor"])
+    h2v_low_f = float(H2V_FLEX_PARAMS["flexLowFactor"])
 
     peak_imports = np.empty(n_iterations, dtype=float)
     peak_imports_no_dc = np.empty(n_iterations, dtype=float)
@@ -124,7 +186,7 @@ def simulate_block_bootstrap(
     h2v_means_mw = np.empty(n_iterations, dtype=float)
 
     for i in range(n_iterations):
-        # 1. Sorteio de bloco semanal contíguo (168h) preservando autocorrelação de vento, sol e carga
+        # 1. Sorteio de bloco semanal contíguo preservando autocorrelação de vento, sol e carga
         b_idx = int(rng.integers(0, n_blocks))
         s = b_idx * block_size
         e = s + block_size
@@ -134,20 +196,20 @@ def simulate_block_bootstrap(
         solar_block = solar_arr[s:e] * solar_growth
 
         # 2. Incerteza da demanda base (resíduo Modelo A + anomalia de temperatura)
-        sim_base_load = load_block * rng.normal(1.0, 0.032)
+        sim_base_load = load_block * rng.normal(1.0, load_noise_std)
 
         # 3. Incerteza de execução de obras SIGA/IBAMA e regime de vento interanual
-        sim_wind_completion = rng.uniform(0.86, 1.02)
-        sim_wind_regime = rng.uniform(0.76, 1.24)
+        sim_wind_completion = rng.uniform(wind_comp_min, wind_comp_max)
+        sim_wind_regime = rng.uniform(wind_reg_min, wind_reg_max)
         effective_cf = np.clip(
-            cf_block * sim_wind_regime + offshore_share * 0.09 * (1.0 - cf_block),
+            cf_block * sim_wind_regime + offshore_share * offshore_cf_gain * (1.0 - cf_block),
             0.0,
-            0.98,
+            cf_ceiling,
         )
         sim_wind_gen = effective_cf * (wind_capacity_mw * sim_wind_completion)
 
         # 4. Incerteza de utilização e PUE térmico dos Data Centers
-        sim_dc_load = dc_load_mw * rng.uniform(0.90, 1.08) if dc_load_mw > 0 else 0.0
+        sim_dc_load = dc_load_mw * rng.uniform(dc_jit_min, dc_jit_max) if dc_load_mw > 0 else 0.0
 
         # 4b. Carga eletrointensiva adicional opcional de Hidrogênio Verde (H2V)
         if h2v_nominal_mw > 0.0:
@@ -155,15 +217,20 @@ def simulate_block_bootstrap(
                 if hour_arr is not None:
                     hr_block = hour_arr[s:e]
                 else:
-                    hr_block = np.arange(block_size, dtype=np.int32) % 24
+                    hr_block = np.arange(block_size, dtype=np.int32) % HOURS_PER_DAY
                 flex_factor = np.where(
-                    (effective_cf >= 0.42) | ((hr_block >= 9) & (hr_block <= 15) & (effective_cf >= 0.30)),
-                    1.00,
-                    np.where((effective_cf < 0.27) | ((hr_block >= 18) & (hr_block <= 22)), 0.12, 0.55),
+                    (effective_cf >= h2v_high_cf)
+                    | ((hr_block >= h2v_sol_hmin) & (hr_block <= h2v_sol_hmax) & (effective_cf >= h2v_sol_cf)),
+                    h2v_high_f,
+                    np.where(
+                        (effective_cf < h2v_low_cf) | ((hr_block >= h2v_pk_hmin) & (hr_block <= h2v_pk_hmax)),
+                        h2v_low_f,
+                        h2v_mid_f,
+                    ),
                 )
                 sim_h2v_block = h2v_nominal_mw * flex_factor
             else:
-                sim_h2v_block = np.full(block_size, h2v_nominal_mw * 0.92, dtype=float)
+                sim_h2v_block = np.full(block_size, h2v_nominal_mw * inflex_factor, dtype=float)
             h2v_means_mw[i] = float(np.mean(sim_h2v_block))
         else:
             sim_h2v_block = 0.0
@@ -183,11 +250,11 @@ def simulate_block_bootstrap(
         peak_imports[i] = float(np.max(import_with_dc))
         min_margins_mw[i] = float(np.min(margin_with_dc))
 
-        scale_to_year = 8760.0 / block_size
+        scale_to_year = float(HOURS_PER_YEAR) / float(block_size)
         exceed_hours_annual[i] = float(np.sum(import_with_dc > import_limit_mw) * scale_to_year)
 
         # 6. Curtailment Horário (Modelo C: limite de exportação SIN + restrição elétrica solar diurna)
-        export_threshold = export_limit_mw - 0.18 * solar_block
+        export_threshold = export_limit_mw - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block
         curt_no_dc_mw = np.maximum(0.0, margin_no_dc - export_threshold)
         curt_dc_mw = np.maximum(0.0, margin_with_dc - export_threshold)
 
@@ -205,14 +272,14 @@ def simulate_block_bootstrap(
     avoided_gwh = float(max(0.0, (avg_curt_no_dc - avg_curt_dc) * 1000.0))
     avoided_pct = float((avoided_gwh / max(1.0, avg_curt_no_dc * 1000.0)) * 100.0)
 
-    # Expansão eólica compensatória necessária (Seção 8 do PDF):
-    # Quantos GW eólicos adicionais são necessários para neutralizar a violação do limite no P95
-    # considerando o Fator de Capacidade firme P10 em horas críticas de baixa geração (CF_firme ~ 0.21)
-    cf_firme_critico = 0.21 + 0.06 * offshore_share
+    # Expansão eólica compensatória necessária (Seção 8 do PDF)
+    cf_firme_critico = float(MONTE_CARLO_PARAMS["firmWindCfBase"]) + (
+        float(MONTE_CARLO_PARAMS["firmWindCfOffshoreBonus"]) * offshore_share
+    )
     excess_import_p95 = max(0.0, p95_import - import_limit_mw)
     req_extra_wind_gw = (excess_import_p95 / cf_firme_critico) / 1000.0
 
-    return {
+    result: Dict[str, Any] = {
         "cenario_nome": cenario_nome,
         "cenario_dc": cenario_dc_id,
         "target_year": target_year,
@@ -233,14 +300,19 @@ def simulate_block_bootstrap(
         "reducao_curtailment_pct": round(avoided_pct, 1),
         "expansao_eolica_compensatoria_gw": round(req_extra_wind_gw, 2),
     }
+    if cenario_eolica_id:
+        result["cenario_eolica"] = cenario_eolica_id
+    if seasonal_regime:
+        result["regime_sazonal"] = seasonal_regime
+    return result
 
 
 def _simulate_scenario_worker(
-    args: Tuple[str, str, int, float, float, float, int, int, Dict[str, np.ndarray]]
+    args: Tuple[str, str, int, float, float, float, int, int, Dict[str, np.ndarray], str]
 ) -> Dict[str, Any]:
     """
-    Worker executado em multiprocessing.Pool para simular N blocos semanais estocásticos (168h)
-    escalados para base anual (8.760h).
+    Worker executado em multiprocessing.Pool para simular N blocos semanais estocásticos
+    escalados para base anual (HOURS_PER_YEAR).
     """
     (
         cenario_nome,
@@ -252,6 +324,7 @@ def _simulate_scenario_worker(
         n_iterations,
         seed,
         arrays,
+        cenario_eolica_id,
     ) = args
     result = simulate_block_bootstrap(
         cenario_nome=cenario_nome,
@@ -263,6 +336,7 @@ def _simulate_scenario_worker(
         n_iterations=n_iterations,
         seed=seed,
         arrays=arrays,
+        cenario_eolica_id=cenario_eolica_id,
     )
     result.pop("h2v_avg_mw", None)
     return result
@@ -286,15 +360,16 @@ def compute_project_ramp_for_year(
 def run_bottom_up_project_monte_carlo(
     base_df: pd.DataFrame,
     pipeline_df: pd.DataFrame,
-    target_year: int = 2035,
-    wind_capacity_mw: float = 36400.0,
-    n_iterations: int = 800,
-    block_size_hours: int = 168,
-    seed: int = 42,
+    target_year: int = TARGET_END_YEAR,
+    wind_capacity_mw: float = BASE_WIND_ONSHORE_2026_MW + WIND_EXPANSION_ONSHORE_MW["intermediate"],
+    n_iterations: int = int(MONTE_CARLO_PARAMS["iterationsBottomUp"]),
+    block_size_hours: int = BLOCK_SIZE_HOURS,
+    seed: int = int(MONTE_CARLO_PARAMS["seed"]),
+    wind_offshore_mw: float = 0.0,
 ) -> Tuple[Dict[str, Any], pd.DataFrame, pd.DataFrame]:
     """
-    Executa a amostragem estocástica bottom-up individual dos 14 projetos nominais:
-    Bernoulli(p) de concretização + Uniforme(0, 1.5*atraso) + agregação por Subestação da Rede Básica.
+    Executa a amostragem estocástica bottom-up individual dos projetos nominais:
+    Bernoulli(p) de concretização + Uniforme(0, delay_mult*atraso) + agregação por Subestação da Rede Básica.
     """
     rng = np.random.default_rng(seed)
     arrays = _prepare_seasonal_blocks(base_df)
@@ -303,9 +378,20 @@ def run_bottom_up_project_monte_carlo(
     solar_array = arrays["solar"]
     total_hours = len(cf_array)
     n_blocks = max(1, total_hours // block_size_hours)
+    scale_to_year = float(HOURS_PER_YEAR) / float(block_size_hours)
 
-    years_from_2025 = max(0, target_year - 2025)
-    structural_growth = (1.031 ** years_from_2025)
+    years_from_baseline = max(0, target_year - BASELINE_YEAR)
+    structural_growth = (1.0 + ANNUAL_LOAD_GROWTH_RATE) ** years_from_baseline
+    solar_growth = 1.0 + ANNUAL_SOLAR_GROWTH_RATE * years_from_baseline
+
+    delay_mult = float(MONTE_CARLO_PARAMS["projectDelayMultiplier"])
+    util_min = float(MONTE_CARLO_PARAMS["projectUtilMin"])
+    util_max = float(MONTE_CARLO_PARAMS["projectUtilMax"])
+    load_noise_std = float(MONTE_CARLO_PARAMS["loadNoiseStd"])
+    wind_comp_min = float(MONTE_CARLO_PARAMS["windCompletionMin"])
+    wind_comp_max = float(MONTE_CARLO_PARAMS["windCompletionMax"])
+    wind_reg_min = float(MONTE_CARLO_PARAMS["windRegimeMin"])
+    wind_reg_max = float(MONTE_CARLO_PARAMS["windRegimeMax"])
 
     total_dc_loads: List[float] = []
     peak_imports: List[float] = []
@@ -331,7 +417,7 @@ def run_bottom_up_project_monte_carlo(
             if rng.random() > prob_ok:
                 continue
 
-            atraso_max = float(proj["atraso_esperado_anos"]) * 1.5
+            atraso_max = float(proj["atraso_esperado_anos"]) * delay_mult
             stochastic_delay = rng.uniform(0.0, max(0.1, atraso_max))
             ramp = compute_project_ramp_for_year(
                 ano_alvo=target_year,
@@ -347,7 +433,7 @@ def run_bottom_up_project_monte_carlo(
             else:
                 p_rede = float(proj["potencia_it_mw"]) * float(proj["pue_estimado"])
 
-            sim_util = rng.uniform(0.72, 0.94)
+            sim_util = rng.uniform(util_min, util_max)
             p_demanda = p_rede * sim_util * ramp
 
             sub_key = (
@@ -370,11 +456,11 @@ def run_bottom_up_project_monte_carlo(
 
         cf_block = cf_array[start_h:end_h]
         load_block = base_load_array[start_h:end_h] * structural_growth
-        solar_block = solar_array[start_h:end_h] * (1.0 + 0.045 * years_from_2025)
+        solar_block = solar_array[start_h:end_h] * solar_growth
 
-        sim_base_load = load_block * rng.normal(1.0, 0.032)
-        sim_wind_completion = rng.uniform(0.86, 1.02)
-        sim_wind_regime = rng.uniform(0.76, 1.24)
+        sim_base_load = load_block * rng.normal(1.0, load_noise_std)
+        sim_wind_completion = rng.uniform(wind_comp_min, wind_comp_max)
+        sim_wind_regime = rng.uniform(wind_reg_min, wind_reg_max)
         sim_wind_gen = np.clip(cf_block * sim_wind_regime, 0.0, 1.0) * (wind_capacity_mw * sim_wind_completion)
 
         hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(sim_base_load, sim_wind_gen, solar_block)
@@ -388,9 +474,9 @@ def run_bottom_up_project_monte_carlo(
         if max_import > INTERCHANGE_IMPORT_LIMIT_MW:
             critical_import_count += 1
 
-        export_threshold = INTERCHANGE_EXPORT_LIMIT_MW - 0.18 * solar_block
+        export_threshold = INTERCHANGE_EXPORT_LIMIT_MW - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block
         curt_dc = np.sum(np.maximum(0.0, margin_with_dc - export_threshold))
-        curtailment_dc_mwh.append(curt_dc * 52.0)
+        curtailment_dc_mwh.append(curt_dc * scale_to_year)
 
     p50_dc = float(np.percentile(total_dc_loads, 50))
     p90_dc = float(np.percentile(total_dc_loads, 90))
@@ -399,8 +485,12 @@ def run_bottom_up_project_monte_carlo(
     p95_import = float(np.percentile(peak_imports, 95))
     prob_critical = float((critical_import_count / n_iterations) * 100.0)
 
+    offshore_share = wind_offshore_mw / max(1.0, wind_capacity_mw)
+    cf_firme_critico = float(MONTE_CARLO_PARAMS["firmWindCfBase"]) + (
+        float(MONTE_CARLO_PARAMS["firmWindCfOffshoreBonus"]) * offshore_share
+    )
     excess_import = max(0.0, p95_import - INTERCHANGE_IMPORT_LIMIT_MW)
-    req_extra_wind_mw = excess_import / 0.21
+    req_extra_wind_mw = excess_import / cf_firme_critico
 
     bottom_up_summary = {
         "target_year": target_year,
@@ -443,9 +533,440 @@ def run_bottom_up_project_monte_carlo(
     return bottom_up_summary, df_summary, df_substations_risk
 
 
+def build_and_export_hourly_baseline_8760(
+    base_df: pd.DataFrame,
+    csv_out_path: Path | None = None,
+    json_out_path: Path | None = None,
+) -> Dict[str, Any]:
+    """
+    Constrói a série horária anual real completa de 8.760 horas (00h de 01/Jan a 23h de 31/Dez)
+    a partir da base histórica observada do ONS em ne_hourly_master.csv (2022–2025):
+      - annual_blend: ano empírico baseline (BASELINE_YEAR = 2025) real completo
+      - dry_windy: para cada semana do calendário (0..52), semana observada (2022–2025) de maior CF eólico médio
+      - wet_calm: para cada semana do calendário (0..52), semana observada (2022–2025) de menor CF eólico médio
+    Exporta reports/serie_base_horaria_8760h_ons.csv e public/data/hourly-baseline-8760.json (formato colunar compacto).
+    """
+    df = base_df.copy()
+    ts = pd.to_datetime(df["ts"])
+    df["ts"] = ts
+    df["year"] = ts.dt.year
+    df["month"] = ts.dt.month
+    df["day"] = ts.dt.day
+    df["hour"] = df["hour"].astype(int) if "hour" in df.columns else ts.dt.hour.astype(int)
+
+    # Normaliza para calendário padrão de 365 dias (8.760 h), removendo 29/Fev em anos bissextos
+    df = df[~((df["month"] == 2) & (df["day"] == 29))].copy()
+    modern = df[df["year"] >= MODERN_BLOCK_START_YEAR].copy()
+    if modern["year"].nunique() == 0:
+        modern = df.copy()
+
+    value_cols = ["l_base_mw", "cf_eolica", "g_solar_mw", "g_hidro_mw", "g_termica_mw", "curtailment_mw"]
+    for col in value_cols:
+        if col not in modern.columns:
+            modern[col] = 0.0
+        modern[col] = pd.to_numeric(modern[col], errors="coerce").fillna(0.0)
+
+    # Grade canônica de 8.760 timestamps do ano-base não-bissexto (BASELINE_YEAR)
+    cal_ts = pd.date_range(f"{BASELINE_YEAR}-01-01 00:00:00", periods=HOURS_PER_YEAR, freq="h")
+    cal_df = pd.DataFrame({
+        "hour_index": np.arange(HOURS_PER_YEAR, dtype=int),
+        "ts": cal_ts.strftime("%Y-%m-%d %H:%M:%S"),
+        "month": cal_ts.month.astype(int),
+        "day": cal_ts.day.astype(int),
+        "hour": cal_ts.hour.astype(int),
+        "week_slot": np.arange(HOURS_PER_YEAR, dtype=int) // BLOCK_SIZE_HOURS,
+    })
+
+    # Índice auxiliar por (year, month, day, hour) e médias reais por (month, day, hour) caso falte hora isolada
+    slot_lookup: Dict[Tuple[int, int, int, int], Dict[str, float]] = {}
+    for _, row in modern.iterrows():
+        key = (int(row["year"]), int(row["month"]), int(row["day"]), int(row["hour"]))
+        slot_lookup[key] = {c: float(row[c]) for c in value_cols}
+
+    modern_slot_means = (
+        modern.groupby(["month", "day", "hour"], as_index=False)[value_cols]
+        .mean()
+        .set_index(["month", "day", "hour"])
+    )
+
+    available_years = sorted(int(y) for y in modern["year"].unique())
+    modern_with_cal = modern.merge(
+        cal_df[["month", "day", "hour", "week_slot"]],
+        on=["month", "day", "hour"],
+        how="inner",
+    )
+    week_year_cf = modern_with_cal.groupby(["week_slot", "year"])["cf_eolica"].mean()
+
+    regime_year_by_week: Dict[str, Dict[int, int]] = {"annual_blend": {}, "dry_windy": {}, "wet_calm": {}}
+    for w_slot in range(int(cal_df["week_slot"].max()) + 1):
+        regime_year_by_week["annual_blend"][w_slot] = (
+            BASELINE_YEAR if BASELINE_YEAR in available_years else available_years[-1]
+        )
+        if w_slot in week_year_cf.index.get_level_values(0):
+            sub = week_year_cf.loc[w_slot]
+            regime_year_by_week["dry_windy"][w_slot] = int(sub.idxmax())
+            regime_year_by_week["wet_calm"][w_slot] = int(sub.idxmin())
+        else:
+            regime_year_by_week["dry_windy"][w_slot] = regime_year_by_week["annual_blend"][w_slot]
+            regime_year_by_week["wet_calm"][w_slot] = regime_year_by_week["annual_blend"][w_slot]
+
+    regimes_columnar: Dict[str, Dict[str, List[float]]] = {}
+    csv_regime_frames: Dict[str, pd.DataFrame] = {}
+
+    for regime_id in ("annual_blend", "dry_windy", "wet_calm"):
+        rows_dict: Dict[str, List[float]] = {c: [] for c in value_cols}
+        for _, cal_row in cal_df.iterrows():
+            m = int(cal_row["month"])
+            d = int(cal_row["day"])
+            h = int(cal_row["hour"])
+            w_slot = int(cal_row["week_slot"])
+            pref_year = regime_year_by_week[regime_id][w_slot]
+            rec = slot_lookup.get((pref_year, m, d, h))
+            if rec is None:
+                for fallback_yr in reversed(available_years):
+                    rec = slot_lookup.get((fallback_yr, m, d, h))
+                    if rec is not None:
+                        break
+            if rec is None and (m, d, h) in modern_slot_means.index:
+                mean_row = modern_slot_means.loc[(m, d, h)]
+                rec = {c: float(mean_row[c]) for c in value_cols}
+            if rec is None:
+                rec = {c: 0.0 for c in value_cols}
+            for c in value_cols:
+                rows_dict[c].append(rec[c])
+
+        csv_regime_frames[regime_id] = pd.DataFrame(rows_dict)
+        regimes_columnar[regime_id] = {
+            "lBaseMW": [round(float(v), 1) for v in rows_dict["l_base_mw"]],
+            "cfWind": [round(float(v), 4) for v in rows_dict["cf_eolica"]],
+            "gSolarMW": [round(float(v), 1) for v in rows_dict["g_solar_mw"]],
+            "gHydroMW": [round(float(v), 1) for v in rows_dict["g_hidro_mw"]],
+            "gThermalMW": [round(float(v), 1) for v in rows_dict["g_termica_mw"]],
+            "curtailmentMW": [round(float(v), 1) for v in rows_dict["curtailment_mw"]],
+        }
+
+    csv_df = cal_df[["hour_index", "ts", "month", "day", "hour"]].copy()
+    for c in value_cols:
+        csv_df[c] = csv_regime_frames["annual_blend"][c].round(4 if c == "cf_eolica" else 1)
+    csv_df["l_base_dry_windy_mw"] = csv_regime_frames["dry_windy"]["l_base_mw"].round(1)
+    csv_df["cf_eolica_dry_windy"] = csv_regime_frames["dry_windy"]["cf_eolica"].round(4)
+    csv_df["g_solar_dry_windy_mw"] = csv_regime_frames["dry_windy"]["g_solar_mw"].round(1)
+    csv_df["l_base_wet_calm_mw"] = csv_regime_frames["wet_calm"]["l_base_mw"].round(1)
+    csv_df["cf_eolica_wet_calm"] = csv_regime_frames["wet_calm"]["cf_eolica"].round(4)
+    csv_df["g_solar_wet_calm_mw"] = csv_regime_frames["wet_calm"]["g_solar_mw"].round(1)
+
+    target_csv = csv_out_path or (REPORTS_DIR / HOURLY_BASELINE_CSV_FILENAME)
+    target_csv.parent.mkdir(parents=True, exist_ok=True)
+    csv_df.to_csv(target_csv, index=False, lineterminator="\n")
+
+    digest_input = {
+        "baselineYear": BASELINE_YEAR,
+        "month": cal_df["month"].tolist(),
+        "day": cal_df["day"].tolist(),
+        "hour": cal_df["hour"].tolist(),
+        "regimes": regimes_columnar,
+    }
+    digest = hashlib.sha256(
+        json.dumps(digest_input, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:16]
+
+    json_payload = {
+        "schemaVersion": "1.0.0",
+        "hoursCount": HOURS_PER_YEAR,
+        "baselineYear": BASELINE_YEAR,
+        "sourceWindow": f"{min(available_years)}–{max(available_years)} (ONS Real)",
+        "generatedAtUtc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "digest": digest,
+        "month": digest_input["month"],
+        "day": digest_input["day"],
+        "hour": digest_input["hour"],
+        "regimes": regimes_columnar,
+    }
+
+    target_json = json_out_path or HOURLY_BASELINE_JSON_PATH
+    target_json.parent.mkdir(parents=True, exist_ok=True)
+    with open(target_json, "w", encoding="utf-8", newline="\n") as jf:
+        jf.write(json.dumps(json_payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+    print(
+        f"[BASELINE 8760h] Série real exportada ({len(csv_df)} h): "
+        f"{target_csv.name} e {target_json.name} (digest={digest})"
+    )
+    return json_payload
+
+
+def _simulate_grid_worker(
+    args: Tuple[str, str, int, float, float, float, int, int, Dict[str, np.ndarray], str, str, float, float, float, float]
+) -> Dict[str, Any]:
+    (
+        cenario_nome,
+        dc_id,
+        target_year,
+        dc_load_mw,
+        wind_onshore_mw,
+        wind_offshore_mw,
+        n_iter,
+        seed,
+        arrays,
+        wind_id,
+        seasonal_regime,
+        pue_val,
+        util_val,
+        import_limit_mw,
+        export_limit_mw,
+    ) = args
+    res = simulate_block_bootstrap(
+        cenario_nome=cenario_nome,
+        cenario_dc_id=dc_id,
+        target_year=target_year,
+        dc_load_mw=dc_load_mw,
+        wind_onshore_mw=wind_onshore_mw,
+        wind_offshore_mw=wind_offshore_mw,
+        n_iterations=n_iter,
+        seed=seed,
+        arrays=arrays,
+        import_limit_mw=import_limit_mw,
+        export_limit_mw=export_limit_mw,
+        cenario_eolica_id=wind_id,
+        seasonal_regime=seasonal_regime,
+    )
+    return {
+        "year": int(target_year),
+        "dc_scenario": dc_id,
+        "wind_scenario": wind_id,
+        "seasonal_regime": seasonal_regime,
+        "pue": round(float(pue_val), 2),
+        "dc_utilization": round(float(util_val), 2),
+        "import_limit_mw": round(float(import_limit_mw), 1),
+        "export_limit_mw": round(float(export_limit_mw), 1),
+        "dc_load_mw": res["dc_load_mw"],
+        "wind_capacity_mw": res["wind_capacity_mw"],
+        "prob_exceder_intercambio_pct": res["prob_exceder_intercambio_pct"],
+        "lole_horas_criticas_ano": res["lole_horas_criticas_ano"],
+        "importacao_p50_mw": res["importacao_p50_mw"],
+        "importacao_p95_mw": res["importacao_p95_mw"],
+        "curtailment_sem_dc_twh_ano": res["curtailment_sem_dc_twh_ano"],
+        "curtailment_com_dc_twh_ano": res["curtailment_com_dc_twh_ano"],
+        "curtailment_evitado_gwh_ano": res["curtailment_evitado_gwh_ano"],
+        "expansao_eolica_compensatoria_gw": res["expansao_eolica_compensatoria_gw"],
+    }
+
+
+def export_simulator_monte_carlo_grid(
+    base_df: pd.DataFrame,
+    df_scen_matrix: pd.DataFrame,
+    res_12: List[Dict[str, Any]],
+    timeline_res: List[Dict[str, Any]],
+    csv_out_path: Path | None = None,
+) -> pd.DataFrame:
+    """
+    Gera a grade paramétrica pré-computada de Monte Carlo 2025–2035 (reports/grade_simulador_monte_carlo_2025_2035.csv)
+    usando exclusivamente simulate_block_bootstrap(...) e ancorando exatamente os pontos nominais oficiais.
+    """
+    max_workers = int(MONTE_CARLO_PARAMS["maxWorkers"])
+    n_workers = max(1, min(max_workers, os.cpu_count() or 2))
+    n_iter_grid = int(MONTE_CARLO_PARAMS["iterationsSimulatorGrid"])
+    mc_seed = int(MONTE_CARLO_PARAMS["seed"])
+
+    regime_arrays = {
+        reg: _prepare_seasonal_blocks(base_df, seasonal_regime=reg)
+        for reg in ("annual_blend", "dry_windy", "wet_calm")
+    }
+
+    dc_order = [
+        REFERENCE_SCENARIO_KEYS["dcControl"],
+        REFERENCE_SCENARIO_KEYS["dcConservative"],
+        REFERENCE_SCENARIO_KEYS["dcCentral"],
+        REFERENCE_SCENARIO_KEYS["dcHigh"],
+    ]
+    wind_order = [
+        REFERENCE_SCENARIO_KEYS["windBase"],
+        REFERENCE_SCENARIO_KEYS["windIntermediate"],
+        REFERENCE_SCENARIO_KEYS["windHigh"],
+    ]
+
+    scen_lookup: Dict[Tuple[int, str, str], Tuple[float, float, float]] = {}
+    for _, r in df_scen_matrix.iterrows():
+        scen_lookup[(int(r["ano"]), str(r["cenario_dc"]), str(r["cenario_eolica"]))] = (
+            float(r["carga_efetiva_dc_mw"]),
+            float(r["eolica_onshore_mw"]),
+            float(r["eolica_offshore_mw"]),
+        )
+    for dc_id in dc_order:
+        for w_id in wind_order:
+            scen_lookup.setdefault(
+                (BASELINE_YEAR, dc_id, w_id),
+                (0.0, float(BASE_WIND_ONSHORE_2026_MW), 0.0),
+            )
+
+    anchor_12 = {
+        (TARGET_END_YEAR, r["cenario_dc"], r.get("cenario_eolica", "")): r
+        for r in res_12
+    }
+    anchor_tl = {
+        (int(r["target_year"]), r["cenario_dc"], REFERENCE_SCENARIO_KEYS["windIntermediate"]): r
+        for r in timeline_res
+    }
+
+    grid_rows: List[Dict[str, Any]] = []
+    seen_keys: set[Tuple[int, str, str, str, float, float, float, float]] = set()
+    tasks: List[Tuple[Any, ...]] = []
+
+    def _enqueue(
+        yr: int,
+        dc_id: str,
+        w_id: str,
+        reg: str,
+        pue_v: float,
+        util_v: float,
+        imp_lim: float,
+        exp_lim: float,
+    ) -> None:
+        key = (
+            yr,
+            dc_id,
+            w_id,
+            reg,
+            round(pue_v, 2),
+            round(util_v, 2),
+            round(imp_lim, 1),
+            round(exp_lim, 1),
+        )
+        if key in seen_keys:
+            return
+        seen_keys.add(key)
+
+        is_nominal_params = (
+            reg == "annual_blend"
+            and abs(pue_v - DEFAULT_PUE) < 1e-6
+            and abs(util_v - DEFAULT_UTILIZATION) < 1e-6
+            and abs(imp_lim - INTERCHANGE_IMPORT_LIMIT_MW) < 1e-6
+            and abs(exp_lim - INTERCHANGE_EXPORT_LIMIT_MW) < 1e-6
+        )
+        if is_nominal_params:
+            anchored = anchor_12.get((yr, dc_id, w_id)) or anchor_tl.get((yr, dc_id, w_id))
+            if anchored is not None:
+                grid_rows.append({
+                    "year": yr,
+                    "dc_scenario": dc_id,
+                    "wind_scenario": w_id,
+                    "seasonal_regime": reg,
+                    "pue": round(pue_v, 2),
+                    "dc_utilization": round(util_v, 2),
+                    "import_limit_mw": round(imp_lim, 1),
+                    "export_limit_mw": round(exp_lim, 1),
+                    "dc_load_mw": anchored["dc_load_mw"],
+                    "wind_capacity_mw": anchored["wind_capacity_mw"],
+                    "prob_exceder_intercambio_pct": anchored["prob_exceder_intercambio_pct"],
+                    "lole_horas_criticas_ano": anchored["lole_horas_criticas_ano"],
+                    "importacao_p50_mw": anchored["importacao_p50_mw"],
+                    "importacao_p95_mw": anchored["importacao_p95_mw"],
+                    "curtailment_sem_dc_twh_ano": anchored["curtailment_sem_dc_twh_ano"],
+                    "curtailment_com_dc_twh_ano": anchored["curtailment_com_dc_twh_ano"],
+                    "curtailment_evitado_gwh_ano": anchored["curtailment_evitado_gwh_ano"],
+                    "expansao_eolica_compensatoria_gw": anchored["expansao_eolica_compensatoria_gw"],
+                })
+                return
+
+        base_dc_mw, w_on, w_off = scen_lookup[(yr, dc_id, w_id)]
+        scaled_dc_mw = (
+            base_dc_mw * (pue_v / DEFAULT_PUE) * (util_v / DEFAULT_UTILIZATION)
+            if base_dc_mw > 0.0
+            else 0.0
+        )
+        tasks.append((
+            f"Grid {yr} {dc_id}/{w_id} {reg}",
+            dc_id,
+            yr,
+            scaled_dc_mw,
+            w_on,
+            w_off,
+            n_iter_grid,
+            mc_seed,
+            regime_arrays[reg],
+            w_id,
+            reg,
+            pue_v,
+            util_v,
+            imp_lim,
+            exp_lim,
+        ))
+
+    # 1. Malha nominal completa 2025..2035 × 4 DC × 3 Eólica × 3 Regimes Sazonais
+    for yr in range(PROJECTION_START_YEAR, TARGET_END_YEAR + 1):
+        for dc_id in dc_order:
+            for w_id in wind_order:
+                for reg in ("annual_blend", "dry_windy", "wet_calm"):
+                    _enqueue(
+                        yr,
+                        dc_id,
+                        w_id,
+                        reg,
+                        DEFAULT_PUE,
+                        DEFAULT_UTILIZATION,
+                        INTERCHANGE_IMPORT_LIMIT_MW,
+                        INTERCHANGE_EXPORT_LIMIT_MW,
+                    )
+
+    # 2. Fatias de sensibilidade paramétrica em anos-âncora (Intercâmbio TX e PUE × Utilização)
+    sens_years = [int(y) for y in MONTE_CARLO_PARAMS["gridSensitivityYears"]]
+    pue_values = [float(x) for x in MONTE_CARLO_PARAMS["gridPueValues"]]
+    util_values = [float(x) for x in MONTE_CARLO_PARAMS["gridUtilizationValues"]]
+    dc_central = REFERENCE_SCENARIO_KEYS["dcCentral"]
+    wind_interm = REFERENCE_SCENARIO_KEYS["windIntermediate"]
+
+    for yr in sens_years:
+        for tx_spec in TX_SENSITIVITY_SPECS:
+            _enqueue(
+                yr,
+                dc_central,
+                wind_interm,
+                "annual_blend",
+                DEFAULT_PUE,
+                DEFAULT_UTILIZATION,
+                float(tx_spec["importLimitMW"]),
+                float(tx_spec["exportLimitMW"]),
+            )
+        for dc_id in (
+            REFERENCE_SCENARIO_KEYS["dcConservative"],
+            dc_central,
+            REFERENCE_SCENARIO_KEYS["dcHigh"],
+        ):
+            for pue_v in pue_values:
+                for util_v in util_values:
+                    _enqueue(
+                        yr,
+                        dc_id,
+                        wind_interm,
+                        "annual_blend",
+                        pue_v,
+                        util_v,
+                        INTERCHANGE_IMPORT_LIMIT_MW,
+                        INTERCHANGE_EXPORT_LIMIT_MW,
+                    )
+
+    print(
+        f"[GRADE SIMULADOR 2025-2035] Executando {len(tasks)} pontos paramétricos "
+        f"(+ {len(grid_rows)} âncoras oficiais) em {n_workers} processos..."
+    )
+    if tasks:
+        with mp.Pool(processes=n_workers) as pool:
+            grid_rows.extend(pool.map(_simulate_grid_worker, tasks))
+
+    df_grid = pd.DataFrame(grid_rows).sort_values(
+        ["year", "dc_scenario", "wind_scenario", "seasonal_regime", "pue", "dc_utilization", "import_limit_mw"]
+    ).reset_index(drop=True)
+
+    target_csv = csv_out_path or (REPORTS_DIR / SIMULATOR_GRID_CSV_FILENAME)
+    target_csv.parent.mkdir(parents=True, exist_ok=True)
+    df_grid.to_csv(target_csv, index=False, lineterminator="\n")
+    print(f"[GRADE SIMULADOR 2025-2035] Exportados {len(df_grid)} cenários em {target_csv.name}")
+    return df_grid
+
+
 def main():
     print("=" * 72)
-    print("Script 06 (Passo 4): Simulação Estocástica de Monte Carlo 2026-2035 (Multiprocessing)")
+    print("Script 06 (Passo 4): Simulação Estocástica de Monte Carlo 2025-2035 (Multiprocessing)")
     print("=" * 72)
 
     input_master = PROCESSED_DATA_DIR / "ne_hourly_master.csv"
@@ -454,8 +975,14 @@ def main():
         sys.exit(1)
 
     df_base = pd.read_csv(input_master)
+    build_and_export_hourly_baseline_8760(df_base)
     arrays = _prepare_seasonal_blocks(df_base)
-    n_workers = max(1, min(6, os.cpu_count() or 2))
+    max_workers = int(MONTE_CARLO_PARAMS["maxWorkers"])
+    n_workers = max(1, min(max_workers, os.cpu_count() or 2))
+    n_iter_main = int(MONTE_CARLO_PARAMS["iterationsMain"])
+    n_iter_timeline = int(MONTE_CARLO_PARAMS["iterationsTimeline"])
+    n_iter_bottom_up = int(MONTE_CARLO_PARAMS["iterationsBottomUp"])
+    mc_seed = int(MONTE_CARLO_PARAMS["seed"])
 
     scenario_matrix_path = SCENARIOS_DATA_DIR / "matriz_cenarios_dc_eolica_2026_2035.csv"
     if not scenario_matrix_path.exists():
@@ -463,29 +990,38 @@ def main():
         sys.exit(1)
 
     df_scen_matrix = pd.read_csv(scenario_matrix_path)
-    df_scen_2035 = df_scen_matrix[df_scen_matrix["ano"] == 2035].copy()
+    df_scen_2035 = df_scen_matrix[df_scen_matrix["ano"] == TARGET_END_YEAR].copy()
 
     def _format_dc_label(dc_id: str, dc_mw: float) -> str:
         mw_str = f"{round(dc_mw):,.0f}".replace(",", ".")
-        if dc_id == "none":
+        if dc_id == REFERENCE_SCENARIO_KEYS["dcControl"]:
             return "Sem Data Centers (Controle)"
-        if dc_id == "conservative":
+        if dc_id == REFERENCE_SCENARIO_KEYS["dcConservative"]:
             return f"DC Conservador ({mw_str} MW rede)"
-        if dc_id == "central":
+        if dc_id == REFERENCE_SCENARIO_KEYS["dcCentral"]:
             return f"DC Central Ponderado ({mw_str} MW rede)"
         return f"DC Stress Test / IA ({mw_str} MW rede)"
 
     def _format_wind_label(w_id: str, w_tot_mw: float) -> str:
         gw_str = f"{w_tot_mw / 1000.0:.1f}".replace(".", ",")
-        if w_id == "base":
+        if w_id == REFERENCE_SCENARIO_KEYS["windBase"]:
             return f"Eólica Base ({gw_str} GW Onshore)"
-        if w_id == "intermediate":
+        if w_id == REFERENCE_SCENARIO_KEYS["windIntermediate"]:
             return f"Eólica Intermediária SIGA ({gw_str} GW)"
         return f"Eólica Alta + Offshore IBAMA ({gw_str} GW)"
 
-    # 1. Matriz Completa dos 12 Cenários Cruzados em 2035 (4 DCs x 3 Eólicas lidos da Etapa 02)
-    dc_order = ["none", "conservative", "central", "high"]
-    wind_order = ["base", "intermediate", "high"]
+    # 1. Matriz Completa dos 12 Cenários Cruzados em TARGET_END_YEAR
+    dc_order = [
+        REFERENCE_SCENARIO_KEYS["dcControl"],
+        REFERENCE_SCENARIO_KEYS["dcConservative"],
+        REFERENCE_SCENARIO_KEYS["dcCentral"],
+        REFERENCE_SCENARIO_KEYS["dcHigh"],
+    ]
+    wind_order = [
+        REFERENCE_SCENARIO_KEYS["windBase"],
+        REFERENCE_SCENARIO_KEYS["windIntermediate"],
+        REFERENCE_SCENARIO_KEYS["windHigh"],
+    ]
     tasks_12 = []
     for dc_id in dc_order:
         for w_id in wind_order:
@@ -499,20 +1035,20 @@ def main():
             w_on = float(row["eolica_onshore_mw"])
             w_off = float(row["eolica_offshore_mw"])
             w_tot = float(row["eolica_total_mw"])
-            # Usar mesma semente base (42) para emparelhar os sorteios climáticos (Common Random Numbers)
             tasks_12.append((
                 f"{_format_dc_label(dc_id, dc_mw)} × {_format_wind_label(w_id, w_tot)}",
                 dc_id,
-                2035,
+                TARGET_END_YEAR,
                 dc_mw,
                 w_on,
                 w_off,
-                1000,
-                42,
+                n_iter_main,
+                mc_seed,
                 arrays,
+                w_id,
             ))
 
-    print(f"[MONTE CARLO 2035] Executando 12 cenários cruzados (12.000 simulações) em {n_workers} processos...")
+    print(f"[MONTE CARLO {TARGET_END_YEAR}] Executando 12 cenários cruzados ({12 * n_iter_main:,} simulações) em {n_workers} processos...")
     with mp.Pool(processes=n_workers) as pool:
         res_12 = pool.map(_simulate_scenario_worker, tasks_12)
 
@@ -520,7 +1056,7 @@ def main():
     report_12_path = REPORTS_DIR / "matriz_cenarios_monte_carlo_2035.csv"
     df_12.to_csv(report_12_path, index=False)
 
-    print("\nMatriz Completa de Risco e Curtailment em 2035 (12 Cenários):")
+    print(f"\nMatriz Completa de Risco e Curtailment em {TARGET_END_YEAR} (12 Cenários):")
     print(
         df_12[[
             "cenario_nome", "dc_load_mw", "wind_capacity_mw",
@@ -530,14 +1066,19 @@ def main():
         ]].to_string(index=False)
     )
 
-    # 2. Curva de Trade-Off de Expansão Eólica Compensatória em 2035 (Cenário Central DC da Etapa 02)
-    central_dc_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_dc"] == "central", "carga_efetiva_dc_mw"].iloc[0])
-    base_onshore_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_eolica"] == "base", "eolica_onshore_mw"].iloc[0])
-    high_onshore_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_eolica"] == "high", "eolica_onshore_mw"].iloc[0])
-    max_onshore_add_mw = max(0.0, high_onshore_2035_mw - base_onshore_2035_mw)
-    interm_wind_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_eolica"] == "intermediate", "eolica_total_mw"].iloc[0])
+    # 2. Curva de Trade-Off de Expansão Eólica Compensatória em TARGET_END_YEAR (Cenário Central DC da Etapa 02)
+    dc_central_key = REFERENCE_SCENARIO_KEYS["dcCentral"]
+    w_base_key = REFERENCE_SCENARIO_KEYS["windBase"]
+    w_interm_key = REFERENCE_SCENARIO_KEYS["windIntermediate"]
+    w_high_key = REFERENCE_SCENARIO_KEYS["windHigh"]
 
-    extra_gw_grid = [0.0, 2.0, 4.0, 6.8, 10.0, 14.8, 18.4]
+    central_dc_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_dc"] == dc_central_key, "carga_efetiva_dc_mw"].iloc[0])
+    base_onshore_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_eolica"] == w_base_key, "eolica_onshore_mw"].iloc[0])
+    high_onshore_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_eolica"] == w_high_key, "eolica_onshore_mw"].iloc[0])
+    max_onshore_add_mw = max(0.0, high_onshore_2035_mw - base_onshore_2035_mw)
+    interm_wind_2035_mw = float(df_scen_2035.loc[df_scen_2035["cenario_eolica"] == w_interm_key, "eolica_total_mw"].iloc[0])
+
+    extra_gw_grid = [float(x) for x in MONTE_CARLO_PARAMS["extraWindGwGrid"]]
     comp_tasks = []
     for extra_gw in extra_gw_grid:
         extra_mw = extra_gw * 1000.0
@@ -545,14 +1086,15 @@ def main():
         w_off = max(0.0, extra_mw - max_onshore_add_mw)
         comp_tasks.append((
             f"+{extra_gw:.1f} GW Eólicos Extras",
-            "central",
-            2035,
+            dc_central_key,
+            TARGET_END_YEAR,
             central_dc_2035_mw,
             w_on,
             w_off,
-            1000,
-            42,
+            n_iter_main,
+            mc_seed,
             arrays,
+            "",
         ))
 
     with mp.Pool(processes=n_workers) as pool:
@@ -561,23 +1103,38 @@ def main():
     df_comp["expansao_adicional_gw"] = extra_gw_grid
     df_comp.to_csv(REPORTS_DIR / "curva_expansao_eolica_compensatoria_2035.csv", index=False)
 
-    # 3. Evolução Temporal Anual do Risco 2026 a 2035 (Trajetória Rampa DC Central vs Eólica Intermediária da Etapa 02)
+    # 3. Evolução Temporal Anual do Risco (PROJECTION_START_YEAR..TARGET_END_YEAR)
     df_scen_timeline = df_scen_matrix[
-        (df_scen_matrix["cenario_dc"] == "central") & (df_scen_matrix["cenario_eolica"] == "intermediate")
+        (df_scen_matrix["cenario_dc"] == dc_central_key) & (df_scen_matrix["cenario_eolica"] == w_interm_key)
     ].sort_values("ano")
     timeline_tasks = []
+    existing_years = set(int(r["ano"]) for _, r in df_scen_timeline.iterrows())
+    if PROJECTION_START_YEAR not in existing_years:
+        timeline_tasks.append((
+            f"Trajetória Central {PROJECTION_START_YEAR}",
+            dc_central_key,
+            PROJECTION_START_YEAR,
+            0.0,
+            float(BASE_WIND_ONSHORE_2026_MW),
+            0.0,
+            n_iter_timeline,
+            mc_seed,
+            arrays,
+            w_interm_key,
+        ))
     for _, r in df_scen_timeline.iterrows():
         y = int(r["ano"])
         timeline_tasks.append((
             f"Trajetória Central {y}",
-            "central",
+            dc_central_key,
             y,
             float(r["carga_efetiva_dc_mw"]),
             float(r["eolica_onshore_mw"]),
             float(r["eolica_offshore_mw"]),
-            800,
-            42,
+            n_iter_timeline,
+            mc_seed,
             arrays,
+            w_interm_key,
         ))
 
     with mp.Pool(processes=n_workers) as pool:
@@ -585,24 +1142,32 @@ def main():
     df_timeline = pd.DataFrame(timeline_res)
     df_timeline.to_csv(REPORTS_DIR / "evolucao_anual_risco_2026_2035.csv", index=False)
 
-    # 4. Simulação Bottom-Up Projeto a Projeto e Risco por Subestação (14 Projetos Nominais)
+    # 4. Simulação Bottom-Up Projeto a Projeto e Risco por Subestação
     pipeline_file = RAW_DATA_DIR / "data_centers_pipeline_ne.csv"
     if pipeline_file.exists():
         df_pipeline = pd.read_csv(pipeline_file)
         _, bu_summary_df, bu_subs_df = run_bottom_up_project_monte_carlo(
             base_df=df_base,
             pipeline_df=df_pipeline,
-            target_year=2035,
+            target_year=TARGET_END_YEAR,
             wind_capacity_mw=interm_wind_2035_mw,
-            n_iterations=1000,
-            seed=42,
+            n_iterations=n_iter_bottom_up,
+            seed=mc_seed,
         )
         bu_summary_df.to_csv(REPORTS_DIR / "relatorio_monte_carlo_bottom_up_projetos_2035.csv", index=False)
         bu_subs_df.to_csv(REPORTS_DIR / "risco_subestacoes_rede_basica_2035.csv", index=False)
-        print("\nResumo Monte Carlo Bottom-Up (14 Projetos Nominais em 2035):")
+        print(f"\nResumo Monte Carlo Bottom-Up (Projetos Nominais em {TARGET_END_YEAR}):")
         print(bu_summary_df.to_string(index=False))
 
-    print(f"\n[SUCESSO] Passo 4 concluído! Todos os 5 relatórios de Monte Carlo exportados em: {REPORTS_DIR}")
+    # 5. Exportação da Grade Paramétrica 2025–2035 para o Simulador Frontend
+    export_simulator_monte_carlo_grid(
+        base_df=df_base,
+        df_scen_matrix=df_scen_matrix,
+        res_12=res_12,
+        timeline_res=timeline_res,
+    )
+
+    print(f"\n[SUCESSO] Passo 4 concluído! Todos os relatórios de Monte Carlo, série 8760h e grade 2025–2035 exportados em: {REPORTS_DIR}")
 
 
 if __name__ == "__main__":

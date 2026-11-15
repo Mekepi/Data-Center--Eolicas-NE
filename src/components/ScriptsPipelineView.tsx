@@ -46,9 +46,15 @@ export const ScriptsPipelineView: React.FC = () => {
               O código exibido abaixo é extraído literalmente dos arquivos executados em{' '}
               <span className="font-mono">/scripts/</span> via{' '}
               <span className="font-mono">sync_frontend_ssot.py</span> (sem templates estáticos divergentes), consolidando{' '}
-              <strong>{ssot.lineage.rawOnsFilesCount} bases oficiais ONS</strong> (
-              {ssot.lineage.rawDataTotalMb.toFixed(1)} MB) e <strong>{ssot.lineage.reportFilesCount} relatórios</strong>{' '}
-              em <span className="font-mono">/reports/</span>.
+              {ssot.lineage.localRawCachePresent ? (
+                <>
+                  <strong>{ssot.lineage.rawOnsFilesCount} bases oficiais ONS</strong> (
+                  {ssot.lineage.rawDataTotalMb.toFixed(1)} MB) e{' '}
+                </>
+              ) : (
+                <>cache bruto local limpo pós-processamento e </>
+              )}
+              <strong>{ssot.lineage.reportFilesCount} relatórios</strong> em <span className="font-mono">/reports/</span>.
             </p>
           </div>
         </div>

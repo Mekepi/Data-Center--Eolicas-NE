@@ -257,22 +257,25 @@
       "id": "script-06",
       "order": "06",
       "filename": "06_monte_carlo_balance_2035.py",
-      "title": "Simulação Estocástica de Monte Carlo 2026–2035 (12 Cenários + Subestações)",
-      "stageLabel": "Monte Carlo 2035 (Passo 4)",
-      "purpose": "Executar Block-Bootstrap Monte Carlo em multiprocessing para os 12 cenários (4 DC × 3 Eólica SIGA/IBAMA) com modulação hidrotérmica Chesf e amostragem bottom-up Bernoulli + atrasos nos 14 projetos.",
+      "title": "Simulação Estocástica de Monte Carlo 2025–2035 (12 Cenários, 8760h e Grade)",
+      "stageLabel": "Monte Carlo 2025–2035 (Passo 4)",
+      "purpose": "Executar Block-Bootstrap Monte Carlo em multiprocessing para os 12 cenários (4 DC × 3 Eólica SIGA/IBAMA) com modulação hidrotérmica Chesf, amostragem bottom-up Bernoulli + atrasos nos 14 projetos, exportação da série real 8.760h ONS e grade paramétrica 2025–2035.",
       "approvedLibraries": ["multiprocessing", "numpy", "pandas", "config"],
-      "multiprocessingStrategy": "multiprocessing.Pool distribuindo os 12 cenários, curva compensatória e evolução anual com Common Random Numbers.",
+      "multiprocessingStrategy": "multiprocessing.Pool distribuindo os 12 cenários, curva compensatória, evolução anual e grade paramétrica com Common Random Numbers.",
       "inputs": [
         "data/processed/ne_hourly_master.csv",
         "data/scenarios/matriz_cenarios_dc_eolica_2026_2035.csv",
         "data/raw/data_centers_pipeline_ne.csv"
       ],
       "outputs": [
+        "reports/serie_base_horaria_8760h_ons.csv",
+        "public/data/hourly-baseline-8760.json",
         "reports/matriz_cenarios_monte_carlo_2035.csv",
         "reports/curva_expansao_eolica_compensatoria_2035.csv",
         "reports/evolucao_anual_risco_2026_2035.csv",
         "reports/relatorio_monte_carlo_bottom_up_projetos_2035.csv",
-        "reports/risco_subestacoes_rede_basica_2035.csv"
+        "reports/risco_subestacoes_rede_basica_2035.csv",
+        "reports/grade_simulador_monte_carlo_2025_2035.csv"
       ],
       "keyDecisions": [
         {
@@ -325,5 +328,326 @@
         }
       ]
     }
-  ]
+  ],
+  "uiCatalog": {
+    "pdfAssetPath": "/assets/aistudio/Plano_Orientador_Projeto_Data_Centers_Eolica_NE_5d71e355.pdf",
+    "pdfDownloadFilename": "Plano_Orientador_Projeto_Data_Centers_Eolica_NE.pdf",
+    "defaultExpandedDatabaseId": "ibama-offshore-laf",
+    "defaultPipelineProjectId": "DC-CE-05",
+    "defaultSubstationFocus": "SE Pecém II",
+    "secondarySubstationFocus": "SE Suape II",
+    "defaultCheckedDatabaseIds": [
+      "aneel-siga-capacidade",
+      "ons-geracao-usina-subsistema",
+      "ons-curva-carga-intercambio",
+      "ons-curtailment-era5",
+      "epe-consumo-mensal-pde2035",
+      "mme-portarias-acesso-dc",
+      "epe-cargas-eletrointensivas-ne",
+      "estados-zpe-pecem-fortaleza-suape",
+      "ibama-offshore-laf",
+      "mme-aneel-pug-offshore"
+    ],
+    "monthShortNames": ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
+    "observationWindows": [
+      { "id": "day", "label": "Dia (24 h)", "description": "Perfil horário detalhado de 1 dia calendário (00h–23h)" },
+      { "id": "week", "label": "Semana (168 h)", "description": "Janela semanal contínua de 7 dias em resolução horária" },
+      { "id": "month", "label": "Mês", "description": "Todas as horas do mês selecionado (672 h a 744 h)" },
+      { "id": "quarter", "label": "Trimestre", "description": "Todas as horas do trimestre selecionado (Q1–Q4)" },
+      { "id": "year", "label": "Ano Completo (8.760 h)", "description": "Horizonte anual integral de 365 dias × 24 h em tempo real" }
+    ],
+    "seasonalRegimes": [
+      { "id": "annual_blend", "label": "Ano Completo (Sazonalidade Real NE)" },
+      { "id": "dry_windy", "label": "Ênfase Safra dos Ventos (Ago–Nov)" },
+      { "id": "wet_calm", "label": "Ênfase Calmaria Úmida (Mar–Mai)" }
+    ],
+    "anovaCategories": [
+      { "id": "all", "label": "Todas as famílias de features" },
+      { "id": "Autoregressiva (Lag)", "label": "Autoregressiva (Lag)" },
+      { "id": "Balanço Físico Exógeno", "label": "Balanço Físico Exógeno" },
+      { "id": "Harmônica (Fourier)", "label": "Harmônica (Fourier)" },
+      { "id": "Calendário", "label": "Calendário" },
+      { "id": "Não-Linearidade Aerodinâmica", "label": "Não-Linearidade Aerodinâmica" }
+    ],
+    "dcScenarioCards": {
+      "conservative": {
+        "title": "Cenário Conservador",
+        "subtitleSuffix": "100% de maturação",
+        "description": "Compreende exclusivamente os projetos com licença de instalação emitida, obras civis iniciadas ou contratos firmes (Scala Fase 1, V.tal Praia do Futuro/Maresia, Ascenty Suape I, Elea e HostDime)."
+      },
+      "central": {
+        "title": "Cenário Central (Ponderado)",
+        "subtitleSuffix": "Entrada gradual até 2031",
+        "description": "Inclui os projetos do cenário conservador somados a empreendimentos com portaria do MME ou pedidos de acesso à Rede Básica no ONS (Scala Fase 2, ODATA Caucaia, Ascenty Suape II, Extremoz-RN e Camaçari-BA)."
+      },
+      "high": {
+        "title": "Cenário Stress Test (Alto)",
+        "subtitleSuffix": "Megaclusters de IA até 2035",
+        "description": "Adiciona os megaclusters de Inteligência Artificial previstos para a ZPE do Pecém (Fases 1 e 2 de 700 MW e 800 MW IT) e a expansão do Pernambuco Digital Park em Suape (400 MW IT)."
+      }
+    },
+    "databasePillarLabels": {
+      "all": "Todas (10)",
+      "offshore": "1. Offshore (IBAMA)",
+      "datacenters": "2. Data Centers NE",
+      "capacidade_atual": "3. Capacidade Atual NE",
+      "consumo_atual": "4. Consumo Atual NE",
+      "curtailment_clima": "5. Curtailment & Clima"
+    },
+    "databasesCatalog": [
+      {
+        "id": "ibama-offshore-laf",
+        "pillar": "offshore",
+        "pillarLabel": "Eólicas Offshore em Aprovação",
+        "institution": "IBAMA (Licenciamento Ambiental Federal)",
+        "datasetName": "Mapa de Complexos Eólicos Offshore & Processos SEI/LAF",
+        "portalOrEndpoint": "ibama.gov.br/laf · Painel de Complexos Eólicos Offshore Abertos",
+        "granularity": "Cadastral / Projetos",
+        "priority": "Cenário Estendido / Stress Test",
+        "targetModelRole": "Expansão de Geração Pós-2031 (Cenário Alto / Monte Carlo)",
+        "keyColumnsAndFilters": [
+          "UF / Costa: CE, RN, PI, MA (Subsistema Nordeste)",
+          "Potência Total Prevista (MW) e Nº de Aerogeradores",
+          "Fase do Licenciamento: Ficha de Caracterização (FCA), Termo de Referência (TR), EIA/RIMA em análise",
+          "Sobreposição de áreas marítimas (filtrar duplicidades de mesmo polígono)"
+        ],
+        "methodologicalNotes": "Atenção crítica até 2035: há mais de 60 GW protocolados na costa do NE (CE e RN lideram), mas projetos em fase inicial de EIA/RIMA têm lead time de 6 a 9 anos. Não somar MW brutos! Atribuir probabilidade baixa de entrada plena até 2035 no Monte Carlo (janela 2032–2035) e separar dos parques onshore do SIGA.",
+        "accessUrlLabel": "Portal IBAMA – Complexos Eólicos Offshore (Mapas/Shapefiles & Planilha de Processos)"
+      },
+      {
+        "id": "mme-aneel-pug-offshore",
+        "pillar": "offshore",
+        "pillarLabel": "Eólicas Offshore em Aprovação",
+        "institution": "MME / ANEEL / EPE",
+        "datasetName": "Portal PUG-Offshore (Cessão de Uso de Águas da União – Lei nº 15.097/2025) & Roadmap EPE",
+        "portalOrEndpoint": "gov.br/mme · Sistema de Gestão de Prismas Energéticos Offshore / EPE Roadmap Offshore",
+        "granularity": "Cadastral / Projetos",
+        "priority": "Cenário Estendido / Stress Test",
+        "targetModelRole": "Filtro de Maturidade Regulatória e Fator de Capacidade Marítimo (~55%–65%)",
+        "keyColumnsAndFilters": [
+          "Declarações de Interferência Prévia (DIP) emitidas",
+          "Prismas energéticos sem conflito portuário/ambiental na margem equatorial (CE/RN)",
+          "Curvas típicas de vento offshore a 150m (EPE Roadmap Eólica Offshore Brasil)"
+        ],
+        "methodologicalNotes": "Enquanto as eólicas onshore já possuem outorga direta no SIGA/ANEEL, as offshore dependem de leilão de cessão de prismas regulamentado pelo Marco Legal (Lei 15.097/2025). Usar apenas como camada incremental no Cenário Alto pós-2031.",
+        "accessUrlLabel": "MME / EPE – Estudos de Planejamento Eólica Offshore & PUG"
+      },
+      {
+        "id": "mme-portarias-acesso-dc",
+        "pillar": "datacenters",
+        "pillarLabel": "Projetos de Data Centers NE",
+        "institution": "MME (Ministério de Minas e Energia)",
+        "datasetName": "Portarias de Acesso à Rede Básica para Consumidores Livres (Art. Decreto nº 5.597/2005)",
+        "portalOrEndpoint": "gov.br/mme · Portarias da Secretaria Nacional de Transição Energética e Planejamento (SNTEP)",
+        "granularity": "Cadastral / Projetos",
+        "priority": "Escopo Mínimo (Obrigatório)",
+        "targetModelRole": "Construção de L_DC(t) – Cenários Conservador e Central",
+        "keyColumnsAndFilters": [
+          "Subestação de conexão no NE (ex.: SE Pecém II, SE Fortaleza II, SE Caucaia, SE Suape II, SE Extremoz II)",
+          "Montante de Uso do Sistema de Transmissão (MUST em MW) por ano de escalonamento",
+          "Cronograma oficial de entrada em operação (rampa contratada 2026–2035)",
+          "Razão social / SPE do empreendimento de Data Center (separar de projetos de Hidrogênio Verde)"
+        ],
+        "methodologicalNotes": "Esta é a fonte pública mais sólida de maturidade física: todo grande data center (> 50 MW) conectado em alta tensão (230 kV / 500 kV) exige Portaria do MME baseada em estudo de viabilidade da EPE/ONS. Verificar se o MW publicado já é demanda total na rede (não aplicar PUE em duplicidade).",
+        "accessUrlLabel": "MME – Portarias Autorizativas de Acesso de Consumidores Livres à Rede Básica"
+      },
+      {
+        "id": "epe-cargas-eletrointensivas-ne",
+        "pillar": "datacenters",
+        "pillarLabel": "Projetos de Data Centers NE",
+        "institution": "EPE & ONS",
+        "datasetName": "Estudo Prospectivo para Inserção de Cargas Eletrointensivas no NE + PAR/PEL ONS",
+        "portalOrEndpoint": "epe.gov.br / ons.org.br · Cadernos de Planejamento da Transmissão & Fila de Acesso",
+        "granularity": "Mensal / Anual",
+        "priority": "Escopo Mínimo (Obrigatório)",
+        "targetModelRole": "Âncora Metodológica (Seção 10 do PDF), Cenário Alto (Stress Test) e Limites de Intercâmbio",
+        "keyColumnsAndFilters": [
+          "Volume agregado de solicitações de parecer/informação de acesso por estado (CE, PE, RN, BA)",
+          "Separação entre cargas de Data Centers (fator de carga ~0.80–0.90) e plantas de H2V",
+          "Capacidade remanescente de barramentos e limites de intercâmbio NE ↔ SE/CO e NE ↔ N"
+        ],
+        "methodologicalNotes": "Referência direta da Seção 10 do Plano Orientador! O ONS e a EPE consolidam os pedidos em fila (muitos gigawatts solicitados no Ceará e Pernambuco). Ideal para calibrar a taxa de concretização e atraso no Monte Carlo.",
+        "accessUrlLabel": "EPE – Estudos de Inserção de Grandes Cargas Eletrointensivas no Nordeste & PAR/PEL ONS"
+      },
+      {
+        "id": "estados-zpe-pecem-fortaleza-suape",
+        "pillar": "datacenters",
+        "pillarLabel": "Projetos de Data Centers NE",
+        "institution": "ZPE Ceará / Complexo do Pecém, ADECE-CE, Suape-PE e SEDEC-RN",
+        "datasetName": "Protocolos de Intenção, Licenciamento Estadual (SEMACE/CPRH) e Hub Praia do Futuro",
+        "portalOrEndpoint": "complexodopecem.com.br · semace.ce.gov.br · suape.pe.gov.br",
+        "granularity": "Cadastral / Projetos",
+        "priority": "Cenário Estendido / Stress Test",
+        "targetModelRole": "Mapeamento Nominal de Campi Hyperscale (Potência de TI, Fases de Rampa e Localização)",
+        "keyColumnsAndFilters": [
+          "Campi de hiperescala em Fortaleza (Praia do Futuro – hub de cabos submarinos) e ZPE Pecém (Caucaia/São Gonçalo do Amarante)",
+          "Licenças Prévia (LP) e de Instalação (LI) estaduais emitidas para data centers",
+          "Potência de TI anunciada vs. subestação dedicada construída"
+        ],
+        "methodologicalNotes": "Complementa MME/EPE identificando quais projetos já possuem licença de instalação/obras civis (Cenário Conservador) versus anúncios em Memorando de Entendimento – MoU (Cenário Alto).",
+        "accessUrlLabel": "Licenciamentos Estaduais (SEMACE-CE / CPRH-PE) & Relatórios ZPE Pecém"
+      },
+      {
+        "id": "aneel-siga-capacidade",
+        "pillar": "capacidade_atual",
+        "pillarLabel": "Capacidade & Geração Atual NE",
+        "institution": "ANEEL – Dados Abertos",
+        "datasetName": "SIGA – Sistema de Informações de Geração da ANEEL (siga-empreendimentos-geracao)",
+        "portalOrEndpoint": "dadosabertos.aneel.gov.br/dataset/siga-sistema-de-informacoes-de-geracao-da-aneel",
+        "granularity": "Cadastral / Projetos",
+        "priority": "Escopo Mínimo (Obrigatório)",
+        "targetModelRole": "Capacidade Atual Instalada no NE + Trajetórias Onshore (Base, Intermediário, Alto) e denominador de CF(t)",
+        "keyColumnsAndFilters": [
+          "Filtrar UFs do Subsistema NE: AL, BA, CE, MA (parcial ONS, validar submercado), PB, PE, PI, RN, SE",
+          "Colunas: dscOrigemCombustivel / sigTipoGeracao (EOL, UFV, UHE, UTE), mdaPotenciaOutorgadaKw, mdaPotenciaFiscalizadaKw",
+          "Coluna dscFaseUsina: \"Operação\" (Cenário Base), \"Construção\" (Intermediário), \"Construção não iniciada\" (Alto)",
+          "Datas de entrada em operação comercial histórica (para reconstruir capacidade mensal/horária passada)"
+        ],
+        "methodologicalNotes": "Atenção técnica: o estado do Maranhão possui grande parte no Subsistema Norte no critério elétrico do ONS, enquanto o oeste da Bahia pertence ao NE. Ao cruzar SIGA com ONS, validar o submercado da usina pelo código CEG!",
+        "accessUrlLabel": "Portal Dados Abertos ANEEL – CSV/API CKAN siga-empreendimentos-geracao"
+      },
+      {
+        "id": "ons-geracao-usina-subsistema",
+        "pillar": "capacidade_atual",
+        "pillarLabel": "Capacidade & Geração Atual NE",
+        "institution": "ONS – Portal de Dados Abertos",
+        "datasetName": "Geração por Usina em Base Horária & Balanço de Energia nos Subsistemas",
+        "portalOrEndpoint": "dados.ons.org.br · datasets: geracao_usina_2 / balanco_energia_subsistema",
+        "granularity": "Horária",
+        "priority": "Escopo Mínimo (Obrigatório)",
+        "targetModelRole": "Modelo B (Alvo CF(t) = Geração Eólica(t) / Capacidade(t)) e Oferta Total G_NE(t)",
+        "keyColumnsAndFilters": [
+          "id_subsistema == \"NE\" (Subsistema Nordeste)",
+          "din_instante (timestamp horário UTC-3)",
+          "val_geracao (MWmed) por fonte: Eólica, Solar, Hidráulica, Térmica",
+          "Código CEG para cruzar geração efetiva (ONS) com potência instalada (ANEEL)"
+        ],
+        "methodologicalNotes": "Permite calcular os dois indicadores exigidos na Seção 6 do PDF: participação eólica na capacidade instalada (ANEEL) vs. participação eólica na geração efetiva horária (ONS).",
+        "accessUrlLabel": "Portal Dados Abertos ONS – Geração por Usina e Balanço Horário"
+      },
+      {
+        "id": "ons-curva-carga-intercambio",
+        "pillar": "consumo_atual",
+        "pillarLabel": "Consumo & Carga Atual NE",
+        "institution": "ONS – Portal de Dados Abertos",
+        "datasetName": "Curva de Carga Horária & Intercâmbio entre Subsistemas",
+        "portalOrEndpoint": "dados.ons.org.br · datasets: curva_carga / intercambio_nacional",
+        "granularity": "Horária",
+        "priority": "Escopo Mínimo (Obrigatório)",
+        "targetModelRole": "Modelo A (Previsão de Carga Base L_base(t)) e Limites Históricos de Intercâmbio SIN",
+        "keyColumnsAndFilters": [
+          "id_subsistema == \"NE\", coluna val_cargaenergiahomwmed (MW médios horários)",
+          "Séries históricas adotadas: 2015 a 2025 (captura sazonalidade, ciclos climáticos e expansão solar)",
+          "Fluxo líquido de intercâmbio horário NE ↔ SE/CO e NE ↔ N para validar margem M(t)"
+        ],
+        "methodologicalNotes": "A \"Carga Global ONS\" reflete a demanda medida na rede básica + distribuição. É a variável exata para treinar os modelos causais e estimar a série horária completa de 8.760 h.",
+        "accessUrlLabel": "Portal Dados Abertos ONS – Curva de Carga Horária (CSV Anual)"
+      },
+      {
+        "id": "epe-consumo-mensal-pde2035",
+        "pillar": "consumo_atual",
+        "pillarLabel": "Consumo & Carga Atual NE",
+        "institution": "EPE (Empresa de Pesquisa Energética)",
+        "datasetName": "Consumo Mensal de Energia Elétrica por Classe/Região & Cadernos PDE 2034/2035",
+        "portalOrEndpoint": "epe.gov.br/pt/publicacoes-dados-abertos/publicacoes/consumo-de-energia-eletrica",
+        "granularity": "Mensal / Anual",
+        "priority": "Escopo Mínimo (Obrigatório)",
+        "targetModelRole": "Ancorar a tendência estrutural de longo prazo até 2035 no Modelo A (evitar deriva de extrapolação)",
+        "keyColumnsAndFilters": [
+          "Planilha XLS/CSV \"Consumo Mensal por Região e Classe\" (Industrial, Comercial, Residencial, Outros no NE)",
+          "Taxas anuais projetadas de crescimento da carga no Subsistema NE no PDE 2035",
+          "Descontar eventual carga de data centers já embutida para não contar duas vezes L_DC(t)"
+        ],
+        "methodologicalNotes": "Modelos puramente autorregressivos horários perdem referência em horizontes de 10 anos (2035). Usar a taxa anual do PDE/EPE como tendência exógena e deixar o modelo prever a modulação horária/sazonal.",
+        "accessUrlLabel": "EPE – Dados Abertos de Consumo Mensal & Plano Decenal de Expansão (PDE)"
+      },
+      {
+        "id": "ons-curtailment-era5",
+        "pillar": "curtailment_clima",
+        "pillarLabel": "Curtailment & Meteorologia",
+        "institution": "ONS + ANEEL + Referência Climática",
+        "datasetName": "Restrição de Operação Constrained-Off de Usinas Eólicas (ONS)",
+        "portalOrEndpoint": "dados.ons.org.br (restricao_coff_eolica_tm)",
+        "granularity": "Horária",
+        "priority": "Escopo Mínimo (Obrigatório)",
+        "targetModelRole": "Modelo C (Classificação/Volume de Curtailment) e correção do CF potencial sem corte",
+        "keyColumnsAndFilters": [
+          "ONS Constrained-off: val_geracaoreferencia, val_geracao, val_geracaonaorealizadaapurada, cod_razaorestricao",
+          "Conversão semi-horária (30 min) para potência média horária (MWmed) no subsistema NE"
+        ],
+        "methodologicalNotes": "Crucial para os Modelos B e C: em horas de constrained-off, a geração verificada no ONS é MENOR que o vento real disponível! Somar energia cortada à geração verificada para estimar o CF(t) potencial antes de treinar o modelo eólico.",
+        "accessUrlLabel": "ONS – Restrição de Operação Constrained-Off Eólicas (Semi-horário)"
+      }
+    ],
+    "groupDecisions": [
+      {
+        "id": "dec-window",
+        "topic": "01. Janela Histórica de Treino e Backtesting (ONS)",
+        "question": "Qual recorte temporal usar para treinar Carga Base, CF(t) e Curtailment?",
+        "options": [
+          {
+            "value": "2015_2025",
+            "label": "2015–2024 (Treino) e 2025 (Teste Out-of-Time) — Ativo no Pipeline",
+            "rationale": "Recorte completo de 11 anos adotado na esteira oficial, capturando ciclos El Niño/La Niña e constrained-off 2023–2025."
+          },
+          {
+            "value": "2019_2025",
+            "label": "2019–2024 (Treino) e 2025 (Teste Out-of-Time) — Alternativa Recente",
+            "rationale": "Alternativa restrita ao período pós-expansão acelerada da solar centralizada/MMGD no Nordeste."
+          }
+        ]
+      },
+      {
+        "id": "dec-offshore",
+        "topic": "02. Tratamento das Eólicas Offshore (IBAMA) até 2035",
+        "question": "Como incorporar os projetos offshore em licenciamento no IBAMA?",
+        "options": [
+          {
+            "value": "stress_post_2031",
+            "label": "Apenas no Cenário Alto pós-2031 com rampa gradual — Ativo no Pipeline",
+            "rationale": "Respeita o lead time real de leilão de prismas (PUG-Offshore), licenciamento EIA/RIMA e obras marítimas/portuárias no CE e RN."
+          },
+          {
+            "value": "onshore_only",
+            "label": "Restringir escopo base apenas a Eólicas Onshore (SIGA/ANEEL)",
+            "rationale": "Alternativa conservadora sem camada marítima, tratando offshore apenas como sensibilidade externa."
+          }
+        ]
+      },
+      {
+        "id": "dec-era5",
+        "topic": "03. Engenharia de Atributos e Variáveis Físicas/Climáticas",
+        "question": "Como construir as covariáveis horárias sem data leakage no Modelo A/B/C?",
+        "options": [
+          {
+            "value": "lags_only",
+            "label": "Lags causais ONS + harmônicos de Fourier + termos aerodinâmicos — Ativo no Pipeline",
+            "rationale": "Combina defasagens t-1h/t-24h/t-168h, janelas móveis deslocadas, v_eq³ e excedente renovável exógeno 100% reprodutível do ONS."
+          },
+          {
+            "value": "era5_centroids",
+            "label": "Acoplar centróides climáticos externos (ERA5/INMET) — Extensão Futura",
+            "rationale": "Permite adicionar vento 100m e temperatura 2m nos polos eólicos (BA, RN, CE, PI) em evoluções futuras sem alterar os lags atuais."
+          }
+        ]
+      },
+      {
+        "id": "dec-dc-h2v",
+        "topic": "04. Fronteira entre Data Centers e Hidrogênio Verde (Pecém/Suape)",
+        "question": "Como filtrar as Portarias do MME e a fila de acesso do ONS?",
+        "options": [
+          {
+            "value": "dc_isolated_h2v_sensitivity",
+            "label": "Isolar Data Centers no modelo principal e testar H2V como disputa de rede — Ativo no Pipeline",
+            "rationale": "Mantém foco estrito na pergunta de pesquisa do Grupo 6, mas quantifica a competição/sinergia de H2V nas subestações via Monte Carlo."
+          },
+          {
+            "value": "dc_strict_only",
+            "label": "Considerar exclusivamente projetos declarados de Data Centers / TI",
+            "rationale": "Recorte direto sem sensibilidade cruzada com outras cargas eletrointensivas."
+          }
+        ]
+      }
+    ]
+  }
 }

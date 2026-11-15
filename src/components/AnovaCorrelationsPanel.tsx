@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { usePipelineSsot } from '../data/pipelineSsotContext';
 import type {
   AnovaTestResult,
   FeatureCorrelationItem,
@@ -24,6 +25,11 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
   onExportMonthly,
   onExportCorrelations,
 }) => {
+  const { ssot } = usePipelineSsot();
+  const cfg = ssot.config;
+  const corrHi = cfg.uiThresholds.correlationHighlight;
+  const categories = ssot.uiCatalog.anovaCategories;
+
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -49,7 +55,7 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
               Diagnóstico de Significância Estatística via ANOVA (SciPy f_oneway)
             </h2>
             <p className="text-sm text-slate-600 mt-1">
-              Testes de hipótese exatos avaliando a variância explicada (η²) pelos agrupadores sazonais, horários e de calendário (2015–2025).
+              Testes de hipótese exatos avaliando a variância explicada (η²) pelos agrupadores sazonais, horários e de calendário ({cfg.historyStartYear}–{cfg.historyEndYear}).
             </p>
           </div>
           <button
@@ -93,7 +99,7 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
                     {r.etaSquaredPct.toFixed(2)}%
                   </td>
                   <td className="py-3.5 px-3 font-semibold text-emerald-800 whitespace-nowrap">
-                    Rejeita H₀ (p &lt; 0,01)
+                    {r.isSignificantAlpha01 ? 'Rejeita H₀ (p < 0,01)' : 'Não rejeita H₀'}
                   </td>
                   <td className="py-3.5 pl-4 text-slate-600 leading-relaxed max-w-md">
                     {r.technicalInterpretation}
@@ -112,7 +118,7 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
               Sazonalidade Mensal do Fator de Capacidade Eólico Potencial e Curtailment Real
             </h2>
             <p className="text-sm text-slate-600 mt-1">
-              Consolidado dos 11 anos históricos reais (2015–2025) com reconstituição do constrained-off do ONS (2023–2025).
+              Consolidado dos {cfg.historyEndYear - cfg.historyStartYear + 1} anos históricos reais ({cfg.historyStartYear}–{cfg.historyEndYear}) com reconstituição do constrained-off do ONS ({cfg.coffStartYear}–{cfg.historyEndYear}).
             </p>
           </div>
           <button
@@ -134,8 +140,8 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
                 <th className="py-3 px-3">CF P10 (Firme)</th>
                 <th className="py-3 px-3">Mediana P50</th>
                 <th className="py-3 px-3">CF P90</th>
-                <th className="py-3 px-3">Curtailment 23–25</th>
-                <th className="py-3 pl-3">Demanda Média NE</th>
+                <th className="py-3 px-3">Curtailment {String(cfg.coffStartYear).slice(2)}–{String(cfg.historyEndYear).slice(2)}</th>
+                <th className="py-3 pl-3">Demanda Média {cfg.subsystemId}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700 text-xs font-mono">
@@ -198,7 +204,7 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
               Matriz de Correlação de Pearson com as Variáveis-Alvo (Incluindo Curtailment Real)
             </h2>
             <p className="text-sm text-slate-600 mt-1">
-              Avaliação empírica das features para os Modelos A (Carga), B (Vento Potencial) e C (Curtailment 2023–2025).
+              Avaliação empírica das features para os Modelos A (Carga), B (Vento Potencial) e C (Curtailment {cfg.coffStartYear}–{cfg.historyEndYear}).
             </p>
           </div>
 
@@ -236,12 +242,11 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="w-full h-9 px-3 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-600"
             >
-              <option value="all">Todas as Categorias</option>
-              <option value="Autoregressiva (Lag)">Autoregressiva (Lags 1h, 24h, 168h)</option>
-              <option value="Balanço Físico Exógeno">Balanço Físico Exógeno (Geração vs. Carga)</option>
-              <option value="Harmônica (Fourier)">Harmônica (Fourier Cíclico)</option>
-              <option value="Calendário">Calendário e Operativa</option>
-              <option value="Não-Linearidade Aerodinâmica">Não-Linearidade Aerodinâmica (v³, P²)</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -273,9 +278,9 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
                   <td className="py-3 px-4 font-mono font-semibold whitespace-nowrap">
                     <span
                       className={
-                        Math.abs(c.corrBaseLoad) > 0.7
+                        Math.abs(c.corrBaseLoad) > corrHi.strong
                           ? 'text-sky-800 font-bold'
-                          : Math.abs(c.corrBaseLoad) > 0.3
+                          : Math.abs(c.corrBaseLoad) > corrHi.moderate
                             ? 'text-slate-900'
                             : 'text-slate-500'
                       }
@@ -286,9 +291,9 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
                   <td className="py-3 px-4 font-mono font-semibold whitespace-nowrap">
                     <span
                       className={
-                        Math.abs(c.corrWindCF) > 0.7
+                        Math.abs(c.corrWindCF) > corrHi.strong
                           ? 'text-emerald-800 font-bold'
-                          : Math.abs(c.corrWindCF) > 0.3
+                          : Math.abs(c.corrWindCF) > corrHi.moderate
                             ? 'text-slate-900'
                             : 'text-slate-500'
                       }
@@ -299,9 +304,9 @@ export const AnovaCorrelationsPanel: React.FC<AnovaCorrelationsPanelProps> = ({
                   <td className="py-3 pl-4 font-mono font-semibold whitespace-nowrap">
                     <span
                       className={
-                        Math.abs(c.corrCurtailment) > 0.35
+                        Math.abs(c.corrCurtailment) > corrHi.curtailmentStrong
                           ? 'text-amber-800 font-bold'
-                          : Math.abs(c.corrCurtailment) > 0.15
+                          : Math.abs(c.corrCurtailment) > corrHi.curtailmentModerate
                             ? 'text-slate-800'
                             : 'text-slate-400'
                       }

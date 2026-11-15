@@ -262,18 +262,27 @@ export const FeaturesAndAnovaView: React.FC = () => {
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5 border-b border-slate-200">
           <div className="space-y-1.5 max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-wider text-sky-800">
-              Passos 03, 04 & 05 Concluídos · Dados Reais ONS/ANEEL 2015–2025, Monte Carlo & Sensibilidade 2035
+              Passos 03, 04 & 05 Concluídos · Dados Reais ONS/ANEEL {ssot.config.historyStartYear}–
+              {ssot.config.historyEndYear}, Monte Carlo & Sensibilidade {ssot.config.targetEndYear}
             </p>
             <h1 id="heading-passo34-intro" className="text-xl lg:text-2xl font-bold tracking-tight text-slate-900">
-              Validação Out-of-Time 2025, Monte Carlo 2035 & Sensibilidade (Transmissão / H2V)
+              Validação Out-of-Time {ssot.config.baselineYear}, Monte Carlo {ssot.config.targetEndYear} & Sensibilidade
+              (Transmissão / H2V)
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Modelos lineares e não-lineares (<span className="font-mono">ResidualMLPRegressor</span>,{' '}
+              Modelos lineares e não-lineares (<span className="font-mono">{ssot.lineage.comparativeNonLinearArchitecture}</span>,{' '}
               <span className="font-mono">ResidualMLPClassifier</span> L-BFGS-B e{' '}
               <span className="font-mono">HistogramGBDT</span> em <span className="font-mono">numpy/scipy</span>)
-              treinados em <strong>2015–2024 ({ssot.lineage.trainHours.toLocaleString('pt-BR')} h)</strong>, validados às
-              cegas nas <strong>{ssot.lineage.testHours.toLocaleString('pt-BR')} h de 2025</strong>, acoplados ao{' '}
-              <strong>Monte Carlo 2035</strong> e à{' '}
+              treinados em{' '}
+              <strong>
+                {ssot.config.historyStartYear}–{ssot.config.historyEndYear - 1} (
+                {ssot.lineage.trainHours.toLocaleString('pt-BR')} h)
+              </strong>
+              , validados às cegas nas{' '}
+              <strong>
+                {ssot.lineage.testHours.toLocaleString('pt-BR')} h de {ssot.config.baselineYear}
+              </strong>
+              , acoplados ao <strong>Monte Carlo {ssot.config.targetEndYear}</strong> e à{' '}
               <strong>Análise de Sensibilidade de Intercâmbio e Hidrogênio Verde (Passo 5)</strong>.
             </p>
           </div>
