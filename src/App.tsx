@@ -31,6 +31,51 @@ function buildDefaultDecisions(ssotDecisions: Array<{ id: string; options: Array
   return result;
 }
 
+function buildStorageVersionToken(schemaVersion: string): string {
+  return schemaVersion.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function sanitizePersistedDecisions(
+  raw: unknown,
+  ssotDecisions: Array<{ id: string; options: Array<{ value: string }> }>
+): Record<string, string> {
+  const defaults = buildDefaultDecisions(ssotDecisions);
+  if (!raw || typeof raw !== 'object') return defaults;
+  const record = raw as Record<string, unknown>;
+  const validOptionsById = new Map<string, Set<string>>();
+  for (const item of ssotDecisions) {
+    validOptionsById.set(item.id, new Set(item.options.map((o) => o.value)));
+  }
+  for (const [key, val] of Object.entries(record)) {
+    const allowed = validOptionsById.get(key);
+    if (allowed && typeof val === 'string' && allowed.has(val)) {
+      defaults[key] = val;
+    }
+  }
+  return defaults;
+}
+
+function sanitizePersistedChecklist(
+  raw: unknown,
+  defaultCheckedIds: string[],
+  validDbIds: Set<string>
+): Record<string, boolean> {
+  const sanitized: Record<string, boolean> = {};
+  for (const dbId of defaultCheckedIds) {
+    if (validDbIds.has(dbId)) {
+      sanitized[dbId] = true;
+    }
+  }
+  if (!raw || typeof raw !== 'object') return sanitized;
+  const record = raw as Record<string, unknown>;
+  for (const [key, val] of Object.entries(record)) {
+    if (validDbIds.has(key) && typeof val === 'boolean') {
+      sanitized[key] = val;
+    }
+  }
+  return sanitized;
+}
+
 const AppShell: React.FC = () => {
   const { ssot } = usePipelineSsot();
   const [activeTab, setActiveTab] = useState<TabId>('simulador');
@@ -49,37 +94,46 @@ const AppShell: React.FC = () => {
   };
 
   const storagePrefix = buildStorageKeyPrefix(ssot.config.subsystemId);
-  const storageKeyDecisions = `${storagePrefix}_decisions_v1`;
-  const storageKeyChecklist = `${storagePrefix}_db_checklist_v1`;
+  const storageVersion = buildStorageVersionToken(ssot.schemaVersion);
+  const storageKeyDecisions = `${storagePrefix}_decisions_v${storageVersion}`;
+  const storageKeyChecklist = `${storagePrefix}_db_checklist_v${storageVersion}`;
 
   const [decisions, setDecisions] = useState<Record<string, string>>(() => {
-    const defaults = buildDefaultDecisions(ssot.uiCatalog.groupDecisions);
     try {
       const saved = localStorage.getItem(storageKeyDecisions);
-      return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+      return sanitizePersistedDecisions(saved ? JSON.parse(saved) : null, ssot.uiCatalog.groupDecisions);
     } catch {
-      return defaults;
+      return buildDefaultDecisions(ssot.uiCatalog.groupDecisions);
     }
   });
 
   const [checkedDbs, setCheckedDbs] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
-    for (const dbId of ssot.uiCatalog.defaultCheckedDatabaseIds) {
-      initial[dbId] = true;
-    }
+    const validDbIds = new Set(ssot.uiCatalog.databasesCatalog.map((d) => d.id));
     try {
       const saved = localStorage.getItem(storageKeyChecklist);
-      return saved ? { ...initial, ...JSON.parse(saved) } : initial;
+      return sanitizePersistedChecklist(
+        saved ? JSON.parse(saved) : null,
+        ssot.uiCatalog.defaultCheckedDatabaseIds,
+        validDbIds
+      );
     } catch {
-      return initial;
+      return sanitizePersistedChecklist(null, ssot.uiCatalog.defaultCheckedDatabaseIds, validDbIds);
     }
   });
+
+  useEffect(() => {
+    const validDbIds = new Set(ssot.uiCatalog.databasesCatalog.map((d) => d.id));
+    setDecisions((prev) => sanitizePersistedDecisions(prev, ssot.uiCatalog.groupDecisions));
+    setCheckedDbs((prev) =>
+      sanitizePersistedChecklist(prev, ssot.uiCatalog.defaultCheckedDatabaseIds, validDbIds)
+    );
+  }, [ssot.schemaVersion, ssot.uiCatalog.groupDecisions, ssot.uiCatalog.databasesCatalog, ssot.uiCatalog.defaultCheckedDatabaseIds]);
 
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
 
   const handleSelectDecision = (decisionId: string, value: string) => {
     setDecisions((prev) => {
-      const next = { ...prev, [decisionId]: value };
+      const next = sanitizePersistedDecisions({ ...prev, [decisionId]: value }, ssot.uiCatalog.groupDecisions);
       try {
         localStorage.setItem(storageKeyDecisions, JSON.stringify(next));
       } catch {
@@ -90,8 +144,13 @@ const AppShell: React.FC = () => {
   };
 
   const handleToggleDb = (dbId: string) => {
+    const validDbIds = new Set(ssot.uiCatalog.databasesCatalog.map((d) => d.id));
     setCheckedDbs((prev) => {
-      const next = { ...prev, [dbId]: !prev[dbId] };
+      const next = sanitizePersistedChecklist(
+        { ...prev, [dbId]: !prev[dbId] },
+        ssot.uiCatalog.defaultCheckedDatabaseIds,
+        validDbIds
+      );
       try {
         localStorage.setItem(storageKeyChecklist, JSON.stringify(next));
       } catch {

@@ -92,9 +92,11 @@ export const SensitivityPasso5Panel: React.FC<SensitivityPasso5PanelProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700">
               {txSensitivity.map((row) => {
-                const isBaseRef = row.importLimitMW === interchangeImportLimitMW;
+                const isBaseRef =
+                  row.configCode === cfg.referenceScenarioKeys.txReferenceCode ||
+                  row.importLimitMW === interchangeImportLimitMW;
                 return (
-                  <tr key={row.configId} className={isBaseRef ? 'bg-sky-50/60' : 'hover:bg-slate-50'}>
+                  <tr key={row.configCode} className={isBaseRef ? 'bg-sky-50/60' : 'hover:bg-slate-50'}>
                     <td className="py-3.5 pr-3">
                       <div className="font-semibold text-slate-900">{row.configId}</div>
                       <div className="text-[11px] text-slate-500 mt-0.5">{row.infrastructureDescription}</div>
@@ -168,11 +170,11 @@ export const SensitivityPasso5Panel: React.FC<SensitivityPasso5PanelProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700">
               {h2vSensitivity.map((row) => {
-                const isPureDc = row.h2vNominalMW === 0;
-                const isFlex = row.scenarioId.includes('Flexível');
+                const isPureDc = row.flexMode === 'none';
+                const isFlex = row.flexMode === 'flexible';
                 return (
                   <tr
-                    key={row.scenarioId}
+                    key={row.scenarioCode}
                     className={isPureDc ? 'bg-sky-50/50' : isFlex ? 'bg-emerald-50/40' : 'hover:bg-slate-50'}
                   >
                     <td className="py-3.5 pr-3">

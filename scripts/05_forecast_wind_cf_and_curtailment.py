@@ -38,6 +38,7 @@ from ml_models_numpy import (
     HistogramGBDTClassifier,
     compute_regression_metrics,
     compute_classification_metrics,
+    impute_with_train_medians,
 )
 
 
@@ -121,17 +122,20 @@ def evaluate_model_b_wind_cf(
     b_gbdt_cfg = ML_MODEL_PARAMS["modelBGbdt"]
     b_ridge_alpha = max(1.0, float(ML_MODEL_PARAMS["ridgeAlpha"]) - 2.0)
 
-    for horizon_label, cand_cols, key_suffix in [
-        ("Operativo Curto Prazo (1h-Ahead)", FEATURES_CF_1H, "1h"),
-        ("Regime Diário / Sazonal (24h Day-Ahead)", FEATURES_CF_24H, "24h"),
+    for horizon_id, horizon_label, cand_cols in [
+        ("1h", "Operativo Curto Prazo (1h-Ahead)", FEATURES_CF_1H),
+        ("24h", "Regime Diário / Sazonal (24h Day-Ahead)", FEATURES_CF_24H),
     ]:
         feats = [c for c in cand_cols if c in train_df.columns]
-        X_tr = train_df[feats].to_numpy(dtype=float)
-        X_te = test_df[feats].to_numpy(dtype=float)
+        X_tr_raw = train_df[feats].to_numpy(dtype=float)
+        X_te_raw = test_df[feats].to_numpy(dtype=float)
+        X_tr, X_te = _impute_with_train_medians(X_tr_raw, X_te_raw)
 
         candidates = [
-            ("Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=b_ridge_alpha), f"ridge_{key_suffix}"),
+            ("ridge", "linear", "Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=b_ridge_alpha)),
             (
+                "resmlp",
+                "nonlinear",
                 "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
                 "Não-Linear (SciPy L-BFGS-B)",
                 ResidualMLPRegressor(
@@ -140,9 +144,10 @@ def evaluate_model_b_wind_cf(
                     max_iter=int(b_mlp_cfg["maxIter"]),
                     seed=seed,
                 ),
-                f"resmlp_{key_suffix}",
             ),
             (
+                "gbdt",
+                "nonlinear",
                 "Challenger Não-Linear · Histogram GBDT (Árvores)",
                 "Não-Linear (NumPy GBDT)",
                 HistogramGBDTRegressor(
@@ -151,11 +156,11 @@ def evaluate_model_b_wind_cf(
                     max_depth=int(b_gbdt_cfg["maxDepth"]),
                     min_samples_leaf=int(b_gbdt_cfg["minSamplesLeaf"]),
                 ),
-                f"gbdt_{key_suffix}",
             ),
         ]
 
-        for arch_name, family, model, tag in candidates:
+        for model_id, family_id, arch_name, family, model in candidates:
+            tag = f"{model_id}_{horizon_id}"
             model.fit(X_tr, y_train)
             y_hat = np.clip(model.predict(X_te), 0.0, 1.0)
             preds_map[tag] = y_hat
@@ -167,6 +172,9 @@ def evaluate_model_b_wind_cf(
 
             rows.append({
                 "etapa": "Modelo B - Fator de Capacidade CF(t)",
+                "horizonte_id": horizon_id,
+                "modelo_id": model_id,
+                "familia_id": family_id,
                 "horizonte": horizon_label,
                 "arquitetura": arch_name,
                 "familia": family,
@@ -186,17 +194,8 @@ def _impute_with_train_medians(
     X_te: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Substitui eventuais NaNs/infs usando exclusivamente medianas do treino (< 2025, zero vazamento)."""
-    X_tr_clean = np.where(np.isfinite(X_tr), X_tr, np.nan)
-    X_te_clean = np.where(np.isfinite(X_te), X_te, np.nan)
-    medians = np.nanmedian(X_tr_clean, axis=0)
-    medians = np.where(np.isfinite(medians), medians, 0.0)
-    for j in range(X_tr_clean.shape[1]):
-        tr_na = ~np.isfinite(X_tr_clean[:, j])
-        if np.any(tr_na):
-            X_tr_clean[tr_na, j] = medians[j]
-        te_na = ~np.isfinite(X_te_clean[:, j])
-        if np.any(te_na):
-            X_te_clean[te_na, j] = medians[j]
+    X_tr_clean, X_te_clean = impute_with_train_medians(X_tr, X_te)
+    assert X_te_clean is not None
     return X_tr_clean, X_te_clean
 
 
@@ -285,7 +284,7 @@ def evaluate_model_c_curtailment(
     X_tr_pos = X_tr[pos_mask_tr]
     y_tr_pos = y_tr_vol[pos_mask_tr]
     w_tr_pos = sample_weights[pos_mask_tr]
-    g_pot_te = test_df["g_eolica_potencial_mw"].to_numpy(dtype=float)
+    g_pot_te = np.maximum(0.0, np.nan_to_num(test_df["g_eolica_potencial_mw"].to_numpy(dtype=float), nan=0.0))
 
     # Baseline Linear Hurdle (Logística + Ridge condicional)
     reg_lin = LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"]) * 2.0).fit(
@@ -325,15 +324,19 @@ def evaluate_model_c_curtailment(
     pos_te = y_te_flag == 1
 
     rows: List[Dict[str, object]] = []
-    for arch_name, family, cm, pred_vol in [
-        ("Baseline Linear · Logística + Ridge Hurdle", "Linear", cm_lin, pred_vol_lin),
+    for model_id, family_id, arch_name, family, cm, pred_vol in [
+        ("logistic_ridge", "linear", "Baseline Linear · Logística + Ridge Hurdle", "Linear", cm_lin, pred_vol_lin),
         (
+            "resmlp",
+            "nonlinear",
             "Challenger Não-Linear · Rede Neural ResMLP Hurdle (C1+C2)",
             "Não-Linear (SciPy L-BFGS-B)",
             cm_mlp,
             pred_vol_mlp,
         ),
         (
+            "gbdt",
+            "nonlinear",
             "Challenger Não-Linear · Histogram GBDT Hurdle Completo",
             "Não-Linear (NumPy GBDT)",
             cm_gbdt,
@@ -346,6 +349,9 @@ def evaluate_model_c_curtailment(
 
         rows.append({
             "etapa": "Modelo C - Curtailment Eólico (2 Estágios)",
+            "horizonte_id": "exogenous_structural",
+            "modelo_id": model_id,
+            "familia_id": family_id,
             "horizonte": "Estrutural Físico Horário (Exógeno p/ 2035)",
             "arquitetura": arch_name,
             "familia": family,

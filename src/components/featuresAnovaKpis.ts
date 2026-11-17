@@ -31,10 +31,11 @@ export interface FeaturesAnovaKpis {
 export function computeFeaturesAnovaKpis(ssot: PipelineSsotBundle): FeaturesAnovaKpis {
   const cfg = ssot.config;
   const refs = cfg.referenceScenarioKeys;
-  const a1h = ssot.modelABenchmark2025.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
-  const a24h = ssot.modelABenchmark2025.find((r) => r.horizon.includes('24h') && r.architecture.includes('ResMLP'));
-  const b1h = ssot.modelBBenchmark2025.find((r) => r.horizon.includes('1h') && r.architecture.includes('ResMLP'));
-  const cBest = ssot.modelCBenchmark2025.find((r) => r.architecture.includes('ResMLP')) ?? ssot.modelCBenchmark2025[0];
+  const prefModel = refs.preferredModelId;
+  const a1h = ssot.modelABenchmark2025.find((r) => r.horizonId === '1h' && r.modelId === prefModel);
+  const a24h = ssot.modelABenchmark2025.find((r) => r.horizonId === '24h' && r.modelId === prefModel);
+  const b1h = ssot.modelBBenchmark2025.find((r) => r.horizonId === '1h' && r.modelId === prefModel);
+  const cBest = ssot.modelCBenchmark2025.find((r) => r.modelId === prefModel) ?? ssot.modelCBenchmark2025[0];
   const intermWindMW = cfg.baseWindOnshore2026MW + cfg.windExpansionOnshoreMW[refs.windIntermediate];
   const mcCentral = ssot.monteCarlo12Scenarios2035.find(
     (s) =>

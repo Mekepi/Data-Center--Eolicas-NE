@@ -36,6 +36,7 @@ from config import (
     DEFAULT_H2V_COMPARISON_MW,
     DEFAULT_PUE,
     DEFAULT_UTILIZATION,
+    H2V_SENSITIVITY_SPECS,
     HISTORY_END_YEAR,
     HISTORY_START_YEAR,
     HOURLY_BASELINE_JSON_PATH,
@@ -52,6 +53,7 @@ from config import (
     SIMULATOR_GRID_CSV_FILENAME,
     TARGET_END_YEAR,
     TRAIN_CUTOFF_YEAR,
+    TX_SENSITIVITY_SPECS,
     UI_THRESHOLDS,
     WIND_EXPANSION_ONSHORE_MW,
     export_frontend_config_dict,
@@ -154,10 +156,97 @@ def load_pipeline_metadata(metadata_path: Optional[Path] = None) -> Dict[str, An
     if not target.exists():
         raise FileNotFoundError(f"Arquivo de metadados não encontrado em: {target}")
     data = json.loads(target.read_text(encoding="utf-8"))
-    for key in ("dcProjectNotes", "featureMetadata", "scriptsCatalog", "uiCatalog"):
+    for key in (
+        "dcProjectNotes",
+        "featureMetadata",
+        "scriptsCatalog",
+        "uiCatalog",
+        "approvedLibrariesPolicy",
+    ):
         if key not in data:
             raise ValueError(f"Chave obrigatória '{key}' ausente em {target.name}")
     return data
+
+
+def _resolve_anova_target_id(raw_id: Any, target_variable: str) -> str:
+    explicit = safe_str(raw_id)
+    if explicit in {"cf_eolica", "l_base_mw", "intercambio_liquido_mw", "curtailment_mw"}:
+        return explicit
+    lowered = target_variable.lower()
+    for candidate in ("cf_eolica", "l_base_mw", "intercambio_liquido_mw", "curtailment_mw"):
+        if candidate in lowered:
+            return candidate
+    return "other"
+
+
+def _resolve_horizon_id(raw_id: Any, horizon_label: str) -> str:
+    explicit = safe_str(raw_id)
+    if explicit in {"1h", "24h", "exogenous_structural"}:
+        return explicit
+    lowered = horizon_label.lower()
+    if "1h" in lowered:
+        return "1h"
+    if "24h" in lowered:
+        return "24h"
+    return "exogenous_structural"
+
+
+def _resolve_model_id(raw_id: Any, architecture: str) -> str:
+    explicit = safe_str(raw_id)
+    if explicit in {"ridge", "logistic_ridge", "resmlp", "gbdt"}:
+        return explicit
+    lowered = architecture.lower()
+    if "resmlp" in lowered:
+        return "resmlp"
+    if "gbdt" in lowered:
+        return "gbdt"
+    if "logistic" in lowered or "logística" in lowered or "logistica" in lowered:
+        return "logistic_ridge"
+    return "ridge"
+
+
+def _resolve_family_id(raw_id: Any, family_label: str) -> str:
+    explicit = safe_str(raw_id)
+    if explicit in {"linear", "nonlinear"}:
+        return explicit
+    if family_label.strip().lower() == "linear":
+        return "linear"
+    return "nonlinear"
+
+
+def _resolve_tx_config_code(raw_code: Any, config_id: str) -> str:
+    explicit = safe_str(raw_code)
+    if explicit:
+        return explicit
+    for spec in TX_SENSITIVITY_SPECS:
+        if spec["configId"] == config_id or config_id.startswith(spec["configCode"]):
+            return str(spec["configCode"])
+    return config_id.split(" ")[0] if config_id else "TX-00"
+
+
+def _resolve_h2v_metadata(
+    raw_code: Any,
+    raw_flex: Any,
+    scenario_id: str,
+    h2v_nominal: float,
+) -> Tuple[str, str]:
+    explicit_code = safe_str(raw_code)
+    explicit_flex = safe_str(raw_flex)
+    if explicit_code and explicit_flex in {"none", "inflexible", "flexible"}:
+        return explicit_code, explicit_flex
+    for spec in H2V_SENSITIVITY_SPECS:
+        if spec["scenarioId"] == scenario_id or (
+            explicit_code and spec["scenarioCode"] == explicit_code
+        ):
+            return str(spec["scenarioCode"]), str(spec["flexMode"])
+    inferred_code = explicit_code or (scenario_id.split(" ")[0] if scenario_id else "H2V-00")
+    if h2v_nominal == 0.0:
+        inferred_flex = "none"
+    elif "flexível" in scenario_id.lower() or "flexivel" in scenario_id.lower():
+        inferred_flex = "flexible"
+    else:
+        inferred_flex = "inflexible"
+    return inferred_code, inferred_flex
 
 
 def _infer_developer(
@@ -415,10 +504,20 @@ def _build_scripts_pipeline(
     pipeline_metadata.json, os indicadores reais dos relatórios e o código literal
     em scripts/*.py.
     """
-    best_a_1h = next((r for r in model_a if "1h" in r["horizon"] and "ResMLP" in r["architecture"]), None)
-    best_a_24h = next((r for r in model_a if "24h" in r["horizon"] and "ResMLP" in r["architecture"]), None)
-    best_b_1h = next((r for r in model_b if "1h" in r["horizon"] and "ResMLP" in r["architecture"]), None)
-    best_c_nl = next((r for r in model_c if "ResMLP" in r["architecture"]), None)
+    pref_model = REFERENCE_SCENARIO_KEYS["preferredModelId"]
+    best_a_1h = next(
+        (r for r in model_a if r["horizonId"] == "1h" and r["modelId"] == pref_model),
+        None,
+    )
+    best_a_24h = next(
+        (r for r in model_a if r["horizonId"] == "24h" and r["modelId"] == pref_model),
+        None,
+    )
+    best_b_1h = next(
+        (r for r in model_b if r["horizonId"] == "1h" and r["modelId"] == pref_model),
+        None,
+    )
+    best_c_nl = next((r for r in model_c if r["modelId"] == pref_model), None)
     mc_central = next(
         (
             r
@@ -437,12 +536,16 @@ def _build_scripts_pipeline(
         ),
         None,
     )
-    tx_04 = next((r for r in tx_rows if r["configId"].startswith("TX-04")), None)
+    tx_04 = next(
+        (r for r in tx_rows if r["configCode"] == REFERENCE_SCENARIO_KEYS["txExpansionCode"]),
+        None,
+    )
     h2v_inflex = next(
         (
             r
             for r in h2v_rows
-            if abs(r["h2vNominalMW"] - DEFAULT_H2V_COMPARISON_MW) < 1e-3 and "Inflexível" in r["scenarioId"]
+            if abs(r["h2vNominalMW"] - DEFAULT_H2V_COMPARISON_MW) < 1e-3
+            and r["flexMode"] == "inflexible"
         ),
         None,
     )
@@ -450,7 +553,8 @@ def _build_scripts_pipeline(
         (
             r
             for r in h2v_rows
-            if abs(r["h2vNominalMW"] - DEFAULT_H2V_COMPARISON_MW) < 1e-3 and "Flexível" in r["scenarioId"]
+            if abs(r["h2vNominalMW"] - DEFAULT_H2V_COMPARISON_MW) < 1e-3
+            and r["flexMode"] == "flexible"
         ),
         None,
     )
@@ -579,15 +683,15 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
     interm_cap = BASE_WIND_ONSHORE_2026_MW + WIND_EXPANSION_ONSHORE_MW[REFERENCE_SCENARIO_KEYS["windIntermediate"]]
 
     tx_03 = next(
-        (r for r in tx_rows if str(r.get("configId", "")).startswith(REFERENCE_SCENARIO_KEYS["txReferenceIdPrefix"])),
+        (r for r in tx_rows if r.get("configCode") == REFERENCE_SCENARIO_KEYS["txReferenceCode"]),
         None,
     )
     h2v_01 = next(
         (
             r
             for r in h2v_rows
-            if float(r.get("h2vNominalMW", -1)) == 0.0
-            or str(r.get("scenarioId", "")).startswith(REFERENCE_SCENARIO_KEYS["h2vBaselineIdPrefix"])
+            if r.get("scenarioCode") == REFERENCE_SCENARIO_KEYS["h2vBaselineCode"]
+            or float(r.get("h2vNominalMW", -1)) == 0.0
         ),
         None,
     )
@@ -625,13 +729,14 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
             if abs(a_val - b_val) > tol:
                 violations.append(f"Divergência de paridade em {label}: {a_val} != {b_val} (tol {tol})")
 
-    # 3. Paridade do Markdown final com os CSVs
+    # 3. Paridade do Markdown final com os CSVs via contratos estruturados
     md_text = str(payload.get("passo5FinalExecutiveReportMd", ""))
+    pref_model = REFERENCE_SCENARIO_KEYS["preferredModelId"]
     model_a_24h = next(
         (
             r
             for r in payload.get("modelABenchmark2025", [])
-            if "24h" in str(r.get("horizon", "")) and "ResMLP" in str(r.get("architecture", ""))
+            if r.get("horizonId") == "24h" and r.get("modelId") == pref_model
         ),
         None,
     )
@@ -639,7 +744,7 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
         (
             r
             for r in payload.get("modelCBenchmark2025", [])
-            if "ResMLP" in str(r.get("architecture", ""))
+            if r.get("modelId") == pref_model
         ),
         None,
     )
@@ -648,7 +753,7 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
             r
             for r in h2v_rows
             if abs(float(r.get("h2vNominalMW", 0.0)) - DEFAULT_H2V_COMPARISON_MW) < 1e-3
-            and "Inflexível" in str(r.get("scenarioId", ""))
+            and r.get("flexMode") == "inflexible"
         ),
         None,
     )
@@ -657,7 +762,7 @@ def validate_ssot_cross_consistency(payload: Dict[str, Any]) -> List[str]:
             r
             for r in h2v_rows
             if abs(float(r.get("h2vNominalMW", 0.0)) - DEFAULT_H2V_COMPARISON_MW) < 1e-3
-            and "Flexível" in str(r.get("scenarioId", ""))
+            and r.get("flexMode") == "flexible"
         ),
         None,
     )
@@ -827,6 +932,7 @@ def build_ssot_payload(
     # 4. ANOVA, Sazonalidade Mensal e Correlações (Etapa 03)
     anova_results = [
         {
+            "targetId": _resolve_anova_target_id(r.get("alvo_id"), safe_str(r.get("variavel_analisada"))),
             "targetVariable": safe_str(r.get("variavel_analisada")),
             "groupingFactor": safe_str(r.get("fator_agrupador")),
             "fStatistic": round(safe_float(r.get("estatistica_f")), 2),
@@ -871,6 +977,9 @@ def build_ssot_payload(
     raw_model_a = read_csv_records_safe(model_a_path)
     model_a_rows = [
         {
+            "horizonId": _resolve_horizon_id(r.get("horizonte_id"), safe_str(r.get("horizonte"))),
+            "modelId": _resolve_model_id(r.get("modelo_id"), safe_str(r.get("arquitetura"))),
+            "familyId": _resolve_family_id(r.get("familia_id"), safe_str(r.get("familia"))),
             "horizon": safe_str(r.get("horizonte")),
             "architecture": safe_str(r.get("arquitetura")),
             "family": safe_str(r.get("familia")),
@@ -888,11 +997,17 @@ def build_ssot_payload(
     model_c_rows: List[Dict[str, Any]] = []
     for r in raw_model_bc:
         etapa = safe_str(r.get("etapa"))
+        horizon_lbl = safe_str(r.get("horizonte"))
+        arch_lbl = safe_str(r.get("arquitetura"))
+        fam_lbl = safe_str(r.get("familia"))
         if etapa.startswith("Modelo B"):
             model_b_rows.append({
-                "horizon": safe_str(r.get("horizonte")),
-                "architecture": safe_str(r.get("arquitetura")),
-                "family": safe_str(r.get("familia")),
+                "horizonId": _resolve_horizon_id(r.get("horizonte_id"), horizon_lbl),
+                "modelId": _resolve_model_id(r.get("modelo_id"), arch_lbl),
+                "familyId": _resolve_family_id(r.get("familia_id"), fam_lbl),
+                "horizon": horizon_lbl,
+                "architecture": arch_lbl,
+                "family": fam_lbl,
                 "maeCF": round(safe_float(r.get("mae_cf")), 4),
                 "rmseCF": round(safe_float(r.get("rmse_cf")), 4),
                 "r2Score": round(safe_float(r.get("r2_score")), 4),
@@ -900,8 +1015,11 @@ def build_ssot_payload(
             })
         elif etapa.startswith("Modelo C"):
             model_c_rows.append({
-                "architecture": safe_str(r.get("arquitetura")),
-                "family": safe_str(r.get("familia")),
+                "horizonId": _resolve_horizon_id(r.get("horizonte_id"), horizon_lbl or "exogenous_structural"),
+                "modelId": _resolve_model_id(r.get("modelo_id"), arch_lbl),
+                "familyId": _resolve_family_id(r.get("familia_id"), fam_lbl),
+                "architecture": arch_lbl,
+                "family": fam_lbl,
                 "rocAuc": round(safe_float(r.get("roc_auc")), 4),
                 "brierScore": round(safe_float(r.get("brier_score")), 4),
                 "f1Score": round(safe_float(r.get("f1_score")), 4),
@@ -984,6 +1102,7 @@ def build_ssot_payload(
     # 7. Passo 5 · Sensibilidade & ANEEL vs ONS (Etapa 07)
     tx_rows = [
         {
+            "configCode": _resolve_tx_config_code(r.get("codigo_config"), safe_str(r.get("id_config"))),
             "configId": safe_str(r.get("id_config")),
             "importLimitMW": round(safe_float(r.get("import_limit_mw")), 1),
             "exportLimitMW": round(safe_float(r.get("export_limit_mw")), 1),
@@ -999,11 +1118,22 @@ def build_ssot_payload(
         for r in read_csv_records_safe(tx_path)
     ]
 
-    h2v_rows = [
-        {
-            "scenarioId": safe_str(r.get("cenario_id")),
+    h2v_rows: List[Dict[str, Any]] = []
+    for r in read_csv_records_safe(h2v_path):
+        scen_label = safe_str(r.get("cenario_id"))
+        h2v_nom = round(safe_float(r.get("carga_h2v_nominal_mw")), 1)
+        scen_code, flex_mode = _resolve_h2v_metadata(
+            r.get("codigo_cenario"),
+            r.get("modo_flex"),
+            scen_label,
+            h2v_nom,
+        )
+        h2v_rows.append({
+            "scenarioCode": scen_code,
+            "flexMode": flex_mode,
+            "scenarioId": scen_label,
             "dcLoadMW": round(safe_float(r.get("carga_dc_mw")), 1),
-            "h2vNominalMW": round(safe_float(r.get("carga_h2v_nominal_mw")), 1),
+            "h2vNominalMW": h2v_nom,
             "h2vEffectiveAvgMW": round(safe_float(r.get("carga_h2v_media_efetiva_mw")), 1),
             "operatingRegime": safe_str(r.get("regime_operacional_h2v")),
             "probCriticalImportPct": round(safe_float(r.get("prob_import_critica_pct")), 2),
@@ -1012,9 +1142,7 @@ def build_ssot_payload(
             "totalAbsorbedCurtailmentTWh": round(safe_float(r.get("curtailment_absorvido_total_twh")), 2),
             "pecemSubstationLoadMW": round(safe_float(r.get("pressao_se_pecem_ii_mw")), 1),
             "compensatoryWindGW": round(safe_float(r.get("expansao_eolica_compensatoria_gw")), 2),
-        }
-        for r in read_csv_records_safe(h2v_path)
-    ]
+        })
 
     ind_rows = [
         {
@@ -1058,9 +1186,10 @@ def build_ssot_payload(
     )
 
     payload: Dict[str, Any] = {
-        "schemaVersion": "2.0.0",
+        "schemaVersion": "2.1.0",
         "config": export_frontend_config_dict(),
         "uiCatalog": ui_catalog,
+        "approvedLibrariesPolicy": meta_bundle["approvedLibrariesPolicy"],
         "lineage": lineage,
         "dataCentersPipeline": dc_projects,
         "substationLoadConcentration": substations,

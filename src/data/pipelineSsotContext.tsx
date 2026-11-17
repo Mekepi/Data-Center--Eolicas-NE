@@ -28,6 +28,8 @@ function isValidSsotBundle(candidate: unknown): candidate is PipelineSsotBundle 
   return (
     typeof obj.schemaVersion === 'string' &&
     Boolean(obj.config) &&
+    Boolean(obj.uiCatalog) &&
+    Boolean(obj.approvedLibrariesPolicy) &&
     Boolean(obj.lineage) &&
     Array.isArray(obj.dataCentersPipeline) &&
     Array.isArray(obj.monteCarlo12Scenarios2035) &&

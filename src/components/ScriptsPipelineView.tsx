@@ -155,6 +155,56 @@ export const ScriptsPipelineView: React.FC = () => {
           </div>
         </div>
       </section>
+
+      <section
+        aria-labelledby="heading-libs-policy"
+        className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8 space-y-5"
+      >
+        <div className="pb-4 border-b border-slate-200">
+          <p className="text-xs font-semibold uppercase tracking-wider text-sky-800">
+            Governança de Dependências Científicas · SSOT (<span className="font-mono">scripts/pipeline_metadata.json</span>)
+          </p>
+          <h2 id="heading-libs-policy" className="text-lg font-bold text-slate-900 mt-0.5">
+            Política de Bibliotecas Aprovadas e Substituições em NumPy/SciPy
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          <div className="space-y-2">
+            <h3 className="font-semibold text-slate-900">Biblioteca Padrão Python</h3>
+            <p className="font-mono text-slate-600 leading-relaxed">
+              {ssot.approvedLibrariesPolicy.standard.join(' · ')}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <h3 className="font-semibold text-slate-900">Bibliotecas Científicas Homologadas</h3>
+            <p className="font-mono text-sky-900 font-medium leading-relaxed">
+              {ssot.approvedLibrariesPolicy.commonApproved.join(' · ')}
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase">
+                <th className="py-2.5 pr-4">Biblioteca Candidata</th>
+                <th className="py-2.5 px-3">Estratégia Adotada no Pipeline</th>
+                <th className="py-2.5 pl-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-slate-700">
+              {ssot.approvedLibrariesPolicy.candidateLibrariesRequiringApproval.map((lib) => (
+                <tr key={lib.name} className="hover:bg-slate-50">
+                  <td className="py-2.5 pr-4 font-mono font-semibold text-slate-900 whitespace-nowrap">{lib.name}</td>
+                  <td className="py-2.5 px-3 text-slate-600">{lib.role}</td>
+                  <td className="py-2.5 pl-3 font-medium text-emerald-800 whitespace-nowrap">{lib.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 };

@@ -35,6 +35,7 @@ from ml_models_numpy import (
     ResidualMLPRegressor,
     HistogramGBDTRegressor,
     compute_regression_metrics,
+    impute_with_train_medians,
 )
 
 
@@ -80,11 +81,14 @@ FEATURES_24H_DAY_AHEAD = [
 ]
 
 
-def _eval_backtest_fold_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Dict[str, float]:
-    """Worker paralelo para validação cruzada em janela expansiva (TimeSeriesSplit) no conjunto 2015-2024."""
-    fold_idx, X_tr, y_tr, X_val, y_val = args
+def _eval_backtest_fold_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]) -> Dict[str, float]:
+    """Worker paralelo para validação cruzada em janela expansiva (TimeSeriesSplit + embargo) no conjunto 2015-2024."""
+    fold_idx, X_tr_raw, y_tr, X_val_raw, y_val, embargo_hours = args
     bt_mlp_cfg = ML_MODEL_PARAMS["modelABacktestResMlp"]
     seed = int(ML_MODEL_PARAMS["seed"])
+
+    X_tr, X_val = impute_with_train_medians(X_tr_raw, X_val_raw)
+    assert X_val is not None
 
     ridge = LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"])).fit(X_tr, y_tr)
     m_ridge = compute_regression_metrics(y_val, ridge.predict(X_val))
@@ -100,11 +104,14 @@ def _eval_backtest_fold_worker(args: Tuple[int, np.ndarray, np.ndarray, np.ndarr
     return {
         "fold": fold_idx,
         "train_hours": int(len(X_tr)),
+        "embargo_hours": int(embargo_hours),
         "val_hours": int(len(X_val)),
         "ridge_mae_mw": round(m_ridge["mae"], 2),
         "ridge_mape_pct": round(m_ridge["mape_pct"], 2),
+        "ridge_r2": round(m_ridge["r2"], 4),
         "resmlp_mae_mw": round(m_mlp["mae"], 2),
         "resmlp_mape_pct": round(m_mlp["mape_pct"], 2),
+        "resmlp_r2": round(m_mlp["r2"], 4),
     }
 
 
@@ -114,22 +121,27 @@ def run_expanding_window_backtest(
     target_col: str = "l_base_mw",
     n_splits: int = int(ML_MODEL_PARAMS["backtestSplits"]),
     val_hours: int = int(ML_MODEL_PARAMS["backtestValHours"]),  # Janelas trimestrais (2.160 h) por fold
+    embargo_hours: int = int(ML_MODEL_PARAMS.get("backtestEmbargoHours", 168)),
 ) -> pd.DataFrame:
-    """Executa TimeSeriesSplit estritamente dentro da base de treino (2015-2024) em paralelo."""
+    """Executa TimeSeriesSplit estritamente dentro da base de treino (2015-2024) com embargo temporal."""
     X_all = train_df[feature_cols].to_numpy(dtype=float)
     y_all = train_df[target_col].to_numpy(dtype=float)
     total = len(train_df)
     min_train_hours = int(ML_MODEL_PARAMS["backtestMinTrainHours"])
+    eff_embargo = max(0, int(embargo_hours))
 
     tasks = []
     for i in range(n_splits, 0, -1):
         val_end = total - (i - 1) * val_hours
         val_start = val_end - val_hours
-        if val_start < min_train_hours:
+        tr_end = val_start - eff_embargo
+        if tr_end < min_train_hours:
             continue
         fold_num = n_splits - i + 1
-        tasks.append((fold_num, X_all[:val_start], y_all[:val_start], X_all[val_start:val_end], y_all[val_start:val_end]))
+        tasks.append((fold_num, X_all[:tr_end], y_all[:tr_end], X_all[val_start:val_end], y_all[val_start:val_end], eff_embargo))
 
+    if not tasks:
+        return pd.DataFrame()
     n_workers = max(1, min(len(tasks), os.cpu_count() or 2))
     with mp.Pool(processes=n_workers) as pool:
         rows = pool.map(_eval_backtest_fold_worker, tasks)
@@ -151,19 +163,23 @@ def evaluate_models_out_of_time_2025(
     benchmark_rows = []
     preds_2025 = test_df[["ts", "month", "hour", "faixa_ponta", "l_base_mw"]].copy()
 
-    for horizon_name, cand_cols in [
-        ("Operativo Curto Prazo (1h-Ahead)", FEATURES_1H_AHEAD),
-        ("Programação Diária (24h Day-Ahead)", FEATURES_24H_DAY_AHEAD),
+    for horizon_id, horizon_name, cand_cols in [
+        ("1h", "Operativo Curto Prazo (1h-Ahead)", FEATURES_1H_AHEAD),
+        ("24h", "Programação Diária (24h Day-Ahead)", FEATURES_24H_DAY_AHEAD),
     ]:
         feats = [c for c in cand_cols if c in train_df.columns]
-        X_tr = train_df[feats].to_numpy(dtype=float)
-        X_te = test_df[feats].to_numpy(dtype=float)
+        X_tr_raw = train_df[feats].to_numpy(dtype=float)
+        X_te_raw = test_df[feats].to_numpy(dtype=float)
+        X_tr, X_te = impute_with_train_medians(X_tr_raw, X_te_raw)
+        assert X_te is not None
 
         mlp_cfg = ML_MODEL_PARAMS["modelAResMlp"]
         gbdt_cfg = ML_MODEL_PARAMS["modelAGbdt"]
         models = [
-            ("Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"]))),
+            ("ridge", "linear", "Baseline Linear · Ridge L2", "Linear", LinearRidgeModel(alpha=float(ML_MODEL_PARAMS["ridgeAlpha"]))),
             (
+                "resmlp",
+                "nonlinear",
                 "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
                 "Não-Linear (SciPy L-BFGS-B)",
                 ResidualMLPRegressor(
@@ -174,6 +190,8 @@ def evaluate_models_out_of_time_2025(
                 ),
             ),
             (
+                "gbdt",
+                "nonlinear",
                 "Challenger Não-Linear · Histogram GBDT (Árvores)",
                 "Não-Linear (NumPy GBDT)",
                 HistogramGBDTRegressor(
@@ -185,7 +203,7 @@ def evaluate_models_out_of_time_2025(
             ),
         ]
 
-        for model_name, family, est in models:
+        for model_id, family_id, model_name, family, est in models:
             est.fit(X_tr, y_train)
             y_hat = est.predict(X_te)
             m = compute_regression_metrics(y_test, y_hat)
@@ -193,6 +211,9 @@ def evaluate_models_out_of_time_2025(
 
             benchmark_rows.append({
                 "etapa": "Modelo A - Carga Base NE",
+                "horizonte_id": horizon_id,
+                "modelo_id": model_id,
+                "familia_id": family_id,
                 "horizonte": horizon_name,
                 "arquitetura": model_name,
                 "familia": family,
@@ -205,20 +226,7 @@ def evaluate_models_out_of_time_2025(
                 "teste_2025_horas": len(test_df),
             })
 
-            if horizon_name.startswith("Operativo"):
-                if "Ridge" in model_name:
-                    preds_2025["pred_l_base_ridge_1h_mw"] = np.round(y_hat, 2)
-                elif "ResMLP" in model_name:
-                    preds_2025["pred_l_base_resmlp_1h_mw"] = np.round(y_hat, 2)
-                elif "GBDT" in model_name:
-                    preds_2025["pred_l_base_gbdt_1h_mw"] = np.round(y_hat, 2)
-            else:
-                if "Ridge" in model_name:
-                    preds_2025["pred_l_base_ridge_24h_mw"] = np.round(y_hat, 2)
-                elif "ResMLP" in model_name:
-                    preds_2025["pred_l_base_resmlp_24h_mw"] = np.round(y_hat, 2)
-                elif "GBDT" in model_name:
-                    preds_2025["pred_l_base_gbdt_24h_mw"] = np.round(y_hat, 2)
+            preds_2025[f"pred_l_base_{model_id}_{horizon_id}_mw"] = np.round(y_hat, 2)
 
     return pd.DataFrame(benchmark_rows), preds_2025
 

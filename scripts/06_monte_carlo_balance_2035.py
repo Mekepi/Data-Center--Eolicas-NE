@@ -199,6 +199,146 @@ def _compute_firm_wind_cf(seasonal_regime: str, offshore_share: float) -> float:
     return (1.0 - offshore_weight) * cf_onshore + offshore_weight * offshore_marg_cf
 
 
+_MC_VECTOR_CHUNK_SIZE = 2000
+
+
+def _evaluate_bootstrap_batch(
+    b_idx: np.ndarray,
+    load_noise: np.ndarray,
+    sim_wind_completion: np.ndarray,
+    sim_wind_regime: np.ndarray,
+    dc_jitter: np.ndarray,
+    arrays: Dict[str, np.ndarray],
+    dc_load_mw: float,
+    wind_capacity_mw: float,
+    offshore_share: float,
+    structural_load_growth: float,
+    solar_growth: float,
+    import_limit_mw: float,
+    export_limit_mw: float,
+    h2v_nominal_mw: float,
+    h2v_flexible: bool,
+    block_size: int,
+    offshore_cf_gain: float,
+    cf_ceiling: float,
+    h2v_cfg: Tuple[float, float, int, int, float, float, int, int, float, float, float],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Núcleo matricial vetorizado (shape: [batch_n, block_size]) do Balanço Horário NE.
+    Substitui o loop Python iteração-a-iteração preservando exatamente as equações físicas.
+    """
+    cf_arr = arrays["cf"]
+    load_arr = arrays["load"]
+    solar_arr = arrays["solar"]
+    hour_arr = arrays.get("hour")
+    month_arr = arrays.get("month")
+    hydro_arr = arrays.get("hydro")
+    thermal_arr = arrays.get("thermal")
+
+    batch_n = int(len(b_idx))
+    block_offsets = np.arange(block_size, dtype=np.intp)[None, :]
+    idx_mat = b_idx[:, None].astype(np.intp) * block_size + block_offsets
+
+    cf_block = cf_arr[idx_mat]
+    load_block = load_arr[idx_mat] * structural_load_growth
+    solar_block = solar_arr[idx_mat] * solar_growth
+    month_block = month_arr[idx_mat] if month_arr is not None else None
+    hydro_block = hydro_arr[idx_mat] if hydro_arr is not None else None
+    thermal_block = thermal_arr[idx_mat] if thermal_arr is not None else None
+
+    sim_base_load = load_block * load_noise[:, None]
+    effective_cf = np.clip(
+        cf_block * sim_wind_regime[:, None] + offshore_share * offshore_cf_gain * (1.0 - cf_block),
+        0.0,
+        cf_ceiling,
+    )
+    sim_wind_gen = effective_cf * (wind_capacity_mw * sim_wind_completion[:, None])
+    sim_dc_load = dc_load_mw * dc_jitter[:, None] if dc_load_mw > 0.0 else 0.0
+
+    hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(
+        sim_base_load,
+        sim_wind_gen,
+        solar_block,
+        month_arr=month_block,
+        obs_hydro_mw=hydro_block,
+        obs_thermal_mw=thermal_block,
+    )
+    total_gen = sim_wind_gen + solar_block + hydro_thermal_mw
+    export_threshold = np.maximum(0.0, export_limit_mw - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block)
+
+    (
+        inflex_factor,
+        h2v_high_cf,
+        h2v_sol_hmin,
+        h2v_sol_hmax,
+        h2v_sol_cf,
+        h2v_low_cf,
+        h2v_pk_hmin,
+        h2v_pk_hmax,
+        h2v_high_f,
+        h2v_mid_f,
+        h2v_low_f,
+    ) = h2v_cfg
+
+    if h2v_nominal_mw > 0.0:
+        if h2v_flexible:
+            if hour_arr is not None:
+                hr_block = hour_arr[idx_mat]
+            else:
+                hr_block = np.broadcast_to(
+                    np.arange(block_size, dtype=np.int32) % HOURS_PER_DAY,
+                    (batch_n, block_size),
+                )
+            pre_h2v_margin = total_gen - (sim_base_load + sim_dc_load)
+            curtail_surplus_active = pre_h2v_margin >= export_threshold
+            flex_factor = np.where(
+                (effective_cf >= h2v_high_cf)
+                | curtail_surplus_active
+                | ((hr_block >= h2v_sol_hmin) & (hr_block <= h2v_sol_hmax) & (effective_cf >= h2v_sol_cf)),
+                h2v_high_f,
+                np.where(
+                    (effective_cf < h2v_low_cf) | ((hr_block >= h2v_pk_hmin) & (hr_block <= h2v_pk_hmax)),
+                    h2v_low_f,
+                    h2v_mid_f,
+                ),
+            )
+            sim_h2v_block = h2v_nominal_mw * flex_factor
+        else:
+            sim_h2v_block = np.full((batch_n, block_size), h2v_nominal_mw * inflex_factor, dtype=float)
+        h2v_means = np.mean(sim_h2v_block, axis=1)
+    else:
+        sim_h2v_block = 0.0
+        h2v_means = np.zeros(batch_n, dtype=float)
+
+    margin_no_dc = total_gen - sim_base_load
+    margin_with_dc = total_gen - (sim_base_load + sim_dc_load + sim_h2v_block)
+
+    import_no_dc = np.maximum(0.0, -margin_no_dc)
+    import_with_dc = np.maximum(0.0, -margin_with_dc)
+
+    peak_imp_no_dc = np.max(import_no_dc, axis=1)
+    peak_imp = np.max(import_with_dc, axis=1)
+    min_margin = np.min(margin_with_dc, axis=1)
+
+    scale_to_year = float(HOURS_PER_YEAR) / float(block_size)
+    exceed_hrs = np.sum(import_with_dc > import_limit_mw, axis=1) * scale_to_year
+
+    curt_no_dc_mw = np.maximum(0.0, margin_no_dc - export_threshold)
+    curt_dc_mw = np.maximum(0.0, margin_with_dc - export_threshold)
+    curt_no_dc_twh = np.sum(curt_no_dc_mw, axis=1) * scale_to_year / 1e6
+    curt_dc_twh = np.sum(curt_dc_mw, axis=1) * scale_to_year / 1e6
+
+    return (
+        peak_imp_no_dc,
+        peak_imp,
+        min_margin,
+        exceed_hrs,
+        curt_no_dc_twh,
+        curt_dc_twh,
+        h2v_means,
+    )
+
+
 def simulate_block_bootstrap(
     cenario_nome: str,
     cenario_dc_id: str,
@@ -217,18 +357,14 @@ def simulate_block_bootstrap(
     seasonal_regime: str = "annual_blend",
 ) -> Dict[str, Any]:
     """
-    Núcleo estocástico Block-Bootstrap (blocos semanais escalados para base anual de HOURS_PER_YEAR)
-    compartilhado entre os Passos 4 (Script 06) e 5 (Script 07: Transmissão e H2V).
+    Núcleo estocástico Block-Bootstrap vetorizado em chunks matriciais (blocos semanais escalados para
+    base anual de HOURS_PER_YEAR) compartilhado entre os Passos 4 (Script 06) e 5 (Script 07).
     """
+    if n_iterations < 1:
+        raise ValueError(f"n_iterations deve ser >= 1, recebido {n_iterations}.")
+
     rng = np.random.default_rng(seed)
     cf_arr = arrays["cf"]
-    load_arr = arrays["load"]
-    solar_arr = arrays["solar"]
-    hour_arr = arrays.get("hour")
-    month_arr = arrays.get("month")
-    hydro_arr = arrays.get("hydro")
-    thermal_arr = arrays.get("thermal")
-
     block_size = int(BLOCK_SIZE_HOURS)
     n_blocks = max(1, len(cf_arr) // block_size)
 
@@ -248,17 +384,19 @@ def simulate_block_bootstrap(
     dc_jit_min = float(MONTE_CARLO_PARAMS["dcLoadJitterMin"])
     dc_jit_max = float(MONTE_CARLO_PARAMS["dcLoadJitterMax"])
 
-    inflex_factor = float(H2V_FLEX_PARAMS["inflexibleLoadFactor"])
-    h2v_high_cf = float(H2V_FLEX_PARAMS["flexHighCfThreshold"])
-    h2v_sol_hmin = int(H2V_FLEX_PARAMS["flexSolarHourMin"])
-    h2v_sol_hmax = int(H2V_FLEX_PARAMS["flexSolarHourMax"])
-    h2v_sol_cf = float(H2V_FLEX_PARAMS["flexSolarCfThreshold"])
-    h2v_low_cf = float(H2V_FLEX_PARAMS["flexLowCfThreshold"])
-    h2v_pk_hmin = int(H2V_FLEX_PARAMS["flexPeakHourMin"])
-    h2v_pk_hmax = int(H2V_FLEX_PARAMS["flexPeakHourMax"])
-    h2v_high_f = float(H2V_FLEX_PARAMS["flexHighFactor"])
-    h2v_mid_f = float(H2V_FLEX_PARAMS["flexMidFactor"])
-    h2v_low_f = float(H2V_FLEX_PARAMS["flexLowFactor"])
+    h2v_cfg = (
+        float(H2V_FLEX_PARAMS["inflexibleLoadFactor"]),
+        float(H2V_FLEX_PARAMS["flexHighCfThreshold"]),
+        int(H2V_FLEX_PARAMS["flexSolarHourMin"]),
+        int(H2V_FLEX_PARAMS["flexSolarHourMax"]),
+        float(H2V_FLEX_PARAMS["flexSolarCfThreshold"]),
+        float(H2V_FLEX_PARAMS["flexLowCfThreshold"]),
+        int(H2V_FLEX_PARAMS["flexPeakHourMin"]),
+        int(H2V_FLEX_PARAMS["flexPeakHourMax"]),
+        float(H2V_FLEX_PARAMS["flexHighFactor"]),
+        float(H2V_FLEX_PARAMS["flexMidFactor"]),
+        float(H2V_FLEX_PARAMS["flexLowFactor"]),
+    )
 
     peak_imports = np.empty(n_iterations, dtype=float)
     peak_imports_no_dc = np.empty(n_iterations, dtype=float)
@@ -268,94 +406,46 @@ def simulate_block_bootstrap(
     min_margins_mw = np.empty(n_iterations, dtype=float)
     h2v_means_mw = np.empty(n_iterations, dtype=float)
 
-    for i in range(n_iterations):
-        # 1. Sorteio de bloco semanal contíguo preservando autocorrelação de vento, sol e carga
-        b_idx = int(rng.integers(0, n_blocks))
-        s = b_idx * block_size
-        e = s + block_size
+    chunk_size = int(_MC_VECTOR_CHUNK_SIZE)
+    for start_i in range(0, n_iterations, chunk_size):
+        end_i = min(n_iterations, start_i + chunk_size)
+        cur_n = end_i - start_i
 
-        cf_block = cf_arr[s:e]
-        load_block = load_arr[s:e] * structural_load_growth
-        solar_block = solar_arr[s:e] * solar_growth
-        month_block = month_arr[s:e] if month_arr is not None else None
-        hydro_block = hydro_arr[s:e] if hydro_arr is not None else None
-        thermal_block = thermal_arr[s:e] if thermal_arr is not None else None
+        b_idx = rng.integers(0, n_blocks, size=cur_n)
+        load_noise = rng.normal(1.0, load_noise_std, size=cur_n)
+        sim_wind_completion = rng.uniform(wind_comp_min, wind_comp_max, size=cur_n)
+        sim_wind_regime = rng.uniform(wind_reg_min, wind_reg_max, size=cur_n)
+        dc_jitter = rng.uniform(dc_jit_min, dc_jit_max, size=cur_n)
 
-        # 2. Incerteza da demanda base (resíduo Modelo A + anomalia de temperatura)
-        sim_base_load = load_block * rng.normal(1.0, load_noise_std)
-
-        # 3. Incerteza de execução de obras SIGA/IBAMA e regime de vento interanual
-        sim_wind_completion = rng.uniform(wind_comp_min, wind_comp_max)
-        sim_wind_regime = rng.uniform(wind_reg_min, wind_reg_max)
-        effective_cf = np.clip(
-            cf_block * sim_wind_regime + offshore_share * offshore_cf_gain * (1.0 - cf_block),
-            0.0,
-            cf_ceiling,
+        (
+            peak_imports_no_dc[start_i:end_i],
+            peak_imports[start_i:end_i],
+            min_margins_mw[start_i:end_i],
+            exceed_hours_annual[start_i:end_i],
+            curt_without_dc_twh[start_i:end_i],
+            curt_with_dc_twh[start_i:end_i],
+            h2v_means_mw[start_i:end_i],
+        ) = _evaluate_bootstrap_batch(
+            b_idx=b_idx,
+            load_noise=load_noise,
+            sim_wind_completion=sim_wind_completion,
+            sim_wind_regime=sim_wind_regime,
+            dc_jitter=dc_jitter,
+            arrays=arrays,
+            dc_load_mw=dc_load_mw,
+            wind_capacity_mw=wind_capacity_mw,
+            offshore_share=offshore_share,
+            structural_load_growth=structural_load_growth,
+            solar_growth=solar_growth,
+            import_limit_mw=import_limit_mw,
+            export_limit_mw=export_limit_mw,
+            h2v_nominal_mw=h2v_nominal_mw,
+            h2v_flexible=h2v_flexible,
+            block_size=block_size,
+            offshore_cf_gain=offshore_cf_gain,
+            cf_ceiling=cf_ceiling,
+            h2v_cfg=h2v_cfg,
         )
-        sim_wind_gen = effective_cf * (wind_capacity_mw * sim_wind_completion)
-
-        # 4. Incerteza de utilização e PUE térmico dos Data Centers
-        sim_dc_load = dc_load_mw * rng.uniform(dc_jit_min, dc_jit_max) if dc_load_mw > 0 else 0.0
-
-        # 5. Despacho hidrotérmico sazonal (Chesf + inflexibilidade térmica) e limiar solar-eólico de exportação
-        hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(
-            sim_base_load,
-            sim_wind_gen,
-            solar_block,
-            month_arr=month_block,
-            obs_hydro_mw=hydro_block,
-            obs_thermal_mw=thermal_block,
-        )
-        total_gen = sim_wind_gen + solar_block + hydro_thermal_mw
-        export_threshold = np.maximum(0.0, export_limit_mw - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block)
-
-        # 5b. Carga eletrointensiva opcional de Hidrogênio Verde (H2V) acoplada ao corte solar-eólico
-        if h2v_nominal_mw > 0.0:
-            if h2v_flexible:
-                if hour_arr is not None:
-                    hr_block = hour_arr[s:e]
-                else:
-                    hr_block = np.arange(block_size, dtype=np.int32) % HOURS_PER_DAY
-                pre_h2v_margin = total_gen - (sim_base_load + sim_dc_load)
-                curtail_surplus_active = pre_h2v_margin >= export_threshold
-                flex_factor = np.where(
-                    (effective_cf >= h2v_high_cf)
-                    | curtail_surplus_active
-                    | ((hr_block >= h2v_sol_hmin) & (hr_block <= h2v_sol_hmax) & (effective_cf >= h2v_sol_cf)),
-                    h2v_high_f,
-                    np.where(
-                        (effective_cf < h2v_low_cf) | ((hr_block >= h2v_pk_hmin) & (hr_block <= h2v_pk_hmax)),
-                        h2v_low_f,
-                        h2v_mid_f,
-                    ),
-                )
-                sim_h2v_block = h2v_nominal_mw * flex_factor
-            else:
-                sim_h2v_block = np.full(block_size, h2v_nominal_mw * inflex_factor, dtype=float)
-            h2v_means_mw[i] = float(np.mean(sim_h2v_block))
-        else:
-            sim_h2v_block = 0.0
-            h2v_means_mw[i] = 0.0
-
-        margin_no_dc = total_gen - sim_base_load
-        margin_with_dc = total_gen - (sim_base_load + sim_dc_load + sim_h2v_block)
-
-        import_no_dc = np.maximum(0.0, -margin_no_dc)
-        import_with_dc = np.maximum(0.0, -margin_with_dc)
-
-        peak_imports_no_dc[i] = float(np.max(import_no_dc))
-        peak_imports[i] = float(np.max(import_with_dc))
-        min_margins_mw[i] = float(np.min(margin_with_dc))
-
-        scale_to_year = float(HOURS_PER_YEAR) / float(block_size)
-        exceed_hours_annual[i] = float(np.sum(import_with_dc > import_limit_mw) * scale_to_year)
-
-        # 6. Curtailment Horário (Modelo C: limite de exportação SIN + restrição elétrica solar diurna)
-        curt_no_dc_mw = np.maximum(0.0, margin_no_dc - export_threshold)
-        curt_dc_mw = np.maximum(0.0, margin_with_dc - export_threshold)
-
-        curt_without_dc_twh[i] = float(np.sum(curt_no_dc_mw) * scale_to_year / 1e6)
-        curt_with_dc_twh[i] = float(np.sum(curt_dc_mw) * scale_to_year / 1e6)
 
     p50_import = float(np.percentile(peak_imports, 50))
     p90_import = float(np.percentile(peak_imports, 90))
@@ -462,9 +552,12 @@ def run_bottom_up_project_monte_carlo(
     wind_offshore_mw: float = 0.0,
 ) -> Tuple[Dict[str, Any], pd.DataFrame, pd.DataFrame]:
     """
-    Executa a amostragem estocástica bottom-up individual dos projetos nominais:
-    Bernoulli(p) de concretização + Uniforme(0, delay_mult*atraso) + agregação por Subestação da Rede Básica.
+    Executa a amostragem estocástica bottom-up vetorizada dos projetos nominais:
+    Bernoulli(p) de concretização + Uniforme(0, delay_mult*atraso) + agregação matricial por Subestação.
     """
+    if n_iterations < 1:
+        raise ValueError(f"n_iterations deve ser >= 1, recebido {n_iterations}.")
+
     rng = np.random.default_rng(seed)
     arrays = _prepare_seasonal_blocks(base_df)
     cf_array = arrays["cf"]
@@ -489,12 +582,9 @@ def run_bottom_up_project_monte_carlo(
     wind_comp_max = float(MONTE_CARLO_PARAMS["windCompletionMax"])
     wind_reg_min = float(MONTE_CARLO_PARAMS["windRegimeMin"])
     wind_reg_max = float(MONTE_CARLO_PARAMS["windRegimeMax"])
-
-    total_dc_loads: List[float] = []
-    peak_imports: List[float] = []
-    critical_import_count = 0
-    curtailment_dc_mwh: List[float] = []
-    active_projects_counts: List[int] = []
+    offshore_cf_gain = float(MONTE_CARLO_PARAMS["offshoreCfGain"])
+    cf_ceiling = float(MONTE_CARLO_PARAMS["cfCeiling"])
+    offshore_share = wind_offshore_mw / max(1.0, wind_capacity_mw)
 
     sub_keys: List[Tuple[str, str, int]] = [
         (str(sub), str(est), int(kv))
@@ -502,66 +592,73 @@ def run_bottom_up_project_monte_carlo(
             ["subestacao_conexao", "estado", "tensao_conexao_kv"], sort=False
         )
     ]
-    substation_loads: Dict[Tuple[str, str, int], List[float]] = {k: [] for k in sub_keys}
+    sub_idx_map = {k: idx for idx, k in enumerate(sub_keys)}
 
-    for _ in range(n_iterations):
-        iter_dc_load = 0.0
-        iter_active_count = 0
-        iter_sub_load: Dict[Tuple[str, str, int], float] = {k: 0.0 for k in sub_keys}
+    n_proj = len(pipeline_df)
+    prob_ok_vec = pipeline_df["probabilidade_concretizacao"].to_numpy(dtype=float)
+    atraso_max_vec = np.maximum(0.1, pipeline_df["atraso_esperado_anos"].to_numpy(dtype=float) * delay_mult)
+    ano_inicio_vec = pipeline_df["ano_inicio_previsto"].to_numpy(dtype=float)
+    rampa_meses_vec = np.maximum(1.0, pipeline_df["rampa_meses"].to_numpy(dtype=float))
+    is_total_rede = pipeline_df["tipo_publicacao"].astype(str).to_numpy() == "potencia_total_rede"
+    p_rede_vec = np.where(
+        is_total_rede,
+        pd.to_numeric(pipeline_df["potencia_total_rede_mw"], errors="coerce").fillna(0.0).to_numpy(dtype=float),
+        pd.to_numeric(pipeline_df["potencia_it_mw"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+        * pd.to_numeric(pipeline_df["pue_estimado"], errors="coerce").fillna(DEFAULT_PUE).to_numpy(dtype=float),
+    )
 
-        for _, proj in pipeline_df.iterrows():
-            prob_ok = float(proj["probabilidade_concretizacao"])
-            if rng.random() > prob_ok:
-                continue
+    sub_indicator = np.zeros((n_proj, len(sub_keys)), dtype=float)
+    for p_idx, (_, proj) in enumerate(pipeline_df.iterrows()):
+        s_key = (str(proj["subestacao_conexao"]), str(proj["estado"]), int(proj["tensao_conexao_kv"]))
+        sub_indicator[p_idx, sub_idx_map[s_key]] = 1.0
 
-            atraso_max = float(proj["atraso_esperado_anos"]) * delay_mult
-            stochastic_delay = rng.uniform(0.0, max(0.1, atraso_max))
-            ramp = compute_project_ramp_for_year(
-                ano_alvo=target_year,
-                ano_inicio=int(proj["ano_inicio_previsto"]),
-                rampa_meses=int(proj["rampa_meses"]),
-                atraso_anos=stochastic_delay,
-            )
-            if ramp <= 0.0:
-                continue
+    # Amostragem matricial vetorizada dos N projetos (n_iterations x n_proj)
+    is_realized = rng.random((n_iterations, n_proj)) <= prob_ok_vec[None, :]
+    stochastic_delay = rng.uniform(0.0, 1.0, size=(n_iterations, n_proj)) * atraso_max_vec[None, :]
+    data_efetiva = ano_inicio_vec[None, :] + stochastic_delay
+    meses_decorridos = (float(target_year) - data_efetiva) * 12.0 + 6.0
+    ramps = np.where(
+        float(target_year) >= data_efetiva,
+        np.clip(meses_decorridos / rampa_meses_vec[None, :], 0.0, 1.0),
+        0.0,
+    )
+    sim_util = rng.uniform(util_min, util_max, size=(n_iterations, n_proj))
+    active_mask = is_realized & (ramps > 0.0)
+    proj_demands = np.where(active_mask, p_rede_vec[None, :] * sim_util * ramps, 0.0)
 
-            if proj["tipo_publicacao"] == "potencia_total_rede":
-                p_rede = float(proj["potencia_total_rede_mw"])
-            else:
-                p_rede = float(proj["potencia_it_mw"]) * float(proj["pue_estimado"])
+    total_dc_loads = np.sum(proj_demands, axis=1)
+    active_projects_counts = np.sum(active_mask, axis=1)
+    sub_loads_mat = proj_demands @ sub_indicator
 
-            sim_util = rng.uniform(util_min, util_max)
-            p_demanda = p_rede * sim_util * ramp
+    peak_imports = np.empty(n_iterations, dtype=float)
+    curtailment_dc_mwh = np.empty(n_iterations, dtype=float)
+    block_offsets = np.arange(block_size_hours, dtype=np.intp)[None, :]
+    chunk_size = int(_MC_VECTOR_CHUNK_SIZE)
 
-            sub_key = (
-                str(proj["subestacao_conexao"]),
-                str(proj["estado"]),
-                int(proj["tensao_conexao_kv"]),
-            )
-            iter_dc_load += p_demanda
-            iter_active_count += 1
-            iter_sub_load[sub_key] += p_demanda
+    for start_i in range(0, n_iterations, chunk_size):
+        end_i = min(n_iterations, start_i + chunk_size)
+        cur_n = end_i - start_i
 
-        total_dc_loads.append(iter_dc_load)
-        active_projects_counts.append(iter_active_count)
-        for sub_key in sub_keys:
-            substation_loads[sub_key].append(iter_sub_load[sub_key])
+        b_idx = rng.integers(0, n_blocks, size=cur_n)
+        idx_mat = b_idx[:, None].astype(np.intp) * block_size_hours + block_offsets
 
-        block_idx = int(rng.integers(0, n_blocks))
-        start_h = block_idx * block_size_hours
-        end_h = start_h + block_size_hours
+        cf_block = cf_array[idx_mat]
+        load_block = base_load_array[idx_mat] * structural_growth
+        solar_block = solar_array[idx_mat] * solar_growth
+        month_block = month_array[idx_mat] if month_array is not None else None
+        hydro_block = hydro_array[idx_mat] if hydro_array is not None else None
+        thermal_block = thermal_array[idx_mat] if thermal_array is not None else None
 
-        cf_block = cf_array[start_h:end_h]
-        load_block = base_load_array[start_h:end_h] * structural_growth
-        solar_block = solar_array[start_h:end_h] * solar_growth
-        month_block = month_array[start_h:end_h] if month_array is not None else None
-        hydro_block = hydro_array[start_h:end_h] if hydro_array is not None else None
-        thermal_block = thermal_array[start_h:end_h] if thermal_array is not None else None
-
-        sim_base_load = load_block * rng.normal(1.0, load_noise_std)
-        sim_wind_completion = rng.uniform(wind_comp_min, wind_comp_max)
-        sim_wind_regime = rng.uniform(wind_reg_min, wind_reg_max)
-        sim_wind_gen = np.clip(cf_block * sim_wind_regime, 0.0, 1.0) * (wind_capacity_mw * sim_wind_completion)
+        load_noise = rng.normal(1.0, load_noise_std, size=(cur_n, 1))
+        sim_base_load = load_block * load_noise
+        sim_wind_completion = rng.uniform(wind_comp_min, wind_comp_max, size=(cur_n, 1))
+        sim_wind_regime = rng.uniform(wind_reg_min, wind_reg_max, size=(cur_n, 1))
+        effective_cf = np.clip(
+            cf_block * sim_wind_regime + offshore_share * offshore_cf_gain * (1.0 - cf_block),
+            0.0,
+            cf_ceiling,
+        )
+        sim_wind_gen = effective_cf * (wind_capacity_mw * sim_wind_completion)
 
         hydro_thermal_mw = _compute_chesf_hydro_thermal_dispatch(
             sim_base_load,
@@ -572,27 +669,21 @@ def run_bottom_up_project_monte_carlo(
             obs_thermal_mw=thermal_block,
         )
         total_gen = sim_wind_gen + solar_block + hydro_thermal_mw
-        margin_with_dc = total_gen - (sim_base_load + iter_dc_load)
+        margin_with_dc = total_gen - (sim_base_load + total_dc_loads[start_i:end_i, None])
 
         import_needed = np.maximum(0.0, -margin_with_dc)
-        max_import = float(np.max(import_needed))
-        peak_imports.append(max_import)
-
-        if max_import > INTERCHANGE_IMPORT_LIMIT_MW:
-            critical_import_count += 1
+        peak_imports[start_i:end_i] = np.max(import_needed, axis=1)
 
         export_threshold = np.maximum(0.0, INTERCHANGE_EXPORT_LIMIT_MW - EXPORT_SOLAR_CURTAILMENT_COEF * solar_block)
-        curt_dc = np.sum(np.maximum(0.0, margin_with_dc - export_threshold))
-        curtailment_dc_mwh.append(curt_dc * scale_to_year)
+        curtailment_dc_mwh[start_i:end_i] = np.sum(np.maximum(0.0, margin_with_dc - export_threshold), axis=1) * scale_to_year
 
     p50_dc = float(np.percentile(total_dc_loads, 50))
     p90_dc = float(np.percentile(total_dc_loads, 90))
     p95_dc = float(np.percentile(total_dc_loads, 95))
     p50_import = float(np.percentile(peak_imports, 50))
     p95_import = float(np.percentile(peak_imports, 95))
-    prob_critical = float((critical_import_count / n_iterations) * 100.0)
+    prob_critical = float(np.mean(peak_imports > INTERCHANGE_IMPORT_LIMIT_MW) * 100.0)
 
-    offshore_share = wind_offshore_mw / max(1.0, wind_capacity_mw)
     cf_firme_critico = _compute_firm_wind_cf("annual_blend", offshore_share)
     excess_import = max(0.0, p95_import - INTERCHANGE_IMPORT_LIMIT_MW)
     req_extra_wind_mw = excess_import / cf_firme_critico
@@ -619,9 +710,10 @@ def run_bottom_up_project_monte_carlo(
         for _, r in grouped_meta.iterrows()
     }
 
+    mean_total_dc = max(1.0, float(np.mean(total_dc_loads)))
     sub_records = []
-    for (sub, estado, tensao_kv), loads in substation_loads.items():
-        arr = np.array(loads)
+    for k_idx, (sub, estado, tensao_kv) in enumerate(sub_keys):
+        arr = sub_loads_mat[:, k_idx]
         sub_records.append({
             "subestacao": sub,
             "estado": estado,
@@ -630,7 +722,7 @@ def run_bottom_up_project_monte_carlo(
             "carga_media_mw": round(float(np.mean(arr)), 1),
             "carga_p50_mw": round(float(np.percentile(arr, 50)), 1),
             "carga_p95_mw": round(float(np.percentile(arr, 95)), 1),
-            "fracao_carga_total_pct": round(float(np.mean(arr) / max(1.0, np.mean(total_dc_loads)) * 100.0), 1),
+            "fracao_carga_total_pct": round(float(np.mean(arr) / mean_total_dc * 100.0), 1),
         })
 
     df_substations_risk = pd.DataFrame(sub_records).sort_values("carga_p95_mw", ascending=False)

@@ -7,8 +7,9 @@ Fonte única (Single Source of Truth) de parâmetros físicos, janelas temporais
 especificações de cenários, hiperparâmetros e limiares operacionais/UI.
 """
 
+import csv
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # Diretórios base do projeto
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -90,12 +91,45 @@ ANEEL_PROJECTED_YEARS: List[int] = [2028, 2030, 2032, 2035]
 # ---------------------------------------------------------------------------
 # 3. Cenários de Data Centers & Trajetórias Eólicas Onshore/Offshore
 # ---------------------------------------------------------------------------
-DC_SCENARIOS_IT_MW: Dict[str, float] = {
-    "none": 0.0,
-    "conservative": 950.0,   # Projetos maduros/contratados (ex.: Pecém/Fortaleza Fase 1)
-    "central": 2200.0,       # Pipeline ponderado por probabilidade de concretização e atraso
-    "high": 4100.0,          # Stress test: pipeline anunciado + novos polos de IA
-}
+def compute_dc_scenarios_it_mw(csv_path: Optional[Path] = None) -> Dict[str, float]:
+    """Deriva a potência acumulada de TI por cenário diretamente de data_centers_pipeline_ne.csv."""
+    fallback: Dict[str, float] = {
+        "none": 0.0,
+        "conservative": 465.0,
+        "central": 1595.0,
+        "high": 3495.0,
+    }
+    target = csv_path or (RAW_DATA_DIR / "data_centers_pipeline_ne.csv")
+    if not target.exists():
+        return fallback
+    sums = {"conservative": 0.0, "central": 0.0, "high": 0.0}
+    try:
+        with open(target, "r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                scen = str(row.get("cenario_enquadramento") or "").strip().lower()
+                raw_it = str(row.get("potencia_it_mw") or "").strip().replace(",", ".")
+                if not raw_it:
+                    continue
+                val = float(raw_it)
+                if scen in sums:
+                    sums[scen] += val
+    except Exception:
+        return fallback
+    cons = round(sums["conservative"], 1)
+    cent = round(cons + sums["central"], 1)
+    high = round(cent + sums["high"], 1)
+    if high <= 0.0:
+        return fallback
+    return {
+        "none": 0.0,
+        "conservative": cons,
+        "central": cent,
+        "high": high,
+    }
+
+
+DC_SCENARIOS_IT_MW: Dict[str, float] = compute_dc_scenarios_it_mw()
 
 WIND_EXPANSION_ONSHORE_MW: Dict[str, float] = {
     "base": 0.0,             # Apenas usinas em operação
@@ -121,8 +155,14 @@ REFERENCE_SCENARIO_KEYS: Dict[str, str] = {
     "windBase": "base",
     "windIntermediate": "intermediate",
     "windHigh": "high",
+    "txReferenceCode": "TX-03",
+    "txExpansionCode": "TX-04",
+    "h2vBaselineCode": "H2V-01",
     "txReferenceIdPrefix": "TX-03",
     "h2vBaselineIdPrefix": "H2V-01",
+    "preferredModelId": "resmlp",
+    "preferredHorizonId": "1h",
+    "preferredFamilyId": "nonlinear",
 }
 
 # ---------------------------------------------------------------------------
@@ -185,18 +225,21 @@ DEFAULT_H2V_COMPARISON_MW = 2000.0
 
 TX_SENSITIVITY_SPECS: List[Dict[str, Any]] = [
     {
+        "configCode": "TX-01",
         "configId": "TX-01 (Restrição Severa / Atraso de Obras)",
         "importLimitMW": 5500.0,
         "exportLimitMW": 8000.0,
         "description": "Malha atual sob contingência N-1 sem novos reforços de 500 kV",
     },
     {
+        "configCode": "TX-02",
         "configId": "TX-02 (Limite Conservador Operativo)",
         "importLimitMW": 6250.0,
         "exportLimitMW": 8750.0,
         "description": "Reforços parciais de compensação síncrona/estática sem novas LTs",
     },
     {
+        "configCode": "TX-03",
         "configId": "TX-03 (Referência Base PDE / ONS 2035)",
         "importLimitMW": float(INTERCHANGE_IMPORT_LIMIT_MW),
         "exportLimitMW": float(INTERCHANGE_EXPORT_LIMIT_MW),
@@ -206,12 +249,14 @@ TX_SENSITIVITY_SPECS: List[Dict[str, Any]] = [
         ).replace(".", ","),
     },
     {
+        "configCode": "TX-04",
         "configId": "TX-04 (Expansão 500 kV NE–SE/CO Planejada)",
         "importLimitMW": 8000.0,
         "exportLimitMW": 11000.0,
         "description": "Entrada das novas LTs 500 kV Graça Aranha–Silvânia e reforços Chesf",
     },
     {
+        "configCode": "TX-05",
         "configId": "TX-05 (Bipolo HVDC + Malha 500 kV Completa)",
         "importLimitMW": 9000.0,
         "exportLimitMW": 12500.0,
@@ -221,30 +266,40 @@ TX_SENSITIVITY_SPECS: List[Dict[str, Any]] = [
 
 H2V_SENSITIVITY_SPECS: List[Dict[str, Any]] = [
     {
+        "scenarioCode": "H2V-01",
+        "flexMode": "none",
         "scenarioId": "H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6)",
         "h2vNominalMW": 0.0,
         "h2vFlexible": False,
         "operatingRegime": "Sem H2V (Isolamento de Data Centers)",
     },
     {
+        "scenarioCode": "H2V-02",
+        "flexMode": "inflexible",
         "scenarioId": "H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)",
         "h2vNominalMW": 1000.0,
         "h2vFlexible": False,
         "operatingRegime": "Baseload Inflexível (92% contínuo)",
     },
     {
+        "scenarioCode": "H2V-03",
+        "flexMode": "flexible",
         "scenarioId": "H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)",
         "h2vNominalMW": 1000.0,
         "h2vFlexible": True,
         "operatingRegime": "Modulação Dinâmica (12% na calmaria / 100% no excedente)",
     },
     {
+        "scenarioCode": "H2V-04",
+        "flexMode": "inflexible",
         "scenarioId": "H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)",
         "h2vNominalMW": 2000.0,
         "h2vFlexible": False,
         "operatingRegime": "Baseload Inflexível (92% contínuo)",
     },
     {
+        "scenarioCode": "H2V-05",
+        "flexMode": "flexible",
         "scenarioId": "H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)",
         "h2vNominalMW": 2000.0,
         "h2vFlexible": True,
@@ -260,6 +315,8 @@ ML_MODEL_PARAMS: Dict[str, Any] = {
     "backtestSplits": 4,
     "backtestValHours": 24 * 90,
     "backtestMinTrainHours": 24 * 365,
+    "backtestEmbargoHours": 168,
+    "cvEmbargoHours": 48,
     "ridgeAlpha": 10.0,
     "modelABacktestResMlp": {"hiddenUnits": 20, "regL2": 1e-3, "maxIter": 100},
     "modelAResMlp": {"hiddenUnits": 24, "regL2": 1e-3, "maxIter": 140},

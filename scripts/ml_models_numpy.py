@@ -112,6 +112,84 @@ def _prepare_sample_weights(sample_weight: Optional[np.ndarray], n_samples: int)
     return w_norm, w_eff
 
 
+def impute_with_train_medians(
+    X_tr: np.ndarray,
+    X_te: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    """
+    Substitui NaNs e valores não-finitos utilizando exclusivamente as medianas
+    da partição de treino (zero vazamento de fronteira ou futuro).
+    """
+    X_tr_clean = np.where(np.isfinite(X_tr), np.asarray(X_tr, dtype=float), np.nan)
+    n_cols = X_tr_clean.shape[1] if X_tr_clean.ndim == 2 else 0
+    if X_tr_clean.shape[0] > 0 and n_cols > 0:
+        medians = np.nanmedian(X_tr_clean, axis=0)
+        medians = np.where(np.isfinite(medians), medians, 0.0)
+    else:
+        medians = np.zeros(n_cols, dtype=float)
+
+    for j in range(n_cols):
+        tr_na = ~np.isfinite(X_tr_clean[:, j])
+        if np.any(tr_na):
+            X_tr_clean[tr_na, j] = medians[j]
+
+    if X_te is None:
+        return X_tr_clean, None
+
+    X_te_clean = np.where(np.isfinite(X_te), np.asarray(X_te, dtype=float), np.nan)
+    for j in range(n_cols):
+        te_na = ~np.isfinite(X_te_clean[:, j])
+        if np.any(te_na):
+            X_te_clean[te_na, j] = medians[j]
+    return X_tr_clean, X_te_clean
+
+
+def build_forward_time_series_folds(
+    n_samples: int,
+    n_folds: int,
+    embargo: int = 48,
+    min_train: int = 50,
+    min_val: int = 20,
+    y_binary: Optional[np.ndarray] = None,
+    min_class_count: int = 15,
+) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """
+    Constrói folds estritamente cronológicos em janela expansiva (tr_max + embargo <= val_min),
+    eliminando vazamento do futuro para o passado na seleção de regularização e calibração OOF.
+    """
+    if n_samples < (min_train + min_val + 2) or n_folds < 1:
+        return []
+
+    eff_embargo = max(1, min(int(embargo), max(1, n_samples // 25)))
+    bounds = np.linspace(0, n_samples, n_folds + 2, dtype=int)
+    folds: List[Tuple[np.ndarray, np.ndarray]] = []
+
+    for f_idx in range(n_folds):
+        val_start = int(bounds[f_idx + 1])
+        val_end = int(bounds[f_idx + 2])
+        tr_end = val_start - eff_embargo
+        if tr_end < min_train or (val_end - val_start) < min_val:
+            continue
+
+        tr_idx = np.arange(0, tr_end, dtype=int)
+        val_idx = np.arange(val_start, val_end, dtype=int)
+
+        if y_binary is not None:
+            y_sub_tr = y_binary[tr_idx]
+            y_sub_val = y_binary[val_idx]
+            if (
+                int(np.sum(y_sub_tr == 1)) < min_class_count
+                or int(np.sum(y_sub_tr == 0)) < min_class_count
+                or int(np.sum(y_sub_val == 1)) < min_class_count
+                or int(np.sum(y_sub_val == 0)) < min_class_count
+            ):
+                continue
+
+        folds.append((tr_idx, val_idx))
+
+    return folds
+
+
 # ============================================================================
 # 2. MODELOS LINEARES BASELINE (RIDGE & LOGÍSTICA L-BFGS-B)
 # ============================================================================
@@ -256,6 +334,8 @@ class ResidualMLPRegressor:
         self.mean_y: float = 0.0
         self.std_y: float = 1.0
         self.reg_l2_selected_: Optional[float] = None
+        self.cv_oof_mse_: Optional[float] = None
+        self.cv_fold_count_: int = 0
         self.params_: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = None
         self.ensemble_params_: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = []
 
@@ -400,24 +480,27 @@ class ResidualMLPRegressor:
         w_norm, w_eff = _prepare_sample_weights(w_in, n)
 
         selected_reg = float(self.reg_l2)
+        self.cv_oof_mse_ = None
+        self.cv_fold_count_ = 0
+
         if self.cv_folds >= 2 and self.reg_l2_grid and len(self.reg_l2_grid) > 1 and n >= 400:
             k_folds = min(self.cv_folds, max(2, n // 150))
-            fold_bounds = np.linspace(0, n, k_folds + 1, dtype=int)
+            folds = build_forward_time_series_folds(
+                n_samples=n,
+                n_folds=k_folds,
+                embargo=48,
+                min_train=50,
+                min_val=20,
+            )
+            self.cv_fold_count_ = len(folds)
             best_mse = float("inf")
             for cand_reg in self.reg_l2_grid:
                 oof_sq_err: List[np.ndarray] = []
                 oof_w: List[np.ndarray] = []
-                for f_idx in range(k_folds):
-                    val_start, val_end = int(fold_bounds[f_idx]), int(fold_bounds[f_idx + 1])
-                    val_mask = np.zeros(n, dtype=bool)
-                    val_mask[val_start:val_end] = True
-                    tr_mask = ~val_mask
-                    if np.sum(tr_mask) < 50 or np.sum(val_mask) < 20:
-                        continue
-
-                    X_sub_tr, X_sub_val = X_arr[tr_mask], X_arr[val_mask]
-                    y_sub_tr, y_sub_val = y_arr[tr_mask], y_arr[val_mask]
-                    w_sub_tr_norm, w_sub_tr_eff = _prepare_sample_weights(w_eff[tr_mask], len(X_sub_tr))
+                for tr_idx, val_idx in folds:
+                    X_sub_tr, X_sub_val = X_arr[tr_idx], X_arr[val_idx]
+                    y_sub_tr, y_sub_val = y_arr[tr_idx], y_arr[val_idx]
+                    w_sub_tr_norm, w_sub_tr_eff = _prepare_sample_weights(w_eff[tr_idx], len(X_sub_tr))
 
                     sub_mean_x = np.average(X_sub_tr, axis=0, weights=w_sub_tr_eff)
                     sub_std_x = np.sqrt(np.average((X_sub_tr - sub_mean_x) ** 2, axis=0, weights=w_sub_tr_eff))
@@ -440,7 +523,7 @@ class ResidualMLPRegressor:
                     )
                     pred_val = self._eval_norm(params_c, X_sub_val_n) * sub_std_y + sub_mean_y
                     oof_sq_err.append((pred_val - y_sub_val) ** 2)
-                    oof_w.append(w_eff[val_mask])
+                    oof_w.append(w_eff[val_idx])
 
                 if oof_sq_err:
                     w_all = np.concatenate(oof_w)
@@ -448,6 +531,9 @@ class ResidualMLPRegressor:
                     if mse_val < best_mse:
                         best_mse = mse_val
                         selected_reg = cand_reg
+
+            if best_mse < float("inf"):
+                self.cv_oof_mse_ = float(best_mse)
 
         self.reg_l2_selected_ = selected_reg
         self.mean_x = np.average(X_arr, axis=0, weights=w_eff)
@@ -524,6 +610,9 @@ class ResidualMLPClassifier:
         self.mean_x: Optional[np.ndarray] = None
         self.std_x: Optional[np.ndarray] = None
         self.reg_l2_selected_: Optional[float] = None
+        self.cv_oof_auc_: Optional[float] = None
+        self.cv_oof_brier_: Optional[float] = None
+        self.cv_fold_count_: int = 0
         self.calib_a_: float = 1.0
         self.calib_b_: float = 0.0
         self.params_: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = None
@@ -678,60 +767,59 @@ class ResidualMLPClassifier:
         selected_reg = float(self.reg_l2)
         self.calib_a_ = 1.0
         self.calib_b_ = 0.0
+        self.cv_oof_auc_ = None
+        self.cv_oof_brier_ = None
+        self.cv_fold_count_ = 0
         n = len(X_arr)
         w_norm, w_eff = _prepare_sample_weights(w_in, n)
 
-        # Validação cruzada em blocos temporais contíguos dentro do treino (< 2025, zero vazamento de 2025)
-        best_oof: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]] = None
+        # Validação cruzada estritamente cronológica em janela expansiva com embargo (< 2025, zero look-ahead)
+        nested_oof_parts: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
         if n >= 500:
             k_folds = min(self.cv_folds, max(2, n // 150))
-            fold_bounds = np.linspace(0, n, k_folds + 1, dtype=int)
-            best_score = (-1.0, float("-inf"), float("-inf"))
+            folds = build_forward_time_series_folds(
+                n_samples=n,
+                n_folds=k_folds,
+                embargo=48,
+                min_train=60,
+                min_val=30,
+                y_binary=y_arr,
+                min_class_count=15,
+            )
+            self.cv_fold_count_ = len(folds)
 
-            for cand_reg in self.reg_l2_grid:
-                oof_logits_parts: List[np.ndarray] = []
-                oof_y_parts: List[np.ndarray] = []
-                oof_w_parts: List[np.ndarray] = []
+            if folds:
+                best_score = (-1.0, float("-inf"), float("-inf"))
+                fold_cache: Dict[float, List[Tuple[np.ndarray, np.ndarray, np.ndarray]]] = {}
 
-                for f_idx in range(k_folds):
-                    val_start, val_end = int(fold_bounds[f_idx]), int(fold_bounds[f_idx + 1])
-                    val_mask = np.zeros(n, dtype=bool)
-                    val_mask[val_start:val_end] = True
-                    tr_mask = ~val_mask
+                for cand_reg in self.reg_l2_grid:
+                    per_fold_res: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+                    for tr_idx, val_idx in folds:
+                        X_sub_tr, X_sub_val = X_arr[tr_idx], X_arr[val_idx]
+                        y_sub_tr, y_sub_val = y_arr[tr_idx], y_arr[val_idx]
+                        w_sub_tr_norm, w_sub_tr_eff = _prepare_sample_weights(w_eff[tr_idx], len(X_sub_tr))
+                        sub_mean = np.average(X_sub_tr, axis=0, weights=w_sub_tr_eff)
+                        sub_var = np.average((X_sub_tr - sub_mean) ** 2, axis=0, weights=w_sub_tr_eff)
+                        sub_std = np.sqrt(sub_var)
+                        sub_std[sub_std < 1e-9] = 1.0
+                        X_sub_tr_n = (X_sub_tr - sub_mean) / sub_std
+                        X_sub_val_n = (X_sub_val - sub_mean) / sub_std
 
-                    y_sub_tr, y_sub_val = y_arr[tr_mask], y_arr[val_mask]
-                    if (
-                        np.sum(y_sub_tr == 1) < 15
-                        or np.sum(y_sub_tr == 0) < 15
-                        or np.sum(y_sub_val == 1) < 15
-                        or np.sum(y_sub_val == 0) < 15
-                    ):
-                        continue
+                        params_c = self._fit_with_reg(
+                            X_sub_tr_n,
+                            y_sub_tr,
+                            w_sub_tr_norm,
+                            reg_l2_val=cand_reg,
+                            max_iter=min(110, self.max_iter),
+                        )
+                        per_fold_res.append(
+                            (self._eval_logits(params_c, X_sub_val_n), y_sub_val, w_eff[val_idx])
+                        )
 
-                    X_sub_tr, X_sub_val = X_arr[tr_mask], X_arr[val_mask]
-                    w_sub_tr_norm, w_sub_tr_eff = _prepare_sample_weights(w_eff[tr_mask], len(X_sub_tr))
-                    sub_mean = np.average(X_sub_tr, axis=0, weights=w_sub_tr_eff)
-                    sub_var = np.average((X_sub_tr - sub_mean) ** 2, axis=0, weights=w_sub_tr_eff)
-                    sub_std = np.sqrt(sub_var)
-                    sub_std[sub_std < 1e-9] = 1.0
-                    X_sub_tr_n = (X_sub_tr - sub_mean) / sub_std
-                    X_sub_val_n = (X_sub_val - sub_mean) / sub_std
-
-                    params_c = self._fit_with_reg(
-                        X_sub_tr_n,
-                        y_sub_tr,
-                        w_sub_tr_norm,
-                        reg_l2_val=cand_reg,
-                        max_iter=min(110, self.max_iter),
-                    )
-                    oof_logits_parts.append(self._eval_logits(params_c, X_sub_val_n))
-                    oof_y_parts.append(y_sub_val)
-                    oof_w_parts.append(w_eff[val_mask])
-
-                if oof_logits_parts:
-                    oof_logits = np.concatenate(oof_logits_parts)
-                    oof_y = np.concatenate(oof_y_parts)
-                    oof_w_norm, _ = _prepare_sample_weights(np.concatenate(oof_w_parts), len(oof_y))
+                    fold_cache[cand_reg] = per_fold_res
+                    oof_logits = np.concatenate([p[0] for p in per_fold_res])
+                    oof_y = np.concatenate([p[1] for p in per_fold_res])
+                    oof_w_norm, _ = _prepare_sample_weights(np.concatenate([p[2] for p in per_fold_res]), len(oof_y))
                     oof_prob = expit(oof_logits)
                     auc_val = compute_roc_auc_fast(oof_y, oof_prob)
                     bce_val = float(np.sum(oof_w_norm * (np.logaddexp(0.0, oof_logits) - oof_y * oof_logits)))
@@ -740,11 +828,43 @@ class ResidualMLPClassifier:
                     if score > best_score:
                         best_score = score
                         selected_reg = cand_reg
-                        best_oof = (oof_logits, oof_y, oof_w_norm)
+                        self.cv_oof_auc_ = round(auc_val, 5)
+                        self.cv_oof_brier_ = round(brier_val, 5)
 
-        # Calibração logística monotônica (Platt scaling) nos logits out-of-fold (< 2025)
-        if best_oof is not None:
-            oof_logits, oof_y, oof_w_norm = best_oof
+                # Calibração Platt desacoplada (sem selection bias aninhado):
+                # Para cada fold cronológico f, escolhe a regularização estritamente nos folds != f
+                # (preferencialmente folds anteriores 0..f-1 quando disponíveis).
+                n_valid_folds = len(folds)
+                if n_valid_folds >= 2:
+                    for f_idx in range(n_valid_folds):
+                        ref_indices = list(range(f_idx)) if f_idx >= 1 else list(range(1, n_valid_folds))
+                        best_nested_score = (-1.0, float("-inf"), float("-inf"))
+                        nested_reg = float(self.reg_l2_grid[0])
+                        for cand_reg in self.reg_l2_grid:
+                            ref_logits = np.concatenate([fold_cache[cand_reg][j][0] for j in ref_indices])
+                            ref_y = np.concatenate([fold_cache[cand_reg][j][1] for j in ref_indices])
+                            ref_w_norm, _ = _prepare_sample_weights(
+                                np.concatenate([fold_cache[cand_reg][j][2] for j in ref_indices]),
+                                len(ref_y),
+                            )
+                            ref_prob = expit(ref_logits)
+                            ref_auc = compute_roc_auc_fast(ref_y, ref_prob)
+                            ref_bce = float(np.sum(ref_w_norm * (np.logaddexp(0.0, ref_logits) - ref_y * ref_logits)))
+                            ref_brier = float(np.sum(ref_w_norm * ((ref_prob - ref_y) ** 2)))
+                            ref_score = (round(ref_auc, 5), -ref_bce, -ref_brier)
+                            if ref_score > best_nested_score:
+                                best_nested_score = ref_score
+                                nested_reg = cand_reg
+                        nested_oof_parts.append(fold_cache[nested_reg][f_idx])
+                else:
+                    default_reg = min(self.reg_l2_grid, key=lambda r: abs(r - float(self.reg_l2)))
+                    nested_oof_parts.append(fold_cache[default_reg][0])
+
+        # Calibração logística monotônica (Platt scaling) estritamente sobre logits OOF desacoplados (< 2025)
+        if nested_oof_parts:
+            oof_logits = np.concatenate([p[0] for p in nested_oof_parts])
+            oof_y = np.concatenate([p[1] for p in nested_oof_parts])
+            oof_w_norm, _ = _prepare_sample_weights(np.concatenate([p[2] for p in nested_oof_parts]), len(oof_y))
 
             def platt_obj(ab: np.ndarray) -> Tuple[float, np.ndarray]:
                 a_val, b_val = float(ab[0]), float(ab[1])

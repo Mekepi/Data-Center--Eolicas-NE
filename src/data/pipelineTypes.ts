@@ -107,8 +107,14 @@ export interface PipelineConfigSnapshot {
     windBase: 'base';
     windIntermediate: 'intermediate';
     windHigh: 'high';
+    txReferenceCode: string;
+    txExpansionCode: string;
+    h2vBaselineCode: string;
     txReferenceIdPrefix: string;
     h2vBaselineIdPrefix: string;
+    preferredModelId: 'ridge' | 'logistic_ridge' | 'resmlp' | 'gbdt';
+    preferredHorizonId: '1h' | '24h';
+    preferredFamilyId: 'linear' | 'nonlinear';
   };
   pecemSubstationName: string;
   pecemH2vHubShare: number;
@@ -226,6 +232,16 @@ export interface PipelineUiCatalog {
   groupDecisions: GroupDecisionItem[];
 }
 
+export interface ApprovedLibrariesPolicy {
+  standard: string[];
+  commonApproved: string[];
+  candidateLibrariesRequiringApproval: Array<{
+    name: string;
+    role: string;
+    status: string;
+  }>;
+}
+
 export interface PipelineLineageSnapshot {
   generatedAtUtc: string;
   windowLabel: string;
@@ -331,7 +347,15 @@ export interface ScenarioRampPoint {
   activeProjectsHigh: number;
 }
 
+export type AnovaTargetId =
+  | 'cf_eolica'
+  | 'l_base_mw'
+  | 'intercambio_liquido_mw'
+  | 'curtailment_mw'
+  | 'other';
+
 export interface AnovaTestResult {
+  targetId: AnovaTargetId;
   targetVariable: string;
   groupingFactor: string;
   fStatistic: number;
@@ -368,7 +392,14 @@ export interface FeatureCorrelationItem {
     | 'Balanço Físico Exógeno';
 }
 
+export type BenchmarkHorizonId = '1h' | '24h' | 'exogenous_structural';
+export type BenchmarkModelId = 'ridge' | 'logistic_ridge' | 'resmlp' | 'gbdt';
+export type BenchmarkFamilyId = 'linear' | 'nonlinear';
+
 export interface ModelABenchmarkRow {
+  horizonId: BenchmarkHorizonId;
+  modelId: BenchmarkModelId;
+  familyId: BenchmarkFamilyId;
   horizon: string;
   architecture: string;
   family: string;
@@ -380,6 +411,9 @@ export interface ModelABenchmarkRow {
 }
 
 export interface ModelBBenchmarkRow {
+  horizonId: BenchmarkHorizonId;
+  modelId: BenchmarkModelId;
+  familyId: BenchmarkFamilyId;
   horizon: string;
   architecture: string;
   family: string;
@@ -390,6 +424,9 @@ export interface ModelBBenchmarkRow {
 }
 
 export interface ModelCBenchmarkRow {
+  horizonId: BenchmarkHorizonId;
+  modelId: BenchmarkModelId;
+  familyId: BenchmarkFamilyId;
   architecture: string;
   family: string;
   rocAuc: number;
@@ -459,6 +496,7 @@ export interface AnnualRiskTimelinePoint {
 }
 
 export interface TransmissionSensitivityRow {
+  configCode: string;
   configId: string;
   importLimitMW: number;
   exportLimitMW: number;
@@ -472,7 +510,11 @@ export interface TransmissionSensitivityRow {
   compensatoryWindGW: number;
 }
 
+export type H2VFlexMode = 'none' | 'inflexible' | 'flexible';
+
 export interface H2VSynergySensitivityRow {
+  scenarioCode: string;
+  flexMode: H2VFlexMode;
   scenarioId: string;
   dcLoadMW: number;
   h2vNominalMW: number;
@@ -518,6 +560,7 @@ export interface PipelineSsotBundle {
   bundleDigest: string;
   config: PipelineConfigSnapshot;
   uiCatalog: PipelineUiCatalog;
+  approvedLibrariesPolicy: ApprovedLibrariesPolicy;
   lineage: PipelineLineageSnapshot;
   dataCentersPipeline: DataCenterProject[];
   substationLoadConcentration: SubstationLoadSummary[];

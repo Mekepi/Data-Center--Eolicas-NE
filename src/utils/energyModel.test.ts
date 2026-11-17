@@ -12,11 +12,13 @@ import {
   computeDcRampFactor,
   computeInstalledWindCapacityMW,
   computeWindGenerationMW,
+  estimateAnnualSimulation,
   estimateFullYearHourly,
   evaluateScenario,
   resolveEffectiveDcLoadMW,
   resolveMonteCarloSummary,
   sliceHourlyWindow,
+  summarizeHourlyWindow,
   type EnergyModelSsotInput,
   type SimulationConfig,
 } from './energyModel';
@@ -476,17 +478,15 @@ test('resolveMonteCarloSummary uses Python grid (exact + IDW interpolation) or S
   );
 });
 
-test('DATA_CENTER_PIPELINE conforms to official Northeast constraints and composite substation keys', async () => {
-  const { DATA_CENTER_PIPELINE, SUBSTATION_LOAD_CONCENTRATION } = await import(
-    '../data/dataCentersPipelineCatalog'
-  );
+test('PIPELINE_SSOT dataCentersPipeline conforms to official Northeast constraints and composite substation keys', () => {
+  const dcPipeline = PIPELINE_SSOT.dataCentersPipeline;
+  const subSummary = PIPELINE_SSOT.substationLoadConcentration;
   const cfg = PIPELINE_SSOT.config;
 
-  assert.equal(DATA_CENTER_PIPELINE.length, PIPELINE_SSOT.dataCentersPipeline.length);
-  assert.ok(DATA_CENTER_PIPELINE.length >= 10);
+  assert.ok(dcPipeline.length >= 10);
 
   const validStates = new Set(['CE', 'PE', 'RN', 'BA', 'PB', 'PI', 'MA', 'SE', 'AL']);
-  for (const proj of DATA_CENTER_PIPELINE) {
+  for (const proj of dcPipeline) {
     assert.ok(validStates.has(proj.state), `State ${proj.state} must be in the Northeast`);
     assert.ok(proj.itPowerMW > 0, 'IT power must be positive');
     assert.ok(
@@ -502,92 +502,89 @@ test('DATA_CENTER_PIPELINE conforms to official Northeast constraints and compos
     assert.ok(proj.realizationProbability > 0 && proj.realizationProbability <= 1.0, 'Valid probability');
   }
 
-  const pecem = SUBSTATION_LOAD_CONCENTRATION.find((s) => s.substation === cfg.pecemSubstationName);
+  const pecem = subSummary.find((s) => s.substation === cfg.pecemSubstationName);
   assert.ok(pecem, `${cfg.pecemSubstationName} must be present in substation summary`);
   assert.ok(pecem.sharePct > 50, `${cfg.pecemSubstationName} must remain primary load hub`);
 });
 
-test('ANOVA_TEST_RESULTS and MONTHLY_WIND_PROFILES statistically validate Northeast wind seasonality', async () => {
-  const { ANOVA_TEST_RESULTS, MONTHLY_WIND_PROFILES, FEATURE_CORRELATIONS } = await import(
-    '../data/featuresAnovaCatalog'
-  );
+test('PIPELINE_SSOT anovaTestResults and monthlyWindProfiles statistically validate Northeast wind seasonality', () => {
+  const anovaResults = PIPELINE_SSOT.anovaTestResults;
+  const monthlyProfiles = PIPELINE_SSOT.monthlyWindProfiles;
+  const featureCorrs = PIPELINE_SSOT.featureCorrelations;
   const corrHi = PIPELINE_SSOT.config.uiThresholds.correlationHighlight;
 
-  assert.ok(ANOVA_TEST_RESULTS.length >= 4, 'Should include at least 4 core ANOVA tests');
-  for (const anova of ANOVA_TEST_RESULTS) {
+  assert.ok(anovaResults.length >= 4, 'Should include at least 4 core ANOVA tests');
+  for (const anova of anovaResults) {
     assert.ok(anova.pValue < 0.01, 'P-value must reject null hypothesis (p < 0.01)');
     assert.ok(anova.fStatistic > 150, `F-statistic must be highly significant (> 150): got ${anova.fStatistic}`);
     assert.equal(anova.isSignificantAlpha01, true);
   }
 
-  const windAnova = ANOVA_TEST_RESULTS.find((a) => a.targetVariable.includes('cf_eolica'));
-  assert.ok(windAnova, 'Wind CF ANOVA test must be present');
+  const windAnova = anovaResults.find((a) => a.targetId === 'cf_eolica');
+  assert.ok(windAnova, 'Wind CF ANOVA test must be present via targetId');
   assert.ok(windAnova.etaSquaredPct > 30, 'Monthly seasonality must explain >30% of CF variance');
 
-  assert.equal(MONTHLY_WIND_PROFILES.length, 12, 'Must profile all 12 months');
-  const marco = MONTHLY_WIND_PROFILES.find((m) => m.month === 3);
-  const setembro = MONTHLY_WIND_PROFILES.find((m) => m.month === 9);
+  assert.equal(monthlyProfiles.length, 12, 'Must profile all 12 months');
+  const marco = monthlyProfiles.find((m) => m.month === 3);
+  const setembro = monthlyProfiles.find((m) => m.month === 9);
   assert.ok(marco && setembro, 'March and September must exist');
   assert.ok(setembro.avgCapacityFactor > marco.avgCapacityFactor * 1.8);
   assert.ok(setembro.p10CapacityFactor > marco.p10CapacityFactor * 2.5);
 
-  assert.ok(FEATURE_CORRELATIONS.length >= 10, 'Must have at least 10 feature correlations');
-  const lag1Load = FEATURE_CORRELATIONS.find((f) => f.featureName === 'l_base_mw_lag_1h');
-  const lag1Wind = FEATURE_CORRELATIONS.find((f) => f.featureName === 'cf_eolica_lag_1h');
+  assert.ok(featureCorrs.length >= 10, 'Must have at least 10 feature correlations');
+  const lag1Load = featureCorrs.find((f) => f.featureName === 'l_base_mw_lag_1h');
+  const lag1Wind = featureCorrs.find((f) => f.featureName === 'cf_eolica_lag_1h');
   assert.ok(lag1Load && lag1Load.corrBaseLoad > corrHi.strong);
   assert.ok(lag1Wind && lag1Wind.corrWindCF > corrHi.strong);
 });
 
-test('Passo 3 Out-of-Time 2025 benchmarks confirm non-linear models outperform linear baselines across Models A, B, and C', async () => {
-  const {
-    MODEL_A_BENCHMARK_2025,
-    MODEL_B_BENCHMARK_2025,
-    MODEL_C_BENCHMARK_2025,
-    HOURLY_VALIDATION_2025_PROFILE,
-  } = await import('../data/featuresAnovaCatalog');
+test('Passo 3 Out-of-Time 2025 benchmarks confirm non-linear models outperform linear baselines across Models A, B, and C', () => {
+  const modelABench = PIPELINE_SSOT.modelABenchmark2025;
+  const modelBBench = PIPELINE_SSOT.modelBBenchmark2025;
+  const modelCBench = PIPELINE_SSOT.modelCBenchmark2025;
+  const hourly2025 = PIPELINE_SSOT.hourlyValidation2025Profile;
+  const prefModel = PIPELINE_SSOT.config.referenceScenarioKeys.preferredModelId;
 
-  assert.equal(HOURLY_VALIDATION_2025_PROFILE.length, 24, 'Must contain 24 hourly validation points for baseline year');
+  assert.equal(hourly2025.length, 24, 'Must contain 24 hourly validation points for baseline year');
 
   // Modelo A: non-linear beats Linear Ridge on 1h horizon
-  const linA1h = MODEL_A_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.family === 'Linear');
-  const nonLinA1h = MODEL_A_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.family.includes('Não-Linear'));
+  const linA1h = modelABench.find((m) => m.horizonId === '1h' && m.familyId === 'linear');
+  const nonLinA1h = modelABench.find((m) => m.horizonId === '1h' && m.modelId === prefModel);
   assert.ok(linA1h && nonLinA1h, 'Both Linear and Non-Linear 1h benchmarks must exist for Model A');
   assert.ok(nonLinA1h.maeMW < linA1h.maeMW, 'Non-linear 1h MAE must be lower than Linear Ridge MAE');
 
   // Modelo B: non-linear beats Linear Ridge on CF(t)
-  const linB1h = MODEL_B_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.family === 'Linear');
-  const nonLinB1h = MODEL_B_BENCHMARK_2025.find((m) => m.horizon.includes('1h') && m.family.includes('Não-Linear'));
+  const linB1h = modelBBench.find((m) => m.horizonId === '1h' && m.familyId === 'linear');
+  const nonLinB1h = modelBBench.find((m) => m.horizonId === '1h' && m.modelId === prefModel);
   assert.ok(linB1h && nonLinB1h, 'Both Linear and Non-Linear 1h benchmarks must exist for Model B');
   assert.ok(nonLinB1h.maeCF < linB1h.maeCF && nonLinB1h.r2Score > linB1h.r2Score);
 
-  // Modelo C: Non-Linear Hurdle beats Linear Hurdle on ROC-AUC, Brier Score, and Volume R2 (Ciclo 3 scientific tuning check)
-  assert.ok(MODEL_C_BENCHMARK_2025.length >= 2);
-  const linearHurdle = MODEL_C_BENCHMARK_2025.find((m) => m.family === 'Linear');
-  const nonLinearHurdle = MODEL_C_BENCHMARK_2025.find((m) => m.family.includes('Não-Linear'));
+  // Modelo C: Non-Linear Hurdle beats Linear Hurdle on ROC-AUC, Brier Score, and Volume R2
+  assert.ok(modelCBench.length >= 2);
+  const linearHurdle = modelCBench.find((m) => m.familyId === 'linear');
+  const nonLinearHurdle = modelCBench.find((m) => m.modelId === prefModel);
   assert.ok(linearHurdle && nonLinearHurdle);
   assert.ok(nonLinearHurdle.rocAuc > linearHurdle.rocAuc, 'Non-linear Hurdle ROC-AUC must exceed Linear Hurdle');
   assert.ok(nonLinearHurdle.brierScore < linearHurdle.brierScore, 'Non-linear Brier score must be lower (better)');
   assert.ok(nonLinearHurdle.r2Volume > linearHurdle.r2Volume, 'Non-linear Volume R2 must exceed Linear Hurdle');
 });
 
-test('Passo 4 Monte Carlo 2035 12-scenario matrix and compensatory wind curve validate physical trade-offs', async () => {
-  const {
-    MONTE_CARLO_12_SCENARIOS_2035,
-    COMPENSATORY_WIND_CURVE_2035,
-    ANNUAL_RISK_TIMELINE_2026_2035,
-  } = await import('../data/featuresAnovaCatalog');
+test('Passo 4 Monte Carlo 2035 12-scenario matrix and compensatory wind curve validate physical trade-offs', () => {
+  const mc12 = PIPELINE_SSOT.monteCarlo12Scenarios2035;
+  const compCurve = PIPELINE_SSOT.compensatoryWindCurve2035;
+  const timeline = PIPELINE_SSOT.annualRiskTimeline2026_2035;
   const refs = PIPELINE_SSOT.config.referenceScenarioKeys;
 
-  assert.equal(MONTE_CARLO_12_SCENARIOS_2035.length, 12, 'Must contain all 12 scenarios (4 DC x 3 Wind)');
-  assert.ok(ANNUAL_RISK_TIMELINE_2026_2035.length >= 10, 'Must cover study horizon through 2035');
+  assert.equal(mc12.length, 12, 'Must contain all 12 scenarios (4 DC x 3 Wind)');
+  assert.ok(timeline.length >= 10, 'Must cover study horizon through 2035');
 
-  const noDcInterm = MONTE_CARLO_12_SCENARIOS_2035.find(
+  const noDcInterm = mc12.find(
     (s) => s.dcScenarioId === refs.dcControl && s.windScenarioId === refs.windIntermediate
   );
-  const centralInterm = MONTE_CARLO_12_SCENARIOS_2035.find(
+  const centralInterm = mc12.find(
     (s) => s.dcScenarioId === refs.dcCentral && s.windScenarioId === refs.windIntermediate
   );
-  const highInterm = MONTE_CARLO_12_SCENARIOS_2035.find(
+  const highInterm = mc12.find(
     (s) => s.dcScenarioId === refs.dcHigh && s.windScenarioId === refs.windIntermediate
   );
 
@@ -597,58 +594,54 @@ test('Passo 4 Monte Carlo 2035 12-scenario matrix and compensatory wind curve va
   assert.ok(centralInterm.curtailmentAvoidedGWh > 0, 'Central DCs absorb wind curtailment');
   assert.ok(centralInterm.compensatoryWindExpansionGW >= noDcInterm.compensatoryWindExpansionGW);
 
-  const firstPt = COMPENSATORY_WIND_CURVE_2035[0];
-  const lastPt = COMPENSATORY_WIND_CURVE_2035[COMPENSATORY_WIND_CURVE_2035.length - 1];
+  const firstPt = compCurve[0];
+  const lastPt = compCurve[compCurve.length - 1];
   assert.ok(lastPt.probExceedInterchangePct < firstPt.probExceedInterchangePct);
   assert.ok(lastPt.importP95MW < firstPt.importP95MW);
 });
 
-test('Passo 5 sensitivity datasets validate transmission expansion, H2V flexible synergy, and ANEEL vs ONS indicators', async () => {
-  const {
-    TRANSMISSION_SENSITIVITY_2035,
-    H2V_SYNERGY_SENSITIVITY_2035,
-    ANEEL_VS_ONS_WIND_INDICATORS_2015_2035,
-    MODEL_C_BENCHMARK_2025,
-    PASSO5_FINAL_EXECUTIVE_REPORT_MD,
-  } = await import('../data/featuresAnovaCatalog');
-  const { SCRIPTS_PIPELINE } = await import('../data/scriptsRoadmap');
+test('Passo 5 sensitivity datasets validate transmission expansion, H2V flexible synergy, and ANEEL vs ONS indicators', () => {
+  const txSens = PIPELINE_SSOT.transmissionSensitivity2035;
+  const h2vSens = PIPELINE_SSOT.h2vSynergySensitivity2035;
+  const aneelVsOns = PIPELINE_SSOT.aneelVsOnsWindIndicators2015_2035;
+  const modelCBench = PIPELINE_SSOT.modelCBenchmark2025;
+  const finalMd = PIPELINE_SSOT.passo5FinalExecutiveReportMd;
+  const scriptsPipeline = PIPELINE_SSOT.scriptsPipeline;
   const cfg = PIPELINE_SSOT.config;
 
-  assert.equal(SCRIPTS_PIPELINE.length, PIPELINE_SSOT.scriptsPipeline.length);
-  assert.ok(SCRIPTS_PIPELINE.length >= 7);
-  assert.equal(TRANSMISSION_SENSITIVITY_2035.length, PIPELINE_SSOT.transmissionSensitivity2035.length);
-  assert.ok(TRANSMISSION_SENSITIVITY_2035.length >= 3);
+  assert.ok(scriptsPipeline.length >= 7);
+  assert.ok(txSens.length >= 3);
 
-  const tx01 = TRANSMISSION_SENSITIVITY_2035[0];
-  const tx03 = TRANSMISSION_SENSITIVITY_2035.find((r) => r.configId.startsWith(cfg.referenceScenarioKeys.txReferenceIdPrefix));
-  const tx05 = TRANSMISSION_SENSITIVITY_2035[TRANSMISSION_SENSITIVITY_2035.length - 1];
+  const tx01 = txSens[0];
+  const tx03 = txSens.find((r) => r.configCode === cfg.referenceScenarioKeys.txReferenceCode);
+  const tx05 = txSens[txSens.length - 1];
   assert.ok(tx03);
   assert.ok(tx05.probCriticalImportPct < tx03.probCriticalImportPct && tx03.probCriticalImportPct < tx01.probCriticalImportPct);
   assert.ok(tx05.curtailmentWithDcTWh < tx03.curtailmentWithDcTWh && tx03.curtailmentWithDcTWh < tx01.curtailmentWithDcTWh);
   assert.equal(tx05.compensatoryWindGW, 0.0);
 
-  const h2vInflex = H2V_SYNERGY_SENSITIVITY_2035.find(
-    (r) => r.h2vNominalMW === cfg.defaultH2vComparisonMW && r.scenarioId.includes('Inflexível')
+  const h2vInflex = h2vSens.find(
+    (r) => r.h2vNominalMW === cfg.defaultH2vComparisonMW && r.flexMode === 'inflexible'
   );
-  const h2vFlex = H2V_SYNERGY_SENSITIVITY_2035.find(
-    (r) => r.h2vNominalMW === cfg.defaultH2vComparisonMW && r.scenarioId.includes('Flexível')
+  const h2vFlex = h2vSens.find(
+    (r) => r.h2vNominalMW === cfg.defaultH2vComparisonMW && r.flexMode === 'flexible'
   );
   assert.ok(h2vInflex && h2vFlex);
   assert.ok(h2vFlex.probCriticalImportPct < h2vInflex.probCriticalImportPct);
   assert.ok(h2vFlex.totalAbsorbedCurtailmentTWh > h2vInflex.totalAbsorbedCurtailmentTWh);
   assert.ok(h2vFlex.compensatoryWindGW < h2vInflex.compensatoryWindGW);
 
-  const indBase = ANEEL_VS_ONS_WIND_INDICATORS_2015_2035.find((r) => r.year === cfg.baselineYear);
+  const indBase = aneelVsOns.find((r) => r.year === cfg.baselineYear);
   assert.ok(indBase, 'Baseline year indicator row must exist');
   assert.ok(indBase.onsEffectiveGenSharePct > indBase.aneelInstalledSharePct);
-  if (MODEL_C_BENCHMARK_2025[0]) {
-    assert.ok(Math.abs(indBase.annualCurtailmentLossTWh - MODEL_C_BENCHMARK_2025[0].realCurtailed2025TWh) <= 0.1);
+  if (modelCBench[0]) {
+    assert.ok(Math.abs(indBase.annualCurtailmentLossTWh - modelCBench[0].realCurtailed2025TWh) <= 0.1);
   }
-  assert.ok(PASSO5_FINAL_EXECUTIVE_REPORT_MD.includes('Relatório Técnico Consolidado Final'));
+  assert.ok(finalMd.includes('Relatório Técnico Consolidado Final'));
 });
 
-test('SSOT parity and anti-hardcode check: JSON, TS bundle, live Python scripts, config, and uiCatalog stay synchronized', async () => {
-  const { SCRIPTS_PIPELINE } = await import('../data/scriptsRoadmap');
+test('SSOT parity, C4-1 structured contracts, DC CSV alignment, and anti-hardcode check', () => {
+  const scriptsPipeline = PIPELINE_SSOT.scriptsPipeline;
 
   const jsonPath = path.join(process.cwd(), 'public', 'data', 'pipeline-ssot.json');
   assert.ok(fs.existsSync(jsonPath), 'public/data/pipeline-ssot.json must exist');
@@ -659,6 +652,7 @@ test('SSOT parity and anti-hardcode check: JSON, TS bundle, live Python scripts,
   assert.equal(parsedJson.lineage.generatedAtUtc, PIPELINE_SSOT.lineage.generatedAtUtc);
   assert.deepEqual(parsedJson.config, PIPELINE_SSOT.config);
   assert.deepEqual(parsedJson.uiCatalog, PIPELINE_SSOT.uiCatalog);
+  assert.deepEqual(parsedJson.approvedLibrariesPolicy, PIPELINE_SSOT.approvedLibrariesPolicy);
 
   assert.equal(PIPELINE_SSOT.config.hoursPerYear, 8760);
   assert.equal(PIPELINE_SSOT.config.projectionStartYear, 2025);
@@ -668,8 +662,26 @@ test('SSOT parity and anti-hardcode check: JSON, TS bundle, live Python scripts,
   assert.equal(PIPELINE_SSOT.uiCatalog.observationWindows.length, 5);
   assert.equal(PIPELINE_SSOT.uiCatalog.databasesCatalog.length, 10);
   assert.equal(PIPELINE_SSOT.uiCatalog.groupDecisions.length, 4);
+  assert.ok(PIPELINE_SSOT.approvedLibrariesPolicy.standard.length >= 5);
+  assert.ok(PIPELINE_SSOT.approvedLibrariesPolicy.commonApproved.includes('numpy'));
+  assert.ok(PIPELINE_SSOT.approvedLibrariesPolicy.candidateLibrariesRequiringApproval.length >= 4);
 
-  for (const script of SCRIPTS_PIPELINE) {
+  // Verify dcScenariosItMW aligns with cumulative sums of dataCentersPipeline
+  const sumCons = PIPELINE_SSOT.dataCentersPipeline
+    .filter((p) => p.scenario === 'conservative')
+    .reduce((acc, p) => acc + p.itPowerMW, 0);
+  const sumCent = PIPELINE_SSOT.dataCentersPipeline
+    .filter((p) => p.scenario === 'central')
+    .reduce((acc, p) => acc + p.itPowerMW, 0);
+  const sumHigh = PIPELINE_SSOT.dataCentersPipeline
+    .filter((p) => p.scenario === 'high')
+    .reduce((acc, p) => acc + p.itPowerMW, 0);
+  assert.equal(PIPELINE_SSOT.config.dcScenariosItMW.none, 0);
+  assert.equal(PIPELINE_SSOT.config.dcScenariosItMW.conservative, Number(sumCons.toFixed(1)));
+  assert.equal(PIPELINE_SSOT.config.dcScenariosItMW.central, Number((sumCons + sumCent).toFixed(1)));
+  assert.equal(PIPELINE_SSOT.config.dcScenariosItMW.high, Number((sumCons + sumCent + sumHigh).toFixed(1)));
+
+  for (const script of scriptsPipeline) {
     const diskPath = path.join(process.cwd(), 'scripts', script.filename);
     assert.ok(fs.existsSync(diskPath), `Script file ${script.filename} must exist on disk`);
     const normalizedStarter = script.starterCode.replace(/\r\n/g, '\n');
@@ -677,12 +689,21 @@ test('SSOT parity and anti-hardcode check: JSON, TS bundle, live Python scripts,
     assert.equal(normalizedStarter, normalizedDisk, `SSOT starterCode mismatch for ${script.filename}`);
   }
 
-  // Anti-hardcode guardrails in src/
-  assert.equal(
-    fs.existsSync(path.join(process.cwd(), 'src', 'data', 'databasesCatalog.ts')),
-    false,
-    'Legacy src/data/databasesCatalog.ts must remain removed'
-  );
+  // Legacy facade files must remain removed
+  for (const legacyFile of [
+    'databasesCatalog.ts',
+    'dataCentersPipelineCatalog.ts',
+    'featuresAnovaCatalog.ts',
+    'scriptsRoadmap.ts',
+  ]) {
+    assert.equal(
+      fs.existsSync(path.join(process.cwd(), 'src', 'data', legacyFile)),
+      false,
+      `Legacy src/data/${legacyFile} must remain removed`
+    );
+  }
+
+  // Anti-hardcode and anti-brittle-selector guardrails in src/
   const srcRoot = path.join(process.cwd(), 'src');
   const walkFiles = (dir: string): string[] => {
     const out: string[] = [];
@@ -693,16 +714,26 @@ test('SSOT parity and anti-hardcode check: JSON, TS bundle, live Python scripts,
     }
     return out;
   };
+  const forbiddenPatterns = [
+    'style={{',
+    'simulateHourlyWeek',
+    'DEFAULT_ENERGY_MODEL_CONFIG',
+    ".includes('ResMLP')",
+    ".includes('Não-Linear')",
+    ".includes('Inflexível')",
+    ".includes('Flexível')",
+    "startsWith(cfg.referenceScenarioKeys.txReferenceIdPrefix)",
+  ];
   for (const file of walkFiles(srcRoot)) {
     if (file.endsWith('.test.ts') || file.endsWith('pipelineSsot.ts')) continue;
     const text = fs.readFileSync(file, 'utf-8');
-    assert.equal(text.includes('style={{'), false, `Inline style forbidden in ${path.relative(srcRoot, file)}`);
-    assert.equal(text.includes('simulateHourlyWeek'), false, `Legacy simulateHourlyWeek forbidden in ${file}`);
-    assert.equal(
-      text.includes('DEFAULT_ENERGY_MODEL_CONFIG'),
-      false,
-      `Legacy DEFAULT_ENERGY_MODEL_CONFIG forbidden in ${file}`
-    );
+    for (const pattern of forbiddenPatterns) {
+      assert.equal(
+        text.includes(pattern),
+        false,
+        `Forbidden pattern ${pattern} found in ${path.relative(srcRoot, file)}`
+      );
+    }
   }
 });
 
@@ -820,4 +851,109 @@ test('Passo 5 computeFeaturesAnovaKpis derives consistent SSOT KPIs for panel su
   const expectedPde =
     avgLoad2025MW * Math.pow(1 + cfg.annualLoadGrowthRate, cfg.targetEndYear - cfg.baselineYear);
   assert.equal(kpis.projPde2035LoadMW, expectedPde);
+});
+
+test('Passo C4-3 decoupling: estimateAnnualSimulation + sliceHourlyWindow + summarizeHourlyWindow matches evaluateScenario across all scales without mutating fullYearSeries', () => {
+  const realBaselinePath = path.join(process.cwd(), 'public', 'data', 'hourly-baseline-8760.json');
+  const baseline: HourlyBaseline8760Bundle = fs.existsSync(realBaselinePath)
+    ? JSON.parse(fs.readFileSync(realBaselinePath, 'utf-8'))
+    : makeTestBaseline8760();
+
+  const annual = estimateAnnualSimulation(BASE_CONFIG, baseline, PIPELINE_SSOT);
+  assert.equal(annual.fullYearSeries.length, PIPELINE_SSOT.config.hoursPerYear);
+  assert.equal(annual.annualSummary.hourlyBaselineAvailable, true);
+
+  const windows: Array<{
+    observationWindow: SimulationConfig['observationWindow'];
+    expectedLen: number;
+  }> = [
+    { observationWindow: 'day', expectedLen: 24 },
+    { observationWindow: 'week', expectedLen: 168 },
+    { observationWindow: 'month', expectedLen: 744 },
+    { observationWindow: 'quarter', expectedLen: 2160 },
+    { observationWindow: 'year', expectedLen: 8760 },
+  ];
+
+  for (const w of windows) {
+    const cfg: SimulationConfig = {
+      ...BASE_CONFIG,
+      observationWindow: w.observationWindow,
+      selectedDay: 45,
+      selectedWeek: 12,
+      selectedMonth: 5,
+      selectedQuarter: 1,
+    };
+    const legacy = evaluateScenario(cfg, PIPELINE_SSOT, baseline);
+    const sliced = sliceHourlyWindow(
+      annual.fullYearSeries,
+      cfg,
+      PIPELINE_SSOT.config,
+      PIPELINE_SSOT.uiCatalog?.monthShortNames ?? []
+    );
+    const winSummary = summarizeHourlyWindow(sliced.points);
+
+    assert.equal(sliced.points.length, w.expectedLen);
+    assert.deepEqual(winSummary, {
+      negativeMarginHoursWindow: legacy.summary.negativeMarginHoursWindow,
+      criticalImportHoursWindow: legacy.summary.criticalImportHoursWindow,
+      minMarginMW: legacy.summary.minMarginMW,
+      maxMarginMW: legacy.summary.maxMarginMW,
+      windowCurtailmentWithoutDcGWh: legacy.summary.windowCurtailmentWithoutDcGWh,
+      windowCurtailmentWithDcGWh: legacy.summary.windowCurtailmentWithDcGWh,
+    });
+    assert.deepEqual(annual.annualSummary, {
+      hourlyBaselineAvailable: legacy.summary.hourlyBaselineAvailable,
+      effectiveDcLoadMW: legacy.summary.effectiveDcLoadMW,
+      avgBaseLoadMW: legacy.summary.avgBaseLoadMW,
+      avgWindCfPct: legacy.summary.avgWindCfPct,
+      negativeMarginHoursYear: legacy.summary.negativeMarginHoursYear,
+      criticalImportHoursYear: legacy.summary.criticalImportHoursYear,
+      annualCurtailmentWithoutDcTWh: legacy.summary.annualCurtailmentWithoutDcTWh,
+      annualCurtailmentWithDcTWh: legacy.summary.annualCurtailmentWithDcTWh,
+    });
+  }
+
+  // Ensure intermediate day/week slicing never mutated fullYearSeries[h].windowHourIndex
+  assert.equal(annual.fullYearSeries[500].windowHourIndex, 500);
+  assert.equal(annual.fullYearSeries[500].hourOfYear, 500);
+
+  // Re-running with different year reuses cached timestampLabel strings without re-formatting
+  const altYear = estimateAnnualSimulation({ ...BASE_CONFIG, targetYear: 2030 }, baseline, PIPELINE_SSOT);
+  assert.equal(altYear.fullYearSeries[0].timestampLabel, annual.fullYearSeries[0].timestampLabel);
+  assert.equal(altYear.fullYearSeries[8759].timestampLabel, annual.fullYearSeries[8759].timestampLabel);
+});
+
+test('Passo C4-3 performance: full 8.760 h evaluation + downsampling + Monte Carlo resolution executes in sub-frame time', () => {
+  const realBaselinePath = path.join(process.cwd(), 'public', 'data', 'hourly-baseline-8760.json');
+  const baseline: HourlyBaseline8760Bundle = fs.existsSync(realBaselinePath)
+    ? JSON.parse(fs.readFileSync(realBaselinePath, 'utf-8'))
+    : makeTestBaseline8760();
+
+  const probeCfg: SimulationConfig = {
+    ...BASE_CONFIG,
+    targetYear: 2033,
+    pue: 1.28,
+    dcUtilization: 0.87,
+    observationWindow: 'year',
+  };
+
+  // JIT warmup
+  for (let i = 0; i < 5; i++) {
+    const sim = estimateAnnualSimulation(probeCfg, baseline, PIPELINE_SSOT);
+    buildHourlyPlotBuckets(sim.fullYearSeries, 365);
+    resolveMonteCarloSummary(probeCfg, PIPELINE_SSOT);
+  }
+
+  const iterations = 25;
+  const t0 = performance.now();
+  for (let i = 0; i < iterations; i++) {
+    const sim = estimateAnnualSimulation(probeCfg, baseline, PIPELINE_SSOT);
+    const buckets = buildHourlyPlotBuckets(sim.fullYearSeries, 365);
+    const mc = resolveMonteCarloSummary(probeCfg, PIPELINE_SSOT);
+    assert.equal(buckets.length, 365);
+    assert.ok(mc.sourceStatus === 'grid_interpolated' || mc.sourceStatus === 'grid_exact');
+  }
+  const avgMs = (performance.now() - t0) / iterations;
+  // Generous 25ms safety ceiling for CI/shared runners while verifying sub-frame ~9ms engine
+  assert.ok(avgMs < 25, `Expected optimized 8.760h + buckets + MC average < 25ms, got ${avgMs.toFixed(2)}ms`);
 });

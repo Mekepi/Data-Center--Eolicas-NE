@@ -39,6 +39,9 @@ def _make_consistent_synthetic_payload() -> Dict[str, Any]:
         ],
         "modelABenchmark2025": [
             {
+                "horizonId": "24h",
+                "modelId": "resmlp",
+                "familyId": "nonlinear",
                 "horizon": "Programação Diária (24h Day-Ahead)",
                 "architecture": "Challenger Não-Linear · Rede Neural ResMLP (L-BFGS-B)",
                 "r2Score": 0.9012,
@@ -46,6 +49,9 @@ def _make_consistent_synthetic_payload() -> Dict[str, Any]:
         ],
         "modelCBenchmark2025": [
             {
+                "horizonId": "exogenous_structural",
+                "modelId": "resmlp",
+                "familyId": "nonlinear",
                 "architecture": "Challenger Não-Linear · GBDT + Rede Neural ResMLP",
                 "r2Volume": 0.8975,
             }
@@ -63,6 +69,7 @@ def _make_consistent_synthetic_payload() -> Dict[str, Any]:
         ],
         "transmissionSensitivity2035": [
             {
+                "configCode": "TX-03",
                 "configId": "TX-03 (Referência Base PDE / ONS 2035)",
                 "probCriticalImportPct": 11.40,
                 "importP95MW": 7450.2,
@@ -72,6 +79,8 @@ def _make_consistent_synthetic_payload() -> Dict[str, Any]:
         ],
         "h2vSynergySensitivity2035": [
             {
+                "scenarioCode": "H2V-01",
+                "flexMode": "none",
                 "scenarioId": "H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6)",
                 "h2vNominalMW": 0.0,
                 "probCriticalImportPct": 11.40,
@@ -81,6 +90,8 @@ def _make_consistent_synthetic_payload() -> Dict[str, Any]:
                 "compensatoryWindGW": 2.14,
             },
             {
+                "scenarioCode": "H2V-04",
+                "flexMode": "inflexible",
                 "scenarioId": "H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)",
                 "h2vNominalMW": 2000.0,
                 "probCriticalImportPct": 28.40,
@@ -88,6 +99,8 @@ def _make_consistent_synthetic_payload() -> Dict[str, Any]:
                 "compensatoryWindGW": 10.90,
             },
             {
+                "scenarioCode": "H2V-05",
+                "flexMode": "flexible",
                 "scenarioId": "H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)",
                 "h2vNominalMW": 2000.0,
                 "probCriticalImportPct": 13.20,
@@ -151,6 +164,9 @@ class TestSyncFrontendSsot(unittest.TestCase):
         self.assertEqual(len(meta["uiCatalog"]["databasesCatalog"]), 10)
         self.assertEqual(len(meta["uiCatalog"]["groupDecisions"]), 4)
         self.assertEqual(len(meta["uiCatalog"]["observationWindows"]), 5)
+        self.assertIn("standard", meta["approvedLibrariesPolicy"])
+        self.assertIn("commonApproved", meta["approvedLibrariesPolicy"])
+        self.assertGreaterEqual(len(meta["approvedLibrariesPolicy"]["candidateLibrariesRequiringApproval"]), 4)
 
         all_stages = resolve_stages()
         self.assertEqual([s.stage_id for s in all_stages], ["01", "02", "03", "04", "05", "06", "07", "ssot"])
@@ -706,8 +722,239 @@ class TestSyncFrontendSsot(unittest.TestCase):
         ):
             self.assertIn(ts_symbol, ts_model, f"Paridade C3-2 ausente em energyModel.ts: {ts_symbol}")
 
+    def test_c4_1_structured_contracts_dc_alignment_and_legacy_cleanup(self) -> None:
+        from config import DC_SCENARIOS_IT_MW, REFERENCE_SCENARIO_KEYS, compute_dc_scenarios_it_mw
+
+        expected_dc = compute_dc_scenarios_it_mw()
+        self.assertEqual(DC_SCENARIOS_IT_MW, expected_dc)
+        self.assertAlmostEqual(DC_SCENARIOS_IT_MW["none"], 0.0)
+        self.assertAlmostEqual(DC_SCENARIOS_IT_MW["conservative"], 465.0)
+        self.assertAlmostEqual(DC_SCENARIOS_IT_MW["central"], 1595.0)
+        self.assertAlmostEqual(DC_SCENARIOS_IT_MW["high"], 3495.0)
+
+        for key in ("txReferenceCode", "txExpansionCode", "h2vBaselineCode", "preferredModelId", "preferredHorizonId", "preferredFamilyId"):
+            self.assertIn(key, REFERENCE_SCENARIO_KEYS)
+
+        payload = build_ssot_payload()
+        self.assertEqual(payload["schemaVersion"], "2.1.0")
+        self.assertIn("approvedLibrariesPolicy", payload)
+        self.assertIn("numpy", payload["approvedLibrariesPolicy"]["commonApproved"])
+
+        for row in payload["anovaTestResults"]:
+            self.assertIn(row["targetId"], {"cf_eolica", "l_base_mw", "intercambio_liquido_mw", "curtailment_mw", "other"})
+        for row in payload["modelABenchmark2025"]:
+            self.assertIn(row["horizonId"], {"1h", "24h"})
+            self.assertIn(row["modelId"], {"ridge", "resmlp", "gbdt"})
+            self.assertIn(row["familyId"], {"linear", "nonlinear"})
+        for row in payload["modelBBenchmark2025"]:
+            self.assertIn(row["horizonId"], {"1h", "24h"})
+            self.assertIn(row["modelId"], {"ridge", "resmlp", "gbdt"})
+            self.assertIn(row["familyId"], {"linear", "nonlinear"})
+        for row in payload["modelCBenchmark2025"]:
+            self.assertEqual(row["horizonId"], "exogenous_structural")
+            self.assertIn(row["modelId"], {"logistic_ridge", "resmlp", "gbdt"})
+            self.assertIn(row["familyId"], {"linear", "nonlinear"})
+        for row in payload["transmissionSensitivity2035"]:
+            self.assertTrue(row["configCode"].startswith("TX-"))
+        for row in payload["h2vSynergySensitivity2035"]:
+            self.assertTrue(row["scenarioCode"].startswith("H2V-"))
+            self.assertIn(row["flexMode"], {"none", "inflexible", "flexible"})
+
+        # Legacy facade files must be removed
+        src_data = SCRIPTS_DIR.parent / "src" / "data"
+        for legacy in ("databasesCatalog.ts", "dataCentersPipelineCatalog.ts", "featuresAnovaCatalog.ts", "scriptsRoadmap.ts"):
+            self.assertFalse((src_data / legacy).exists(), f"Facade legado deve estar removido: {legacy}")
+
+        # Brittle substring selectors removed from 07 and src/ components
+        s07_src = (SCRIPTS_DIR / "07_sensitivity_and_final_report.py").read_text(encoding="utf-8")
+        self.assertNotIn('.str.contains("ResMLP"', s07_src)
+        self.assertNotIn('.str.contains("Inflexível"', s07_src)
+        self.assertNotIn('.str.contains("Flexível"', s07_src)
+
+        vite_cfg = (SCRIPTS_DIR.parent / "vite.config.ts").read_text(encoding="utf-8")
+        self.assertIn("import.meta.dirname", vite_cfg)
+        self.assertNotIn("__dirname", vite_cfg)
+
+    def test_c4_2_zero_boundary_leakage_across_splits_and_backtest(self) -> None:
+        from config import ML_MODEL_PARAMS
+
+        self.assertEqual(ML_MODEL_PARAMS.get("backtestEmbargoHours"), 168)
+        self.assertEqual(ML_MODEL_PARAMS.get("cvEmbargoHours"), 48)
+
+        s03 = (SCRIPTS_DIR / "03_feature_engineering_anova.py").read_text(encoding="utf-8")
+        self.assertIn("def split_and_build_causal_features(", s03)
+        split_fn_body = s03.split("def split_and_build_causal_features(", 1)[1].split("def main():", 1)[0]
+        self.assertLess(
+            split_fn_body.index("split_train_test_datasets("),
+            split_fn_body.index("create_lags_rolling_and_physical_features("),
+            "Script 03 deve separar Treino (<2025) e Teste (2025) ANTES de calcular lags/janelas.",
+        )
+        main_body = s03.split("def main():", 1)[1]
+        self.assertIn("split_and_build_causal_features(df_raw)", main_body)
+        self.assertNotIn("create_lags_rolling_and_physical_features(df_feat)", main_body)
+
+        s04 = (SCRIPTS_DIR / "04_forecast_demanda_base.py").read_text(encoding="utf-8")
+        self.assertIn("impute_with_train_medians", s04)
+        self.assertIn('"embargo_hours": int(embargo_hours)', s04)
+        self.assertIn("tr_end = val_start - eff_embargo", s04)
+        self.assertIn("X_tr, X_te = impute_with_train_medians(X_tr_raw, X_te_raw)", s04)
+
+        s05 = (SCRIPTS_DIR / "05_forecast_wind_cf_and_curtailment.py").read_text(encoding="utf-8")
+        self.assertIn("from ml_models_numpy import (", s05)
+        self.assertIn("impute_with_train_medians", s05)
+        self.assertEqual(s05.count("_impute_with_train_medians(X_tr_raw, X_te_raw)"), 2)
+
+        if importlib.util.find_spec("numpy") and importlib.util.find_spec("pandas") and importlib.util.find_spec("scipy"):
+            import numpy as np
+            import pandas as pd
+            from ml_models_numpy import impute_with_train_medians
+
+            s03_mod = importlib.import_module("03_feature_engineering_anova")
+            ts_2024 = pd.date_range("2024-12-15 00:00:00", periods=408, freq="h")
+            ts_2025 = pd.date_range("2025-01-01 00:00:00", periods=240, freq="h")
+            all_ts = ts_2024.append(ts_2025)
+            n_tot = len(all_ts)
+
+            def _make_df(corrupt_2024: bool) -> pd.DataFrame:
+                base_load = np.full(n_tot, 12000.0)
+                cf = np.full(n_tot, 0.45)
+                if corrupt_2024:
+                    base_load[:len(ts_2024)] += 95000.0
+                    cf[:len(ts_2024)] = 0.99
+                return pd.DataFrame(
+                    {
+                        "ts": all_ts.strftime("%Y-%m-%d %H:%M:%S"),
+                        "l_base_mw": base_load,
+                        "cf_eolica": cf,
+                        "intercambio_liquido_mw": np.full(n_tot, -1500.0),
+                        "g_eolica_potencial_mw": cf * 28000.0,
+                        "g_solar_mw": np.full(n_tot, 1800.0),
+                        "g_hidraulica_mw": np.full(n_tot, 3200.0),
+                        "cap_eolica_instalada_mw": np.full(n_tot, 28000.0),
+                        "curtailment_mw": np.full(n_tot, 400.0),
+                        "flag_curtailment": np.ones(n_tot, dtype=int),
+                    }
+                )
+
+            _, _, test_clean = s03_mod.split_and_build_causal_features(_make_df(corrupt_2024=False))
+            _, _, test_corrupted = s03_mod.split_and_build_causal_features(_make_df(corrupt_2024=True))
+            pd.testing.assert_frame_equal(test_clean, test_corrupted)
+            self.assertEqual(len(test_clean), len(ts_2025))
+            self.assertTrue(math.isnan(float(test_clean.loc[0, "l_base_mw_lag_1h"])))
+            self.assertTrue(math.isnan(float(test_clean.loc[0, "l_base_mw_lag_168h"])))
+            self.assertTrue(math.isnan(float(test_clean.loc[167, "l_base_mw_lag_168h"])))
+            self.assertFalse(math.isnan(float(test_clean.loc[168, "l_base_mw_lag_168h"])))
+
+            X_tr_a = np.array([[10.0, 2.0], [20.0, np.nan], [30.0, 4.0]])
+            X_te_a = np.array([[np.nan, np.nan], [5000.0, 6000.0]])
+            _, X_te_imp = impute_with_train_medians(X_tr_a, X_te_a)
+            assert X_te_imp is not None
+            self.assertAlmostEqual(float(X_te_imp[0, 0]), 20.0)
+            self.assertAlmostEqual(float(X_te_imp[0, 1]), 3.0)
+
+    def test_c4_2_chronological_forward_cv_and_decoupled_platt_no_lookahead(self) -> None:
+        ml_src = (SCRIPTS_DIR / "ml_models_numpy.py").read_text(encoding="utf-8")
+        self.assertIn("def build_forward_time_series_folds(", ml_src)
+        self.assertNotIn("tr_mask = ~val_mask", ml_src, "K-fold bidirecional com vazamento futuro proibido em séries temporais.")
+        self.assertIn("nested_oof_parts", ml_src)
+        self.assertIn("self.cv_oof_mse_", ml_src)
+        self.assertIn("self.cv_oof_auc_", ml_src)
+        self.assertIn("self.cv_fold_count_", ml_src)
+
+        if importlib.util.find_spec("numpy") and importlib.util.find_spec("scipy"):
+            import numpy as np
+            from ml_models_numpy import ResidualMLPClassifier, ResidualMLPRegressor, build_forward_time_series_folds
+
+            folds = build_forward_time_series_folds(n_samples=600, n_folds=4, embargo=24, min_train=60, min_val=30)
+            self.assertGreaterEqual(len(folds), 3)
+            for tr_idx, val_idx in folds:
+                self.assertLess(int(np.max(tr_idx)), int(np.min(val_idx)))
+                self.assertGreaterEqual(int(np.min(val_idx)) - int(np.max(tr_idx)), 10)
+
+            rng = np.random.default_rng(123)
+            X = rng.normal(0.0, 1.0, size=(650, 4))
+            logits = 1.8 * X[:, 0] + 1.2 * np.tanh(X[:, 1] * X[:, 2])
+            y_bin = (logits > 0.0).astype(int)
+            y_reg = 100.0 + 12.0 * logits + rng.normal(0.0, 1.0, size=650)
+
+            clf = ResidualMLPClassifier(hidden_units=10, cv_folds=3, max_iter=80, seed=42).fit(X, y_bin)
+            self.assertGreaterEqual(clf.cv_fold_count_, 2)
+            self.assertIsNotNone(clf.cv_oof_auc_)
+            self.assertIsNotNone(clf.cv_oof_brier_)
+
+            reg = ResidualMLPRegressor(
+                hidden_units=10,
+                reg_l2_grid=(1e-3, 1e-2),
+                cv_folds=3,
+                max_iter=80,
+                seed=42,
+            ).fit(X, y_reg)
+            self.assertGreaterEqual(reg.cv_fold_count_, 2)
+            self.assertIsNotNone(reg.cv_oof_mse_)
+
+    def test_c4_2_vectorized_monte_carlo_determinism_and_physical_consistency(self) -> None:
+        s06 = (SCRIPTS_DIR / "06_monte_carlo_balance_2035.py").read_text(encoding="utf-8")
+        self.assertIn("def _evaluate_bootstrap_batch(", s06)
+        self.assertIn("_MC_VECTOR_CHUNK_SIZE", s06)
+        self.assertIn("idx_mat = b_idx[:, None].astype(np.intp) * block_size + block_offsets", s06)
+        self.assertIn("sub_loads_mat = proj_demands @ sub_indicator", s06)
+
+        bu_section = s06.split("def run_bottom_up_project_monte_carlo(", 1)[1].split(
+            "def build_and_export_hourly_baseline_8760(", 1
+        )[0]
+        self.assertNotIn("if rng.random() > prob_ok:", bu_section, "Loop sequencial por projeto deve permanecer vetorizado.")
+        self.assertIn("offshore_share * offshore_cf_gain * (1.0 - cf_block)", bu_section)
+
+        s07 = (SCRIPTS_DIR / "07_sensitivity_and_final_report.py").read_text(encoding="utf-8")
+        self.assertIn("offshore_share * offshore_cf_gain * (1.0 - cf_pot_ref)", s07)
+        self.assertIn("cf_2025_eff * w_mw", s07)
+
+        if importlib.util.find_spec("numpy") and importlib.util.find_spec("pandas"):
+            import numpy as np
+
+            s06_mod = importlib.import_module("06_monte_carlo_balance_2035")
+            hours = 336
+            arrays = {
+                "cf": np.linspace(0.18, 0.72, hours),
+                "load": np.linspace(11000.0, 14500.0, hours),
+                "solar": np.maximum(0.0, 2200.0 * np.sin(np.arange(hours) * (2.0 * np.pi / 24.0))),
+                "hour": np.arange(hours, dtype=np.int32) % 24,
+                "month": np.full(hours, 4, dtype=np.int32),
+                "hydro": np.full(hours, 3100.0),
+                "thermal": np.full(hours, 950.0),
+            }
+            res_a = s06_mod.simulate_block_bootstrap(
+                cenario_nome="Test Det",
+                cenario_dc_id="central",
+                target_year=2035,
+                dc_load_mw=1500.0,
+                wind_onshore_mw=34000.0,
+                wind_offshore_mw=2400.0,
+                n_iterations=60,
+                seed=42,
+                arrays=arrays,
+                h2v_nominal_mw=1000.0,
+                h2v_flexible=True,
+            )
+            res_b = s06_mod.simulate_block_bootstrap(
+                cenario_nome="Test Det",
+                cenario_dc_id="central",
+                target_year=2035,
+                dc_load_mw=1500.0,
+                wind_onshore_mw=34000.0,
+                wind_offshore_mw=2400.0,
+                n_iterations=60,
+                seed=42,
+                arrays=arrays,
+                h2v_nominal_mw=1000.0,
+                h2v_flexible=True,
+            )
+            self.assertEqual(res_a, res_b)
+            self.assertGreaterEqual(res_a["importacao_p95_mw"], res_a["importacao_p50_mw"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

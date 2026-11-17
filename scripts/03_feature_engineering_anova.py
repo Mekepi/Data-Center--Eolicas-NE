@@ -117,7 +117,10 @@ def create_lags_rolling_and_physical_features(
     out["penetracao_eolica_pot"] = out["g_eolica_potencial_mw"] / carga_segura
 
     # Folga física de escoamento SIN e excesso acima do cotovelo de exportação (coeficiente solar de 0,18)
-    limite_export_efetivo = float(INTERCHANGE_EXPORT_LIMIT_MW) - float(EXPORT_SOLAR_CURTAILMENT_COEF) * out["g_solar_mw"]
+    limite_export_efetivo = np.maximum(
+        0.0,
+        float(INTERCHANGE_EXPORT_LIMIT_MW) - float(EXPORT_SOLAR_CURTAILMENT_COEF) * out["g_solar_mw"],
+    )
     out["folga_escoamento_sin_mw"] = limite_export_efetivo - out["excedente_renovavel_mw"]
     out["excesso_sobre_escoamento_mw"] = np.maximum(0.0, -out["folga_escoamento_sin_mw"])
     out["interacao_solar_eolica_mw"] = (out["g_eolica_potencial_mw"] * out["g_solar_mw"]) / 1e6
@@ -132,12 +135,12 @@ def create_lags_rolling_and_physical_features(
     hydro_col = "g_hidraulica_mw" if "g_hidraulica_mw" in out.columns else ("g_hidro_mw" if "g_hidro_mw" in out.columns else None)
     if hydro_col is not None:
         hydro_series = pd.to_numeric(out[hydro_col], errors="coerce")
-        out["g_hidro_roll_mean_24h"] = hydro_series.shift(1).rolling(24).mean().fillna(hydro_series.shift(1)).fillna(0.0)
+        out["g_hidro_roll_mean_24h"] = hydro_series.shift(1).rolling(24).mean().fillna(hydro_series.shift(1))
     else:
-        out["g_hidro_roll_mean_24h"] = 0.0
+        out["g_hidro_roll_mean_24h"] = np.nan
     out["despacho_total_est_excesso_mw"] = np.maximum(
         0.0,
-        (gen_renovavel + out["g_hidro_roll_mean_24h"] - out["l_base_mw"]) - limite_export_efetivo,
+        (gen_renovavel + out["g_hidro_roll_mean_24h"].fillna(0.0) - out["l_base_mw"]) - limite_export_efetivo,
     )
 
     return out
@@ -146,6 +149,7 @@ def create_lags_rolling_and_physical_features(
 def _compute_exact_anova_row(
     values: pd.Series,
     groups_col: pd.Series,
+    target_id: str,
     var_label: str,
     factor_label: str,
     conclusion: str,
@@ -159,6 +163,7 @@ def _compute_exact_anova_row(
     ss_between = float(sum(len(g) * (float(np.mean(g)) - grand_mean) ** 2 for g in grouped))
     eta_sq_pct = (ss_between / max(1e-9, ss_total)) * 100.0
     return {
+        "alvo_id": target_id,
         "variavel_analisada": var_label,
         "fator_agrupador": factor_label,
         "estatistica_f": round(float(f_stat), 2),
@@ -180,6 +185,7 @@ def run_comprehensive_anova_tests(df: pd.DataFrame) -> pd.DataFrame:
             _compute_exact_anova_row(
                 df["cf_eolica"],
                 df["month"],
+                "cf_eolica",
                 "CF Eólico Potencial (cf_eolica)",
                 "Mês do Ano (Sazonalidade 12 meses)",
                 "Fortíssima sazonalidade atmosférica: a Safra dos Ventos (Ago-Nov) supera em ~2x a calmaria (Mar-Abr)",
@@ -191,6 +197,7 @@ def run_comprehensive_anova_tests(df: pd.DataFrame) -> pd.DataFrame:
             _compute_exact_anova_row(
                 df["l_base_mw"],
                 df["dayofweek"],
+                "l_base_mw",
                 "Carga Base (l_base_mw)",
                 "Dia da Semana (7 dias: Seg a Dom)",
                 "Diferença altamente significativa entre dias úteis industriais/comerciais e domingos no Nordeste",
@@ -202,6 +209,7 @@ def run_comprehensive_anova_tests(df: pd.DataFrame) -> pd.DataFrame:
             _compute_exact_anova_row(
                 df["intercambio_liquido_mw"],
                 df["month"],
+                "intercambio_liquido_mw",
                 "Intercâmbio Líquido SIN (intercambio_liquido_mw)",
                 "Mês do Ano (12 meses)",
                 "Inversão estrutural do fluxo: NE exporta maciçamente no 2º semestre e reduz saldo na estação chuvosa",
@@ -215,6 +223,7 @@ def run_comprehensive_anova_tests(df: pd.DataFrame) -> pd.DataFrame:
             _compute_exact_anova_row(
                 df_coff["curtailment_mw"],
                 df_coff["hour"],
+                "curtailment_mw",
                 f"Curtailment Eólico Real (curtailment_mw · {COFF_START_YEAR}-{TRAIN_CUTOFF_YEAR})",
                 "Faixa Horária do Dia (24 horas)",
                 "Pico severo de constrained-off entre 09h e 16h pela rampa solar diurna simultânea à geração eólica",
@@ -310,14 +319,37 @@ def compute_feature_correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
 
 def split_train_test_datasets(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Executa a partição temporal formal aprovada:
+    Executa a partição temporal formal aprovada em ordem cronológica estrita:
     - Treino: HISTORY_START_YEAR a TRAIN_CUTOFF_YEAR - 1
     - Teste Cego Out-of-Time: TRAIN_CUTOFF_YEAR
     """
     ts = pd.to_datetime(df["ts"])
-    train_df = df[ts.dt.year < TRAIN_CUTOFF_YEAR].reset_index(drop=True)
-    test_df = df[ts.dt.year == TRAIN_CUTOFF_YEAR].reset_index(drop=True)
+    ordered = df.assign(_ts_sort=ts).sort_values("_ts_sort").drop(columns=["_ts_sort"]).reset_index(drop=True)
+    ts_ord = pd.to_datetime(ordered["ts"])
+    train_df = ordered[ts_ord.dt.year < TRAIN_CUTOFF_YEAR].reset_index(drop=True)
+    test_df = ordered[ts_ord.dt.year == TRAIN_CUTOFF_YEAR].reset_index(drop=True)
     return train_df, test_df
+
+
+def split_and_build_causal_features(
+    df_raw: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Constrói variáveis estritamente sem vazamento na fronteira Treino (<=2024) -> Teste (2025):
+    1. Extrai variáveis locais de calendário/Fourier sobre cada registro.
+    2. Separa Treino (<2025) e Teste (2025) ANTES de calcular quaisquer defasagens ou janelas móveis.
+    3. Remove apenas as 168 h iniciais de warmup do treino (2015), mantendo todas as 8.760 h de 2025
+       com NaNs causais nas primeiras horas de fronteira (imputados depois estritamente com medianas do treino).
+    """
+    df_temporal = create_temporal_and_harmonic_features(df_raw)
+    train_raw, test_raw = split_train_test_datasets(df_temporal)
+
+    train_feat = create_lags_rolling_and_physical_features(train_raw)
+    train_df = train_feat.dropna(subset=["l_base_mw_lag_168h", "cf_eolica_lag_168h"]).reset_index(drop=True)
+
+    test_df = create_lags_rolling_and_physical_features(test_raw).reset_index(drop=True)
+    df_clean = pd.concat([train_df, test_df], ignore_index=True)
+    return df_clean, train_df, test_df
 
 
 def main():
@@ -333,12 +365,8 @@ def main():
     df_raw = pd.read_csv(input_master)
     print(f"[INPUT] Carregando {len(df_raw):,} registros horários de {input_master.name}...")
 
-    df_feat = create_temporal_and_harmonic_features(df_raw)
-    df_feat = create_lags_rolling_and_physical_features(df_feat)
-
-    # Remover primeiras 168 horas onde lag_168h ainda não possui histórico prévio
-    df_clean = df_feat.dropna(subset=["l_base_mw_lag_168h", "cf_eolica_lag_168h"]).reset_index(drop=True)
-    print(f"[PROCESSAMENTO] {len(df_clean):,} horas válidas e {len(df_clean.columns)} colunas na matriz de features.")
+    df_clean, train_df, test_df = split_and_build_causal_features(df_raw)
+    print(f"[PROCESSAMENTO] {len(df_clean):,} horas válidas (split isolado 2024->2025) e {len(df_clean.columns)} colunas na matriz de features.")
 
     # ANOVA Rigoroso
     anova_df = run_comprehensive_anova_tests(df_clean)
@@ -361,11 +389,10 @@ def main():
     print("\nCorrelações de Pearson com Variáveis-Alvo:")
     print(corr_df.to_string(index=False))
 
-    # Salvar Matriz Completa e Splits Formais
+    # Salvar Matriz Completa e Splits Formais (já isolados sem vazamento de fronteira)
     matrix_output = PROCESSED_DATA_DIR / "ne_features_matrix.csv"
     df_clean.to_csv(matrix_output, index=False)
 
-    train_df, test_df = split_train_test_datasets(df_clean)
     train_path = PROCESSED_DATA_DIR / "train_features_2015_2024.csv"
     test_path = PROCESSED_DATA_DIR / "test_features_2025.csv"
     train_df.to_csv(train_path, index=False)

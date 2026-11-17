@@ -162,7 +162,58 @@ export function buildDefaultSimulationConfig(config: PipelineConfigSnapshot): Si
 }
 
 function clamp(val: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, val));
+  return val < min ? min : val > max ? max : val;
+}
+
+function round1(val: number): number {
+  return Math.round(val * 10) / 10;
+}
+
+function round4(val: number): number {
+  return Math.round(val * 10000) / 10000;
+}
+
+interface CachedBaselineLabels {
+  monthNamesKey: string;
+  labels: string[];
+}
+
+const baselineLabelCache = new WeakMap<HourlyBaseline8760Bundle, CachedBaselineLabels>();
+const canonicalFullYearSeriesSet = new WeakSet<HourlyPoint[]>();
+
+function getBaselineTimestampLabels(
+  hourlyBaseline: HourlyBaseline8760Bundle,
+  monthShortNames: string[]
+): string[] {
+  const key = monthShortNames.join('|');
+  const cached = baselineLabelCache.get(hourlyBaseline);
+  if (cached && cached.monthNamesKey === key && cached.labels.length === hourlyBaseline.hoursCount) {
+    return cached.labels;
+  }
+
+  const totalHours = hourlyBaseline.hoursCount;
+  const labels = new Array<string>(totalHours);
+  const months = hourlyBaseline.month;
+  const days = hourlyBaseline.day;
+  const hours = hourlyBaseline.hour;
+
+  const paddedTwo = new Array<string>(32);
+  for (let i = 0; i < 32; i++) {
+    paddedTwo[i] = i < 10 ? `0${i}` : `${i}`;
+  }
+
+  for (let h = 0; h < totalHours; h++) {
+    const m = months[h] ?? 1;
+    const d = days[h] ?? 1;
+    const hr = hours[h] ?? h % 24;
+    const mLabel = monthShortNames[m - 1] ?? `M${m < 10 ? `0${m}` : `${m}`}`;
+    const dStr = d >= 0 && d < 32 ? paddedTwo[d] : String(d).padStart(2, '0');
+    const hStr = hr >= 0 && hr < 32 ? paddedTwo[hr] : String(hr).padStart(2, '0');
+    labels[h] = `${dStr}/${mLabel} · ${hStr}h`;
+  }
+
+  baselineLabelCache.set(hourlyBaseline, { monthNamesKey: key, labels });
+  return labels;
 }
 
 export function computeDataCenterLoadMW(params: {
@@ -176,21 +227,21 @@ export function computeDataCenterLoadMW(params: {
   const ramp = clamp(params.rampFactor, 0, 1);
   const pue = Math.max(1.0, params.pue);
   if (params.isPublishedPowerTotalGrid) {
-    return Number((params.itPowerMW * util * ramp).toFixed(1));
+    return round1(params.itPowerMW * util * ramp);
   }
-  return Number((params.itPowerMW * util * pue * ramp).toFixed(1));
+  return round1(params.itPowerMW * util * pue * ramp);
 }
 
 export function computeWindGenerationMW(capacityFactor: number, installedMW: number): number {
   const cf = clamp(capacityFactor, 0, 1);
-  return Number((cf * Math.max(0, installedMW)).toFixed(1));
+  return round1(cf * Math.max(0, installedMW));
 }
 
 export function computeDcRampFactor(targetYear: number, ssotConfig: PipelineConfigSnapshot): number {
   if (targetYear < ssotConfig.rampStartYear) return 0;
   const totalRampYears = Math.max(1, ssotConfig.targetEndYear - ssotConfig.rampStartYear + 1);
   const progress = clamp((targetYear - ssotConfig.rampStartYear + 1) / totalRampYears, 0, 1);
-  return Number(Math.pow(progress, ssotConfig.windRampExponent).toFixed(4));
+  return round4(Math.pow(progress, ssotConfig.windRampExponent));
 }
 
 export function resolveEffectiveDcLoadMW(
@@ -220,7 +271,7 @@ export function resolveEffectiveDcLoadMW(
         ? config.pue / ssotCfg.defaultPue
         : 1;
 
-    return Number((baseNominalLoadMW * utilFactor * pueFactor).toFixed(1));
+    return round1(baseNominalLoadMW * utilFactor * pueFactor);
   }
 
   if (config.targetYear < ssotCfg.rampStartYear) {
@@ -317,18 +368,75 @@ export function computeChesfDispatchMW(
   return clamp(modulated, chesfConfig.floorMW, chesfConfig.ceilingMW);
 }
 
-export function estimateFullYearHourly(
-  config: SimulationConfig,
+export type AnnualSimulationConfig = Pick<
+  SimulationConfig,
+  | 'targetYear'
+  | 'dcScenario'
+  | 'windScenario'
+  | 'includeOffshorePost2031'
+  | 'seasonalRegime'
+  | 'pue'
+  | 'dcUtilization'
+  | 'isPublishedPowerTotalGrid'
+  | 'interchangeImportLimitMW'
+  | 'interchangeExportLimitMW'
+>;
+
+export interface AnnualMetricsSummary {
+  hourlyBaselineAvailable: boolean;
+  effectiveDcLoadMW: number;
+  avgBaseLoadMW: number | null;
+  avgWindCfPct: number | null;
+  negativeMarginHoursYear: number | null;
+  criticalImportHoursYear: number | null;
+  annualCurtailmentWithoutDcTWh: number | null;
+  annualCurtailmentWithDcTWh: number | null;
+}
+
+export interface AnnualSimulationResult {
+  fullYearSeries: HourlyPoint[];
+  annualSummary: AnnualMetricsSummary;
+}
+
+export function estimateAnnualSimulation(
+  config: AnnualSimulationConfig,
   hourlyBaseline: HourlyBaseline8760Bundle | null,
   ssot: EnergyModelSsotInput
-): HourlyPoint[] {
+): AnnualSimulationResult {
+  const dcLoadMW = resolveEffectiveDcLoadMW(config, ssot);
   if (!hourlyBaseline || hourlyBaseline.hoursCount <= 0) {
-    return [];
+    return {
+      fullYearSeries: [],
+      annualSummary: {
+        hourlyBaselineAvailable: false,
+        effectiveDcLoadMW: dcLoadMW,
+        avgBaseLoadMW: null,
+        avgWindCfPct: null,
+        negativeMarginHoursYear: null,
+        criticalImportHoursYear: null,
+        annualCurtailmentWithoutDcTWh: null,
+        annualCurtailmentWithDcTWh: null,
+      },
+    };
   }
 
   const ssotCfg = ssot.config;
   const regData = hourlyBaseline.regimes[config.seasonalRegime] ?? hourlyBaseline.regimes.annual_blend;
-  if (!regData) return [];
+  if (!regData) {
+    return {
+      fullYearSeries: [],
+      annualSummary: {
+        hourlyBaselineAvailable: false,
+        effectiveDcLoadMW: dcLoadMW,
+        avgBaseLoadMW: null,
+        avgWindCfPct: null,
+        negativeMarginHoursYear: null,
+        criticalImportHoursYear: null,
+        annualCurtailmentWithoutDcTWh: null,
+        annualCurtailmentWithDcTWh: null,
+      },
+    };
+  }
 
   const monthNames = ssot.uiCatalog?.monthShortNames ?? [];
   const totalHours = hourlyBaseline.hoursCount;
@@ -344,36 +452,111 @@ export function estimateFullYearHourly(
     },
     ssotCfg
   );
-  const dcLoadMW = resolveEffectiveDcLoadMW(config, ssot);
+  const windTotalMW = windCap.totalMW;
+  const roundedDcLoadMW = round1(dcLoadMW);
+  const timestampLabels = getBaselineTimestampLabels(hourlyBaseline, monthNames);
 
-  const series: HourlyPoint[] = new Array(totalHours);
+  const chesf = ssotCfg.chesfDispatch;
+  const chesfFloor = chesf.floorMW;
+  const chesfCeiling = chesf.ceilingMW;
+  const thermalWeight = chesf.thermalInflexWeight;
+  const hydroBlend = chesf.hydroObsBlend;
+  const oneMinusHydroBlend = 1 - hydroBlend;
+  const exportCoef = ssotCfg.exportSolarCurtailmentCoef;
+  const exportLimitMW = config.interchangeExportLimitMW;
+  const importLimitNegMW = -config.interchangeImportLimitMW;
+  const hoursPerDay = ssotCfg.hoursPerDay;
+
+  // Lookup tables O(1) por mês (1..12) evitando array.includes() e alocações por hora
+  const monthFloor = new Float64Array(13);
+  const monthSlope = new Float64Array(13);
+  for (let m = 1; m <= 12; m++) {
+    if (chesf.wetMonths.includes(m)) {
+      monthFloor[m] = chesfFloor + chesf.wetFloorBonusMW;
+      monthSlope[m] = chesf.wetSlope;
+    } else if (chesf.dryMonths.includes(m)) {
+      monthFloor[m] = chesfFloor;
+      monthSlope[m] = chesf.drySlope;
+    } else {
+      monthFloor[m] = chesfFloor + 0.5 * chesf.wetFloorBonusMW;
+      monthSlope[m] = chesf.netNeedSlope;
+    }
+  }
+
+  const monthsArr = hourlyBaseline.month;
+  const daysArr = hourlyBaseline.day;
+  const hoursArr = hourlyBaseline.hour;
+  const lBaseArr = regData.lBaseMW;
+  const cfWindArr = regData.cfWind;
+  const gSolarArr = regData.gSolarMW;
+  const gHydroArr = regData.gHydroMW;
+  const gThermalArr = regData.gThermalMW;
+
+  const series: HourlyPoint[] = new Array<HourlyPoint>(totalHours);
+  let sumBaseLoad = 0;
+  let sumWindCf = 0;
+  let negMarginYear = 0;
+  let critImportYear = 0;
+  let curtNoDcYearMWh = 0;
+  let curtWithDcYearMWh = 0;
 
   for (let h = 0; h < totalHours; h++) {
-    const month = hourlyBaseline.month[h] ?? 1;
-    const dayOfMonth = hourlyBaseline.day[h] ?? 1;
-    const hourOfDay = hourlyBaseline.hour[h] ?? h % ssotCfg.hoursPerDay;
-    const monthLabel = monthNames[month - 1] ?? `M${String(month).padStart(2, '0')}`;
-    const timestampLabel = `${String(dayOfMonth).padStart(2, '0')}/${monthLabel} · ${String(hourOfDay).padStart(2, '0')}h`;
+    const month = monthsArr[h] ?? 1;
+    const dayOfMonth = daysArr[h] ?? 1;
+    const hourOfDay = hoursArr[h] ?? h % hoursPerDay;
 
-    const baseLoadMW = regData.lBaseMW[h] * loadGrowth;
-    const totalLoadMW = baseLoadMW + dcLoadMW;
-    const windCf = clamp(regData.cfWind[h], 0, 1);
-    const windGenPotentialMW = windCf * windCap.totalMW;
-    const solarGenMW = regData.gSolarMW[h] * solarGrowth;
+    const baseLoadRaw = lBaseArr[h] * loadGrowth;
+    const totalLoadRaw = baseLoadRaw + dcLoadMW;
+    const rawCf = cfWindArr[h];
+    const windCfRaw = rawCf < 0 ? 0 : rawCf > 1 ? 1 : rawCf;
+    const windGenRaw = windCfRaw * windTotalMW;
+    const solarGenRaw = gSolarArr[h] * solarGrowth;
 
-    const netNeedBaseMW = Math.max(0, baseLoadMW - (windGenPotentialMW + solarGenMW));
-    const chesfDispatchMW = computeChesfDispatchMW(netNeedBaseMW, ssotCfg.chesfDispatch, {
-      month,
-      observedHydroMW: regData.gHydroMW[h] ?? 0,
-      observedThermalMW: regData.gThermalMW[h] ?? 0,
-    });
-    const totalGenPotentialMW = windGenPotentialMW + solarGenMW + chesfDispatchMW;
-    const marginWithoutDcMW = totalGenPotentialMW - baseLoadMW;
-    const marginWithDcMW = totalGenPotentialMW - totalLoadMW;
+    const netNeedBaseMW = baseLoadRaw - (windGenRaw + solarGenRaw);
+    const positiveNeed = netNeedBaseMW > 0 ? netNeedBaseMW : 0;
 
+    const mIdx = month >= 1 && month <= 12 ? month : 0;
+    const sFloor = mIdx > 0 ? monthFloor[mIdx] : chesfFloor + 0.5 * chesf.wetFloorBonusMW;
+    const sSlope = mIdx > 0 ? monthSlope[mIdx] : chesf.netNeedSlope;
+
+    const rawThermal = gThermalArr[h] ?? 0;
+    const obsThermal = rawThermal > 0 ? rawThermal : 0;
+    const thermalInflex = thermalWeight * obsThermal;
+    const modelCurve = sFloor + sSlope * positiveNeed + thermalInflex;
+
+    const obsHydro = gHydroArr[h] ?? 0;
+    const modulated =
+      obsHydro > 0 ? oneMinusHydroBlend * modelCurve + hydroBlend * (obsHydro + thermalInflex) : modelCurve;
+    const chesfRaw = modulated < chesfFloor ? chesfFloor : modulated > chesfCeiling ? chesfCeiling : modulated;
+
+    const totalGenRaw = windGenRaw + solarGenRaw + chesfRaw;
+    const marginNoDcRaw = totalGenRaw - baseLoadRaw;
+    const marginWithDcRaw = totalGenRaw - totalLoadRaw;
+
+    const baseLoadMW = round1(baseLoadRaw);
+    const totalLoadMW = round1(totalLoadRaw);
+    const windCapacityFactor = round4(windCfRaw);
+    const windGenPotentialMW = round1(windGenRaw);
+    const solarGenMW = round1(solarGenRaw);
     const exportThresholdMW = Math.max(0, config.interchangeExportLimitMW - ssotCfg.exportSolarCurtailmentCoef * solarGenMW);
-    const curtailmentWithoutDcMW = Math.max(0, marginWithoutDcMW - exportThresholdMW);
-    const curtailmentWithDcMW = Math.max(0, marginWithDcMW - exportThresholdMW);
+    const curtNoDcDiff = marginNoDcRaw - exportThresholdMW;
+    const curtWithDcDiff = marginWithDcRaw - exportThresholdMW;
+    const curtNoDcRaw = curtNoDcDiff > 0 ? curtNoDcDiff : 0;
+    const curtWithDcRaw = curtWithDcDiff > 0 ? curtWithDcDiff : 0;
+    const otherDispatchableMW = round1(chesfRaw);
+    const totalGenPotentialMW = round1(totalGenRaw);
+    const marginWithoutDcMW = round1(marginNoDcRaw);
+    const marginWithDcMW = round1(marginWithDcRaw);
+    const exceedsImportLimit = marginWithDcMW < importLimitNegMW;
+    const curtailmentWithoutDcMW = round1(curtNoDcRaw);
+    const curtailmentWithDcMW = round1(curtWithDcRaw);
+
+    sumBaseLoad += baseLoadMW;
+    sumWindCf += windCapacityFactor;
+    if (marginWithDcMW < 0) negMarginYear++;
+    if (exceedsImportLimit) critImportYear++;
+    curtNoDcYearMWh += curtailmentWithoutDcMW;
+    curtWithDcYearMWh += curtailmentWithDcMW;
 
     series[h] = {
       hourOfYear: h,
@@ -381,34 +564,61 @@ export function estimateFullYearHourly(
       month,
       dayOfMonth,
       hourOfDay,
-      timestampLabel,
-      baseLoadMW: Number(baseLoadMW.toFixed(1)),
-      dcLoadMW: Number(dcLoadMW.toFixed(1)),
-      totalLoadMW: Number(totalLoadMW.toFixed(1)),
-      windCapacityFactor: Number(windCf.toFixed(4)),
-      windGenPotentialMW: Number(windGenPotentialMW.toFixed(1)),
-      solarGenMW: Number(solarGenMW.toFixed(1)),
-      otherDispatchableMW: Number(chesfDispatchMW.toFixed(1)),
-      totalGenPotentialMW: Number(totalGenPotentialMW.toFixed(1)),
-      marginWithoutDcMW: Number(marginWithoutDcMW.toFixed(1)),
-      marginWithDcMW: Number(marginWithDcMW.toFixed(1)),
-      exceedsImportLimit: marginWithDcMW < -config.interchangeImportLimitMW,
-      curtailmentWithoutDcMW: Number(curtailmentWithoutDcMW.toFixed(1)),
-      curtailmentWithDcMW: Number(curtailmentWithDcMW.toFixed(1)),
+      timestampLabel: timestampLabels[h],
+      baseLoadMW,
+      dcLoadMW: roundedDcLoadMW,
+      totalLoadMW,
+      windCapacityFactor,
+      windGenPotentialMW,
+      solarGenMW,
+      otherDispatchableMW,
+      totalGenPotentialMW,
+      marginWithoutDcMW,
+      marginWithDcMW,
+      exceedsImportLimit,
+      curtailmentWithoutDcMW,
+      curtailmentWithDcMW,
     };
   }
 
-  return series;
+  canonicalFullYearSeriesSet.add(series);
+
+  const invHours = 1 / totalHours;
+  return {
+    fullYearSeries: series,
+    annualSummary: {
+      hourlyBaselineAvailable: true,
+      effectiveDcLoadMW: dcLoadMW,
+      avgBaseLoadMW: Math.round(sumBaseLoad * invHours),
+      avgWindCfPct: round1(sumWindCf * invHours * 100),
+      negativeMarginHoursYear: negMarginYear,
+      criticalImportHoursYear: critImportYear,
+      annualCurtailmentWithoutDcTWh: Number((curtNoDcYearMWh / 1_000_000).toFixed(2)),
+      annualCurtailmentWithDcTWh: Number((curtWithDcYearMWh / 1_000_000).toFixed(2)),
+    },
+  };
+}
+
+export function estimateFullYearHourly(
+  config: SimulationConfig,
+  hourlyBaseline: HourlyBaseline8760Bundle | null,
+  ssot: EnergyModelSsotInput
+): HourlyPoint[] {
+  return estimateAnnualSimulation(config, hourlyBaseline, ssot).fullYearSeries;
 }
 
 export function sliceHourlyWindow(
   fullYearSeries: HourlyPoint[],
-  config: SimulationConfig,
+  config: Pick<
+    SimulationConfig,
+    'targetYear' | 'observationWindow' | 'selectedDay' | 'selectedWeek' | 'selectedMonth' | 'selectedQuarter'
+  >,
   ssotConfig: PipelineConfigSnapshot,
   monthShortNames: string[] = []
 ): WindowSliceResult {
   const windowId = config.observationWindow;
-  if (fullYearSeries.length === 0) {
+  const totalLen = fullYearSeries.length;
+  if (totalLen === 0) {
     return {
       windowId,
       windowLabel: `${config.targetYear}`,
@@ -417,52 +627,153 @@ export function sliceHourlyWindow(
     };
   }
 
-  let rawSlice: HourlyPoint[] = fullYearSeries;
-  let windowLabel = `Ano Completo ${config.targetYear}`;
+  if (windowId === 'year') {
+    const windowLabel = `Ano Completo ${config.targetYear} · ${totalLen.toLocaleString('pt-BR')} h`;
+    if (canonicalFullYearSeriesSet.has(fullYearSeries)) {
+      return {
+        windowId,
+        windowLabel,
+        hoursCount: totalLen,
+        points: fullYearSeries,
+      };
+    }
+    const points = new Array<HourlyPoint>(totalLen);
+    for (let i = 0; i < totalLen; i++) {
+      const pt = fullYearSeries[i];
+      points[i] = pt.windowHourIndex === i ? pt : { ...pt, windowHourIndex: i };
+    }
+    return {
+      windowId,
+      windowLabel,
+      hoursCount: totalLen,
+      points,
+    };
+  }
 
   if (windowId === 'day') {
     const dayIdx = clamp(Math.round(config.selectedDay), 1, ssotConfig.daysPerYear);
-    const start = Math.min(Math.max(0, fullYearSeries.length - ssotConfig.hoursPerDay), (dayIdx - 1) * ssotConfig.hoursPerDay);
-    const end = Math.min(fullYearSeries.length, start + ssotConfig.hoursPerDay);
-    rawSlice = fullYearSeries.slice(start, end);
-    const datePart = rawSlice[0]?.timestampLabel.split(' · ')[0] ?? `Dia ${dayIdx}`;
-    windowLabel = `Dia ${dayIdx}/${ssotConfig.daysPerYear} (${datePart}/${config.targetYear}) · ${rawSlice.length} h`;
-  } else if (windowId === 'week') {
-    const weekLen = ssotConfig.blockSizeHours;
-    const weekIdx = clamp(Math.round(config.selectedWeek), 1, ssotConfig.weeksPerYear);
-    const start = Math.min(Math.max(0, fullYearSeries.length - weekLen), (weekIdx - 1) * weekLen);
-    const end = Math.min(fullYearSeries.length, start + weekLen);
-    rawSlice = fullYearSeries.slice(start, end);
-    const d0 = rawSlice[0]?.timestampLabel.split(' · ')[0] ?? '';
-    const d1 = rawSlice[rawSlice.length - 1]?.timestampLabel.split(' · ')[0] ?? '';
-    windowLabel = `Semana ${weekIdx}/${ssotConfig.weeksPerYear} (${d0}–${d1}) · ${rawSlice.length} h`;
-  } else if (windowId === 'month') {
-    const monthIdx = clamp(Math.round(config.selectedMonth), 1, 12);
-    rawSlice = fullYearSeries.filter((p) => p.month === monthIdx);
-    const mName = monthShortNames[monthIdx - 1] ?? `Mês ${monthIdx}`;
-    windowLabel = `${mName}/${config.targetYear} · ${rawSlice.length} h`;
-  } else if (windowId === 'quarter') {
-    const qIdx = clamp(Math.round(config.selectedQuarter), 1, ssotConfig.quartersPerYear);
-    const mStart = (qIdx - 1) * 3 + 1;
-    const mEnd = qIdx * 3;
-    rawSlice = fullYearSeries.filter((p) => p.month >= mStart && p.month <= mEnd);
-    const mStartLabel = monthShortNames[mStart - 1] ?? `M${mStart}`;
-    const mEndLabel = monthShortNames[mEnd - 1] ?? `M${mEnd}`;
-    windowLabel = `Q${qIdx} (${mStartLabel}–${mEndLabel}/${config.targetYear}) · ${rawSlice.length.toLocaleString('pt-BR')} h`;
-  } else {
-    windowLabel = `Ano Completo ${config.targetYear} · ${rawSlice.length.toLocaleString('pt-BR')} h`;
+    const start = Math.min(Math.max(0, totalLen - ssotConfig.hoursPerDay), (dayIdx - 1) * ssotConfig.hoursPerDay);
+    const end = Math.min(totalLen, start + ssotConfig.hoursPerDay);
+    const count = Math.max(0, end - start);
+    const points = new Array<HourlyPoint>(count);
+    for (let idx = 0; idx < count; idx++) {
+      points[idx] = { ...fullYearSeries[start + idx], windowHourIndex: idx };
+    }
+    const datePart = points[0]?.timestampLabel.split(' · ')[0] ?? `Dia ${dayIdx}`;
+    return {
+      windowId,
+      windowLabel: `Dia ${dayIdx}/${ssotConfig.daysPerYear} (${datePart}/${config.targetYear}) · ${count} h`,
+      hoursCount: count,
+      points,
+    };
   }
 
-  const points = rawSlice.map((pt, idx) => ({
-    ...pt,
-    windowHourIndex: idx,
-  }));
+  if (windowId === 'week') {
+    const weekLen = ssotConfig.blockSizeHours;
+    const weekIdx = clamp(Math.round(config.selectedWeek), 1, ssotConfig.weeksPerYear);
+    const start = Math.min(Math.max(0, totalLen - weekLen), (weekIdx - 1) * weekLen);
+    const end = Math.min(totalLen, start + weekLen);
+    const count = Math.max(0, end - start);
+    const points = new Array<HourlyPoint>(count);
+    for (let idx = 0; idx < count; idx++) {
+      points[idx] = { ...fullYearSeries[start + idx], windowHourIndex: idx };
+    }
+    const d0 = points[0]?.timestampLabel.split(' · ')[0] ?? '';
+    const d1 = points[count - 1]?.timestampLabel.split(' · ')[0] ?? '';
+    return {
+      windowId,
+      windowLabel: `Semana ${weekIdx}/${ssotConfig.weeksPerYear} (${d0}–${d1}) · ${count} h`,
+      hoursCount: count,
+      points,
+    };
+  }
 
+  if (windowId === 'month') {
+    const monthIdx = clamp(Math.round(config.selectedMonth), 1, 12);
+    const points: HourlyPoint[] = [];
+    for (let i = 0; i < totalLen; i++) {
+      const pt = fullYearSeries[i];
+      if (pt.month === monthIdx) {
+        points.push({ ...pt, windowHourIndex: points.length });
+      }
+    }
+    const mName = monthShortNames[monthIdx - 1] ?? `Mês ${monthIdx}`;
+    return {
+      windowId,
+      windowLabel: `${mName}/${config.targetYear} · ${points.length} h`,
+      hoursCount: points.length,
+      points,
+    };
+  }
+
+  // quarter
+  const qIdx = clamp(Math.round(config.selectedQuarter), 1, ssotConfig.quartersPerYear);
+  const mStart = (qIdx - 1) * 3 + 1;
+  const mEnd = qIdx * 3;
+  const points: HourlyPoint[] = [];
+  for (let i = 0; i < totalLen; i++) {
+    const pt = fullYearSeries[i];
+    if (pt.month >= mStart && pt.month <= mEnd) {
+      points.push({ ...pt, windowHourIndex: points.length });
+    }
+  }
+  const mStartLabel = monthShortNames[mStart - 1] ?? `M${mStart}`;
+  const mEndLabel = monthShortNames[mEnd - 1] ?? `M${mEnd}`;
   return {
     windowId,
-    windowLabel,
+    windowLabel: `Q${qIdx} (${mStartLabel}–${mEndLabel}/${config.targetYear}) · ${points.length.toLocaleString('pt-BR')} h`,
     hoursCount: points.length,
     points,
+  };
+}
+
+export interface WindowMetricsSummary {
+  negativeMarginHoursWindow: number | null;
+  criticalImportHoursWindow: number | null;
+  minMarginMW: number | null;
+  maxMarginMW: number | null;
+  windowCurtailmentWithoutDcGWh: number | null;
+  windowCurtailmentWithDcGWh: number | null;
+}
+
+export function summarizeHourlyWindow(windowSeries: HourlyPoint[]): WindowMetricsSummary {
+  const n = windowSeries.length;
+  if (n === 0) {
+    return {
+      negativeMarginHoursWindow: null,
+      criticalImportHoursWindow: null,
+      minMarginMW: null,
+      maxMarginMW: null,
+      windowCurtailmentWithoutDcGWh: null,
+      windowCurtailmentWithDcGWh: null,
+    };
+  }
+
+  let negMarginWindow = 0;
+  let critImportWindow = 0;
+  let minMarginWindow = Infinity;
+  let maxMarginWindow = -Infinity;
+  let curtNoDcWindowMWh = 0;
+  let curtWithDcWindowMWh = 0;
+
+  for (let i = 0; i < n; i++) {
+    const pt = windowSeries[i];
+    const m = pt.marginWithDcMW;
+    if (m < 0) negMarginWindow++;
+    if (pt.exceedsImportLimit) critImportWindow++;
+    if (m < minMarginWindow) minMarginWindow = m;
+    if (m > maxMarginWindow) maxMarginWindow = m;
+    curtNoDcWindowMWh += pt.curtailmentWithoutDcMW;
+    curtWithDcWindowMWh += pt.curtailmentWithDcMW;
+  }
+
+  return {
+    negativeMarginHoursWindow: negMarginWindow,
+    criticalImportHoursWindow: critImportWindow,
+    minMarginMW: Number.isFinite(minMarginWindow) ? Math.round(minMarginWindow) : null,
+    maxMarginMW: Number.isFinite(maxMarginWindow) ? Math.round(maxMarginWindow) : null,
+    windowCurtailmentWithoutDcGWh: round1(curtNoDcWindowMWh / 1000),
+    windowCurtailmentWithDcGWh: round1(curtWithDcWindowMWh / 1000),
   };
 }
 
@@ -472,29 +783,34 @@ export function buildHourlyPlotBuckets(series: HourlyPoint[], maxBuckets = 365):
 
   if (n <= maxBuckets) {
     const denom = Math.max(1, n - 1);
-    return series.map((pt, i) => ({
-      indexStart: i,
-      indexEnd: i,
-      indexCenter: i,
-      xFrac: i / denom,
-      meanMarginWithDcMW: pt.marginWithDcMW,
-      minMarginWithDcMW: pt.marginWithDcMW,
-      maxMarginWithDcMW: pt.marginWithDcMW,
-      meanMarginWithoutDcMW: pt.marginWithoutDcMW,
-      meanBaseLoadMW: pt.baseLoadMW,
-      meanTotalLoadMW: pt.totalLoadMW,
-      meanTotalGenPotentialMW: pt.totalGenPotentialMW,
-    }));
+    const out = new Array<HourlyPlotBucket>(n);
+    for (let i = 0; i < n; i++) {
+      const pt = series[i];
+      out[i] = {
+        indexStart: i,
+        indexEnd: i,
+        indexCenter: i,
+        xFrac: i / denom,
+        meanMarginWithDcMW: pt.marginWithDcMW,
+        minMarginWithDcMW: pt.marginWithDcMW,
+        maxMarginWithDcMW: pt.marginWithDcMW,
+        meanMarginWithoutDcMW: pt.marginWithoutDcMW,
+        meanBaseLoadMW: pt.baseLoadMW,
+        meanTotalLoadMW: pt.totalLoadMW,
+        meanTotalGenPotentialMW: pt.totalGenPotentialMW,
+      };
+    }
+    return out;
   }
 
-  const buckets: HourlyPlotBucket[] = [];
+  const buckets = new Array<HourlyPlotBucket>(maxBuckets);
   const step = n / maxBuckets;
   const denom = Math.max(1, n - 1);
 
   for (let b = 0; b < maxBuckets; b++) {
     const start = Math.floor(b * step);
     const end = Math.min(n - 1, Math.floor((b + 1) * step) - 1);
-    const effectiveEnd = Math.max(start, end);
+    const effectiveEnd = end > start ? end : start;
     let sumMargin = 0;
     let minMargin = Infinity;
     let maxMargin = -Infinity;
@@ -503,32 +819,34 @@ export function buildHourlyPlotBuckets(series: HourlyPoint[], maxBuckets = 365):
     let sumTotal = 0;
     let sumGen = 0;
     const count = effectiveEnd - start + 1;
+    const invCount = 1 / count;
 
     for (let i = start; i <= effectiveEnd; i++) {
       const pt = series[i];
-      sumMargin += pt.marginWithDcMW;
-      if (pt.marginWithDcMW < minMargin) minMargin = pt.marginWithDcMW;
-      if (pt.marginWithDcMW > maxMargin) maxMargin = pt.marginWithDcMW;
+      const m = pt.marginWithDcMW;
+      sumMargin += m;
+      if (m < minMargin) minMargin = m;
+      if (m > maxMargin) maxMargin = m;
       sumMarginNoDc += pt.marginWithoutDcMW;
       sumBase += pt.baseLoadMW;
       sumTotal += pt.totalLoadMW;
       sumGen += pt.totalGenPotentialMW;
     }
 
-    const center = Math.round((start + effectiveEnd) / 2);
-    buckets.push({
+    const center = Math.round((start + effectiveEnd) * 0.5);
+    buckets[b] = {
       indexStart: start,
       indexEnd: effectiveEnd,
       indexCenter: center,
       xFrac: center / denom,
-      meanMarginWithDcMW: sumMargin / count,
+      meanMarginWithDcMW: sumMargin * invCount,
       minMarginWithDcMW: minMargin,
       maxMarginWithDcMW: maxMargin,
-      meanMarginWithoutDcMW: sumMarginNoDc / count,
-      meanBaseLoadMW: sumBase / count,
-      meanTotalLoadMW: sumTotal / count,
-      meanTotalGenPotentialMW: sumGen / count,
-    });
+      meanMarginWithoutDcMW: sumMarginNoDc * invCount,
+      meanBaseLoadMW: sumBase * invCount,
+      meanTotalLoadMW: sumTotal * invCount,
+      meanTotalGenPotentialMW: sumGen * invCount,
+    };
   }
 
   return buckets;
@@ -548,7 +866,7 @@ function fromGridRow(
     offshoreWindGW: Number((windCap.offshoreMW / 1000).toFixed(2)),
     probCriticalImportAnnualPct: Number(row.probExceedInterchangePct.toFixed(2)),
     probCriticalWithoutDcPct: null,
-    loleCriticalHoursYear: Number(row.loleHoursYear.toFixed(1)),
+    loleCriticalHoursYear: round1(row.loleHoursYear),
     p95PeakImportMW: Math.round(row.importP95MW),
     p50PeakImportMW: Math.round(row.importP50MW),
     expectedCurtailmentWithoutDcTWh: Number(row.curtailmentWithoutDcTWh.toFixed(2)),
@@ -559,7 +877,7 @@ function fromGridRow(
 }
 
 export function resolveMonteCarloSummary(
-  config: SimulationConfig,
+  config: AnnualSimulationConfig,
   ssot: EnergyModelSsotInput
 ): MonteCarloSummary {
   const ssotCfg = ssot.config;
@@ -597,7 +915,10 @@ export function resolveMonteCarloSummary(
   ) => {
     if (rows.length < 2) return false;
     const first = getter(rows[0]);
-    return rows.some((r) => Math.abs(getter(r) - first) >= tol);
+    for (let i = 1; i < rows.length; i++) {
+      if (Math.abs(getter(rows[i]) - first) >= tol) return true;
+    }
+    return false;
   };
 
   const buildInterpolatedIdw = (
@@ -605,55 +926,106 @@ export function resolveMonteCarloSummary(
     includeYearAxis: boolean
   ): MonteCarloSummary => {
     const bounds = ssotCfg.simulatorSliderBounds;
-    const yearSpan = Math.max(1, bounds.year.max - bounds.year.min);
-    const pueSpan = Math.max(0.05, bounds.pue.max - bounds.pue.min);
-    const utilSpan = Math.max(0.05, bounds.dcUtilization.max - bounds.dcUtilization.min);
-    const impSpan = Math.max(500, bounds.interchangeImportLimitMW.max - bounds.interchangeImportLimitMW.min);
-    const expSpan = Math.max(500, bounds.interchangeExportLimitMW.max - bounds.interchangeExportLimitMW.min);
+    const invYearSpan = 1 / Math.max(1, bounds.year.max - bounds.year.min);
+    const invPueSpan = 1 / Math.max(0.05, bounds.pue.max - bounds.pue.min);
+    const invUtilSpan = 1 / Math.max(0.05, bounds.dcUtilization.max - bounds.dcUtilization.min);
+    const invImpSpan = 1 / Math.max(500, bounds.interchangeImportLimitMW.max - bounds.interchangeImportLimitMW.min);
+    const invExpSpan = 1 / Math.max(500, bounds.interchangeExportLimitMW.max - bounds.interchangeExportLimitMW.min);
 
-    const weighted = pool
-      .map((row) => {
-        const dYear = includeYearAxis ? (row.year - config.targetYear) / yearSpan : 0;
-        const dPue = (row.pue - matchPue) / pueSpan;
-        const dUtil = (row.dcUtilization - matchUtil) / utilSpan;
-        const dImp = (row.importLimitMW - config.interchangeImportLimitMW) / impSpan;
-        const dExp = (row.exportLimitMW - config.interchangeExportLimitMW) / expSpan;
-        const dist = Math.sqrt(dYear * dYear + dPue * dPue + dUtil * dUtil + dImp * dImp + dExp * dExp);
-        return { row, dist, weight: 1 / Math.max(1e-6, dist * dist) };
-      })
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, 4);
+    // Seleção top-4 O(N) em uma única varredura, sem alocações por linha nem sort()
+    let d0 = Infinity,
+      d1 = Infinity,
+      d2 = Infinity,
+      d3 = Infinity;
+    let r0: SimulatorMonteCarloGridRow | null = null;
+    let r1: SimulatorMonteCarloGridRow | null = null;
+    let r2: SimulatorMonteCarloGridRow | null = null;
+    let r3: SimulatorMonteCarloGridRow | null = null;
 
-    const sumW = weighted.reduce((acc, item) => acc + item.weight, 0);
-    const avg = (getter: (r: SimulatorMonteCarloGridRow) => number) =>
-      weighted.reduce((acc, item) => acc + getter(item.row) * item.weight, 0) / Math.max(1e-9, sumW);
+    for (let i = 0; i < pool.length; i++) {
+      const row = pool[i];
+      const dYear = includeYearAxis ? (row.year - config.targetYear) * invYearSpan : 0;
+      const dPue = (row.pue - matchPue) * invPueSpan;
+      const dUtil = (row.dcUtilization - matchUtil) * invUtilSpan;
+      const dImp = (row.importLimitMW - config.interchangeImportLimitMW) * invImpSpan;
+      const dExp = (row.exportLimitMW - config.interchangeExportLimitMW) * invExpSpan;
+      const distSq = dYear * dYear + dPue * dPue + dUtil * dUtil + dImp * dImp + dExp * dExp;
 
+      if (distSq < d0) {
+        d3 = d2; r3 = r2;
+        d2 = d1; r2 = r1;
+        d1 = d0; r1 = r0;
+        d0 = distSq; r0 = row;
+      } else if (distSq < d1) {
+        d3 = d2; r3 = r2;
+        d2 = d1; r2 = r1;
+        d1 = distSq; r1 = row;
+      } else if (distSq < d2) {
+        d3 = d2; r3 = r2;
+        d2 = distSq; r2 = row;
+      } else if (distSq < d3) {
+        d3 = distSq; r3 = row;
+      }
+    }
+
+    const topRows = [r0, r1, r2, r3];
+    const topDistSq = [d0, d1, d2, d3];
+    let sumW = 0;
+    let accProb = 0;
+    let accLole = 0;
+    let accP95 = 0;
+    let accP50 = 0;
+    let accCurtNoDc = 0;
+    let accCurtWithDc = 0;
+    let accAvoided = 0;
+    let accComp = 0;
+
+    for (let k = 0; k < 4; k++) {
+      const row = topRows[k];
+      if (!row) continue;
+      const w = 1 / Math.max(1e-6, topDistSq[k]);
+      sumW += w;
+      accProb += row.probExceedInterchangePct * w;
+      accLole += row.loleHoursYear * w;
+      accP95 += row.importP95MW * w;
+      accP50 += row.importP50MW * w;
+      accCurtNoDc += row.curtailmentWithoutDcTWh * w;
+      accCurtWithDc += row.curtailmentWithDcTWh * w;
+      accAvoided += row.curtailmentAvoidedGWh * w;
+      accComp += row.compensatoryWindGW * w;
+    }
+
+    const invSumW = 1 / Math.max(1e-9, sumW);
     return {
       ...baseInfo,
       sourceStatus: 'grid_interpolated',
-      probCriticalImportAnnualPct: Number(avg((r) => r.probExceedInterchangePct).toFixed(2)),
+      probCriticalImportAnnualPct: Number((accProb * invSumW).toFixed(2)),
       probCriticalWithoutDcPct: null,
-      loleCriticalHoursYear: Number(avg((r) => r.loleHoursYear).toFixed(1)),
-      p95PeakImportMW: Math.round(avg((r) => r.importP95MW)),
-      p50PeakImportMW: Math.round(avg((r) => r.importP50MW)),
-      expectedCurtailmentWithoutDcTWh: Number(avg((r) => r.curtailmentWithoutDcTWh).toFixed(2)),
-      expectedCurtailmentWithDcTWh: Number(avg((r) => r.curtailmentWithDcTWh).toFixed(2)),
-      curtailmentAvoidedByDcGWh: Math.round(avg((r) => r.curtailmentAvoidedGWh)),
-      requiredExtraWindGWForTargetRisk: Number(avg((r) => r.compensatoryWindGW).toFixed(2)),
+      loleCriticalHoursYear: round1(accLole * invSumW),
+      p95PeakImportMW: Math.round(accP95 * invSumW),
+      p50PeakImportMW: Math.round(accP50 * invSumW),
+      expectedCurtailmentWithoutDcTWh: Number((accCurtNoDc * invSumW).toFixed(2)),
+      expectedCurtailmentWithDcTWh: Number((accCurtWithDc * invSumW).toFixed(2)),
+      curtailmentAvoidedByDcGWh: Math.round(accAvoided * invSumW),
+      requiredExtraWindGWForTargetRisk: Number((accComp * invSumW).toFixed(2)),
     };
   };
 
   const grid = ssot.simulatorMonteCarloGrid ?? [];
   if (grid.length > 0) {
-    const categoricalMatches = grid.filter(
-      (r) =>
+    const windMatched: SimulatorMonteCarloGridRow[] = [];
+    for (let i = 0; i < grid.length; i++) {
+      const r = grid[i];
+      if (
         r.year === config.targetYear &&
         r.dcScenarioId === config.dcScenario &&
         r.windScenarioId === config.windScenario &&
-        r.seasonalRegime === config.seasonalRegime
-    );
-
-    const windMatched = categoricalMatches.filter((r) => Math.abs(r.windCapacityMW - windCap.totalMW) <= 150);
+        r.seasonalRegime === config.seasonalRegime &&
+        Math.abs(r.windCapacityMW - windCap.totalMW) <= 150
+      ) {
+        windMatched.push(r);
+      }
+    }
 
     if (windMatched.length > 0) {
       const exact = windMatched.find(isExactParams);
@@ -689,7 +1061,6 @@ export function resolveMonteCarloSummary(
         return buildInterpolatedIdw(windMatched, false);
       }
 
-      // Para anos intermediários sem fatia paramétrica local (ex.: 2026/2027), interpola 5D com anos-âncora vizinhos
       const sameCategoryAcrossYears = grid.filter((r) => {
         if (
           r.dcScenarioId !== config.dcScenario ||
@@ -713,7 +1084,6 @@ export function resolveMonteCarloSummary(
         return buildInterpolatedIdw(sameCategoryAcrossYears, true);
       }
     } else {
-      // Caso a capacidade eólica (ex.: High sem offshore = 44,4 GW) esteja entre trajetórias da grade, interpola por GW
       const sameYearParamsPool = grid
         .filter(
           (r) =>
@@ -725,18 +1095,24 @@ export function resolveMonteCarloSummary(
         .sort((a, b) => a.windCapacityMW - b.windCapacityMW);
 
       if (sameYearParamsPool.length >= 2) {
-        const lower = [...sameYearParamsPool].reverse().find((r) => r.windCapacityMW <= windCap.totalMW);
-        const upper = sameYearParamsPool.find((r) => r.windCapacityMW >= windCap.totalMW);
+        let lower: SimulatorMonteCarloGridRow | undefined;
+        let upper: SimulatorMonteCarloGridRow | undefined;
+        for (let i = 0; i < sameYearParamsPool.length; i++) {
+          const row = sameYearParamsPool[i];
+          if (row.windCapacityMW <= windCap.totalMW) lower = row;
+          if (!upper && row.windCapacityMW >= windCap.totalMW) upper = row;
+        }
         if (lower && upper && upper.windCapacityMW > lower.windCapacityMW) {
           const t = (windCap.totalMW - lower.windCapacityMW) / (upper.windCapacityMW - lower.windCapacityMW);
+          const oneMinusT = 1 - t;
           const lerp = (getter: (r: SimulatorMonteCarloGridRow) => number) =>
-            getter(lower) * (1 - t) + getter(upper) * t;
+            getter(lower!) * oneMinusT + getter(upper!) * t;
           return {
             ...baseInfo,
             sourceStatus: 'grid_interpolated',
             probCriticalImportAnnualPct: Number(lerp((r) => r.probExceedInterchangePct).toFixed(2)),
             probCriticalWithoutDcPct: null,
-            loleCriticalHoursYear: Number(lerp((r) => r.loleHoursYear).toFixed(1)),
+            loleCriticalHoursYear: round1(lerp((r) => r.loleHoursYear)),
             p95PeakImportMW: Math.round(lerp((r) => r.importP95MW)),
             p50PeakImportMW: Math.round(lerp((r) => r.importP50MW)),
             expectedCurtailmentWithoutDcTWh: Number(lerp((r) => r.curtailmentWithoutDcTWh).toFixed(2)),
@@ -863,7 +1239,7 @@ export function evaluateScenario(
   ssot: EnergyModelSsotInput,
   hourlyBaseline: HourlyBaseline8760Bundle | null = null
 ): EvaluationResult {
-  const fullYearSeries = estimateFullYearHourly(config, hourlyBaseline, ssot);
+  const { fullYearSeries, annualSummary } = estimateAnnualSimulation(config, hourlyBaseline, ssot);
   const windowSlice = sliceHourlyWindow(
     fullYearSeries,
     config,
@@ -871,87 +1247,16 @@ export function evaluateScenario(
     ssot.uiCatalog?.monthShortNames ?? []
   );
   const windowSeries = windowSlice.points;
-  const effectiveDcLoadMW = resolveEffectiveDcLoadMW(config, ssot);
+  const windowSummary = summarizeHourlyWindow(windowSeries);
   const monteCarlo = resolveMonteCarloSummary(config, ssot);
-
-  if (fullYearSeries.length === 0) {
-    return {
-      fullYearSeries,
-      windowSlice,
-      hourlySeries: windowSeries,
-      summary: {
-        hourlyBaselineAvailable: false,
-        effectiveDcLoadMW,
-        avgBaseLoadMW: null,
-        avgWindCfPct: null,
-        negativeMarginHoursYear: null,
-        criticalImportHoursYear: null,
-        negativeMarginHoursWindow: null,
-        criticalImportHoursWindow: null,
-        minMarginMW: null,
-        maxMarginMW: null,
-        annualCurtailmentWithoutDcTWh: null,
-        annualCurtailmentWithDcTWh: null,
-        windowCurtailmentWithoutDcGWh: null,
-        windowCurtailmentWithDcGWh: null,
-      },
-      monteCarlo,
-    };
-  }
-
-  let sumBaseLoad = 0;
-  let sumWindCf = 0;
-  let negMarginYear = 0;
-  let critImportYear = 0;
-  let curtNoDcYearMWh = 0;
-  let curtWithDcYearMWh = 0;
-
-  for (const pt of fullYearSeries) {
-    sumBaseLoad += pt.baseLoadMW;
-    sumWindCf += pt.windCapacityFactor;
-    if (pt.marginWithDcMW < 0) negMarginYear++;
-    if (pt.exceedsImportLimit) critImportYear++;
-    curtNoDcYearMWh += pt.curtailmentWithoutDcMW;
-    curtWithDcYearMWh += pt.curtailmentWithDcMW;
-  }
-
-  let negMarginWindow = 0;
-  let critImportWindow = 0;
-  let minMarginWindow = Infinity;
-  let maxMarginWindow = -Infinity;
-  let curtNoDcWindowMWh = 0;
-  let curtWithDcWindowMWh = 0;
-
-  for (const pt of windowSeries) {
-    if (pt.marginWithDcMW < 0) negMarginWindow++;
-    if (pt.exceedsImportLimit) critImportWindow++;
-    if (pt.marginWithDcMW < minMarginWindow) minMarginWindow = pt.marginWithDcMW;
-    if (pt.marginWithDcMW > maxMarginWindow) maxMarginWindow = pt.marginWithDcMW;
-    curtNoDcWindowMWh += pt.curtailmentWithoutDcMW;
-    curtWithDcWindowMWh += pt.curtailmentWithDcMW;
-  }
-
-  const invHours = 1 / fullYearSeries.length;
 
   return {
     fullYearSeries,
     windowSlice,
     hourlySeries: windowSeries,
     summary: {
-      hourlyBaselineAvailable: true,
-      effectiveDcLoadMW,
-      avgBaseLoadMW: Math.round(sumBaseLoad * invHours),
-      avgWindCfPct: Number(((sumWindCf * invHours) * 100).toFixed(1)),
-      negativeMarginHoursYear: negMarginYear,
-      criticalImportHoursYear: critImportYear,
-      negativeMarginHoursWindow: negMarginWindow,
-      criticalImportHoursWindow: critImportWindow,
-      minMarginMW: Number.isFinite(minMarginWindow) ? Math.round(minMarginWindow) : null,
-      maxMarginMW: Number.isFinite(maxMarginWindow) ? Math.round(maxMarginWindow) : null,
-      annualCurtailmentWithoutDcTWh: Number((curtNoDcYearMWh / 1_000_000).toFixed(2)),
-      annualCurtailmentWithDcTWh: Number((curtWithDcYearMWh / 1_000_000).toFixed(2)),
-      windowCurtailmentWithoutDcGWh: Number((curtNoDcWindowMWh / 1000).toFixed(1)),
-      windowCurtailmentWithDcGWh: Number((curtWithDcWindowMWh / 1000).toFixed(1)),
+      ...annualSummary,
+      ...windowSummary,
     },
     monteCarlo,
   };

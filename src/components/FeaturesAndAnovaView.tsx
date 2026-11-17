@@ -339,54 +339,75 @@ export const FeaturesAndAnovaView: React.FC = () => {
           </div>
         </div>
 
-        {/* Faixa de 4 KPIs Consolidados dos Passos 3 e 4 (calculados dinamicamente via SSOT) */}
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 tabular-nums">
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
-            <span className="text-xs text-slate-500 block">Modelo A · Demanda 2025 (ResMLP)</span>
-            <span className="text-xl font-bold font-mono text-slate-900 mt-0.5 block">
-              MAPE {kpis.a1h ? kpis.a1h.mapePct.toFixed(2).replace('.', ',') : '—'}%
-            </span>
-            <span className="text-xs text-slate-600 mt-0.5 block">
-              {kpis.a1h && kpis.a24h
-                ? `MAE ${kpis.a1h.maeMW.toFixed(1).replace('.', ',')} MW (1h) e ${kpis.a24h.mapePct.toFixed(2).replace('.', ',')}% (24h) · R² = ${kpis.a1h.r2Score.toFixed(4).replace('.', ',')}`
-                : 'SSOT Model A'}
-            </span>
+        {/* Faixa de KPIs com Separação Explícita: Diagnóstico Histórico Cego 2025 vs. Projeção Estocástica 2035 */}
+        <div className="mt-5 grid grid-cols-1 xl:grid-cols-4 gap-4 tabular-nums">
+          <div className="xl:col-span-3 space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-800">
+              Diagnóstico Histórico Out-of-Time · {ssot.config.baselineYear} (Treino {ssot.config.historyStartYear}–
+              {ssot.config.historyEndYear - 1})
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span className="text-xs text-slate-500 block">
+                  Modelo A · Demanda {ssot.config.baselineYear} (ResMLP)
+                </span>
+                <span className="text-xl font-bold font-mono text-slate-900 mt-0.5 block">
+                  MAPE {kpis.a1h ? kpis.a1h.mapePct.toFixed(2).replace('.', ',') : '—'}%
+                </span>
+                <span className="text-xs text-slate-600 mt-0.5 block">
+                  {kpis.a1h && kpis.a24h
+                    ? `MAE ${kpis.a1h.maeMW.toFixed(1).replace('.', ',')} MW (1h) e ${kpis.a24h.mapePct.toFixed(2).replace('.', ',')}% (24h) · R² = ${kpis.a1h.r2Score.toFixed(4).replace('.', ',')}`
+                    : 'SSOT Model A'}
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span className="text-xs text-slate-500 block">
+                  Modelo B · CF Eólico {ssot.config.baselineYear} (ResMLP)
+                </span>
+                <span className="text-xl font-bold font-mono text-sky-800 mt-0.5 block">
+                  R² = {kpis.b1h ? kpis.b1h.r2Score.toFixed(4).replace('.', ',') : '—'}
+                </span>
+                <span className="text-xs text-slate-600 mt-0.5 block">
+                  {kpis.b1h
+                    ? `MAE = ${kpis.b1h.maeCF.toFixed(4).replace('.', ',')} (${kpis.b1h.equivPowerMaeMW.toFixed(1).replace('.', ',')} MW equiv.) sem viés de corte`
+                    : 'SSOT Model B'}
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span className="text-xs text-slate-500 block">
+                  Modelo C · Curtailment Real {ssot.config.baselineYear}
+                </span>
+                <span className="text-xl font-bold font-mono text-amber-700 mt-0.5 block">
+                  AUC = {kpis.cBest ? kpis.cBest.rocAuc.toFixed(4).replace('.', ',') : '—'}
+                </span>
+                <span className="text-xs text-slate-600 mt-0.5 block">
+                  {kpis.cBest
+                    ? `Brier = ${kpis.cBest.brierScore.toFixed(4).replace('.', ',')} · R² Vol = ${kpis.cBest.r2Volume.toFixed(4).replace('.', ',')} (${kpis.cBest.predCurtailed2025TWh.toFixed(2).replace('.', ',')} vs ${kpis.cBest.realCurtailed2025TWh.toFixed(2).replace('.', ',')} TWh)`
+                    : 'SSOT Model C'}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
-            <span className="text-xs text-slate-500 block">Modelo B · CF Eólico 2025 (ResMLP)</span>
-            <span className="text-xl font-bold font-mono text-sky-800 mt-0.5 block">
-              R² = {kpis.b1h ? kpis.b1h.r2Score.toFixed(4).replace('.', ',') : '—'}
-            </span>
-            <span className="text-xs text-slate-600 mt-0.5 block">
-              {kpis.b1h
-                ? `MAE = ${kpis.b1h.maeCF.toFixed(4).replace('.', ',')} (${kpis.b1h.equivPowerMaeMW.toFixed(1).replace('.', ',')} MW equiv.) sem viés de corte`
-                : 'SSOT Model B'}
-            </span>
-          </div>
-
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
-            <span className="text-xs text-slate-500 block">Modelo C · Curtailment Real 2025</span>
-            <span className="text-xl font-bold font-mono text-amber-700 mt-0.5 block">
-              AUC = {kpis.cBest ? kpis.cBest.rocAuc.toFixed(4).replace('.', ',') : '—'}
-            </span>
-            <span className="text-xs text-slate-600 mt-0.5 block">
-              {kpis.cBest
-                ? `Brier = ${kpis.cBest.brierScore.toFixed(4).replace('.', ',')} · R² Vol = ${kpis.cBest.r2Volume.toFixed(4).replace('.', ',')} (${kpis.cBest.predCurtailed2025TWh.toFixed(2).replace('.', ',')} vs ${kpis.cBest.realCurtailed2025TWh.toFixed(2).replace('.', ',')} TWh)`
-                : 'SSOT Model C'}
-            </span>
-          </div>
-
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
-            <span className="text-xs text-slate-500 block">Passo 4 · Expansão Compensatória 2035</span>
-            <span className="text-xl font-bold font-mono text-emerald-800 mt-0.5 block">
-              +{kpis.mcCentral ? kpis.mcCentral.compensatoryWindExpansionGW.toFixed(2).replace('.', ',') : '—'} GW
-            </span>
-            <span className="text-xs text-slate-600 mt-0.5 block">
-              {kpis.mcCentral
-                ? `Cenário Central DC (${(kpis.mcCentral.dcLoadMW / 1000).toFixed(2).replace('.', ',')} GW) + SIGA Interm. (−${(kpis.mcCentral.curtailmentAvoidedGWh / 1000).toFixed(2).replace('.', ',')} TWh)`
-                : 'SSOT Monte Carlo'}
-            </span>
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-800">
+              Projeção Estocástica · {ssot.config.targetEndYear}
+            </p>
+            <div className="p-3.5 bg-emerald-50/40 border border-emerald-200 rounded-lg">
+              <span className="text-xs text-slate-600 block">
+                Passo 4 · Expansão Compensatória {ssot.config.targetEndYear}
+              </span>
+              <span className="text-xl font-bold font-mono text-emerald-800 mt-0.5 block">
+                +{kpis.mcCentral ? kpis.mcCentral.compensatoryWindExpansionGW.toFixed(2).replace('.', ',') : '—'} GW
+              </span>
+              <span className="text-xs text-slate-600 mt-0.5 block">
+                {kpis.mcCentral
+                  ? `Cenário Central DC (${(kpis.mcCentral.dcLoadMW / 1000).toFixed(2).replace('.', ',')} GW) + SIGA Interm. (−${(kpis.mcCentral.curtailmentAvoidedGWh / 1000).toFixed(2).replace('.', ',')} TWh)`
+                  : 'SSOT Monte Carlo'}
+              </span>
+            </div>
           </div>
         </div>
       </section>

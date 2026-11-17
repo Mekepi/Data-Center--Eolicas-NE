@@ -160,6 +160,7 @@ def run_transmission_sensitivity_2035(
 
     rows: List[Dict[str, Any]] = []
     for spec in TX_SENSITIVITY_SPECS:
+        cfg_code = str(spec["configCode"])
         cfg_id = str(spec["configId"])
         imp_lim = float(spec["importLimitMW"])
         exp_lim = float(spec["exportLimitMW"])
@@ -180,6 +181,7 @@ def run_transmission_sensitivity_2035(
         )
         rows.append(
             {
+                "codigo_config": cfg_code,
                 "id_config": cfg_id,
                 "import_limit_mw": imp_lim,
                 "export_limit_mw": exp_lim,
@@ -224,6 +226,8 @@ def run_h2v_and_datacenter_synergy_2035(
 
     rows: List[Dict[str, Any]] = []
     for spec in H2V_SENSITIVITY_SPECS:
+        scen_code = str(spec["scenarioCode"])
+        flex_mode = str(spec["flexMode"])
         scen_id = str(spec["scenarioId"])
         h2v_nom_mw = float(spec["h2vNominalMW"])
         is_flex = bool(spec["h2vFlexible"])
@@ -250,6 +254,8 @@ def run_h2v_and_datacenter_synergy_2035(
 
         rows.append(
             {
+                "codigo_cenario": scen_code,
+                "modo_flex": flex_mode,
                 "cenario_id": scen_id,
                 "carga_dc_mw": round(central_dc_mw, 1),
                 "carga_h2v_nominal_mw": h2v_nom_mw,
@@ -382,6 +388,10 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
             )
 
         w_mw = float(scen_row.iloc[0]["eolica_total_mw"])
+        w_off_mw = float(scen_row.iloc[0]["eolica_offshore_mw"]) if "eolica_offshore_mw" in scen_row.columns else 0.0
+        offshore_share = w_off_mw / max(1.0, w_mw)
+        offshore_cf_gain = float(MONTE_CARLO_PARAMS["offshoreCfGain"])
+        cf_ceiling = float(MONTE_CARLO_PARAMS["cfCeiling"])
         curt_twh = round(float(tl_row.iloc[0]["curtailment_com_dc_twh_ano"]), 2)
         years_ahead = max(0, yr - BASELINE_YEAR)
         solar_growth = 1.0 + ANNUAL_SOLAR_GROWTH_RATE * years_ahead
@@ -391,14 +401,23 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
         total_cap_mw = w_mw + proj_solar_cap_mw + hydro_therm_cap
         share_cap = round((w_mw / total_cap_mw) * 100.0, 2)
 
-        wind_pot_gen_mw = w_mw * cf_pot_ref
+        cf_pot_eff = float(
+            np.clip(cf_pot_ref + offshore_share * offshore_cf_gain * (1.0 - cf_pot_ref), 0.0, cf_ceiling)
+        )
+        cf_2025_eff = np.clip(
+            cf_2025_arr + offshore_share * offshore_cf_gain * (1.0 - cf_2025_arr),
+            0.0,
+            cf_ceiling,
+        )
+
+        wind_pot_gen_mw = w_mw * cf_pot_eff
         curt_mw_avg = (curt_twh * 1e6) / float(HOURS_PER_YEAR)
         wind_eff_gen_mw = max(0.0, wind_pot_gen_mw - curt_mw_avg)
 
         proj_solar_gen_arr = solar_2025_arr * solar_growth
         proj_hydro_therm_arr = _compute_chesf_hydro_thermal_dispatch(
             load_2025_arr * load_growth,
-            cf_2025_arr * w_mw,
+            cf_2025_eff * w_mw,
             proj_solar_gen_arr,
             month_arr=month_2025_arr,
             obs_hydro_mw=hydro_2025_arr,
@@ -407,7 +426,7 @@ def build_aneel_vs_ons_wind_indicators_2015_2035(
         total_gen_mw = wind_eff_gen_mw + float(np.mean(proj_solar_gen_arr)) + float(np.mean(proj_hydro_therm_arr))
         share_gen = round((wind_eff_gen_mw / max(1.0, total_gen_mw)) * 100.0, 2)
 
-        cf_pot_pct = round(cf_pot_ref * 100.0, 2)
+        cf_pot_pct = round(cf_pot_eff * 100.0, 2)
         cf_eff_pct = round((wind_eff_gen_mw / max(1.0, w_mw)) * 100.0, 2)
 
         rows.append(
@@ -551,48 +570,51 @@ def write_final_consolidated_markdown_report(
     central_ratio = (float(mc_central_interm["expansao_eolica_compensatoria_gw"]) * 1000.0) / max(1.0, central_dc_mw)
 
     # ANOVA & Sazonalidade mensal
-    wind_anova = df_anova[df_anova["variavel_analisada"].str.contains("cf_eolica", case=False)].iloc[0]
+    if "alvo_id" in df_anova.columns:
+        wind_anova = df_anova[df_anova["alvo_id"] == "cf_eolica"].iloc[0]
+    else:
+        wind_anova = df_anova[df_anova["variavel_analisada"] == "CF Eólico Potencial (cf_eolica)"].iloc[0]
     anova_f = float(wind_anova["estatistica_f"])
     mar_p10_pct = float(df_monthly[df_monthly["mes"] == 3]["cf_p10"].iloc[0]) * 100.0
     sep_p10_pct = float(df_monthly[df_monthly["mes"] == 9]["cf_p10"].iloc[0]) * 100.0
 
-    # Benchmarks Modelos A, B, C
+    # Benchmarks Modelos A, B, C por IDs estruturados
+    pref_model_id = REFERENCE_SCENARIO_KEYS["preferredModelId"]
     a_1h_mlp = df_model_a[
-        df_model_a["horizonte"].str.contains("1h") & df_model_a["arquitetura"].str.contains("ResMLP")
+        (df_model_a["horizonte_id"] == "1h") & (df_model_a["modelo_id"] == pref_model_id)
     ].iloc[0]
     a_1h_lin = df_model_a[
-        df_model_a["horizonte"].str.contains("1h") & df_model_a["familia"].eq("Linear")
+        (df_model_a["horizonte_id"] == "1h") & (df_model_a["familia_id"] == "linear")
     ].iloc[0]
     a_1h_gain_pct = (1.0 - float(a_1h_mlp["mae_mw"]) / max(1e-6, float(a_1h_lin["mae_mw"]))) * 100.0
 
     a_24h_mlp = df_model_a[
-        df_model_a["horizonte"].str.contains("24h") & df_model_a["arquitetura"].str.contains("ResMLP")
+        (df_model_a["horizonte_id"] == "24h") & (df_model_a["modelo_id"] == pref_model_id)
     ].iloc[0]
 
     b_1h_mlp = df_model_bc[
         df_model_bc["etapa"].str.startswith("Modelo B")
-        & df_model_bc["horizonte"].str.contains("1h")
-        & df_model_bc["arquitetura"].str.contains("ResMLP")
+        & (df_model_bc["horizonte_id"] == "1h")
+        & (df_model_bc["modelo_id"] == pref_model_id)
     ].iloc[0]
 
     c_lin = df_model_bc[
-        df_model_bc["etapa"].str.startswith("Modelo C") & df_model_bc["familia"].eq("Linear")
+        df_model_bc["etapa"].str.startswith("Modelo C") & (df_model_bc["familia_id"] == "linear")
     ].iloc[0]
     c_nl_df = df_model_bc[
-        df_model_bc["etapa"].str.startswith("Modelo C") & ~df_model_bc["familia"].eq("Linear")
+        df_model_bc["etapa"].str.startswith("Modelo C") & (df_model_bc["familia_id"] == "nonlinear")
     ]
-    c_nl = c_nl_df[c_nl_df["arquitetura"].str.contains("ResMLP")].iloc[0] if (
-        c_nl_df["arquitetura"].str.contains("ResMLP").any()
-    ) else c_nl_df.iloc[0]
+    c_pref = c_nl_df[c_nl_df["modelo_id"] == pref_model_id]
+    c_nl = c_pref.iloc[0] if not c_pref.empty else c_nl_df.iloc[0]
 
-    # Concentração em PECEM_SUBSTATION_NAME e comparativo H2V
+    # Concentração em PECEM_SUBSTATION_NAME e comparativo H2V por flexMode estruturado
     pecem_share_pct = float(df_subs[df_subs["subestacao_conexao"] == PECEM_SUBSTATION_NAME]["participacao_pct"].sum())
-    h2v_base = df_h2v[df_h2v["carga_h2v_nominal_mw"] == 0.0].iloc[0]
+    h2v_base = df_h2v[df_h2v["modo_flex"] == "none"].iloc[0]
     h2v_2gw_inflex = df_h2v[
-        (df_h2v["carga_h2v_nominal_mw"] == DEFAULT_H2V_COMPARISON_MW) & df_h2v["cenario_id"].str.contains("Inflexível")
+        (df_h2v["carga_h2v_nominal_mw"] == DEFAULT_H2V_COMPARISON_MW) & (df_h2v["modo_flex"] == "inflexible")
     ].iloc[0]
     h2v_2gw_flex = df_h2v[
-        (df_h2v["carga_h2v_nominal_mw"] == DEFAULT_H2V_COMPARISON_MW) & df_h2v["cenario_id"].str.contains("Flexível")
+        (df_h2v["carga_h2v_nominal_mw"] == DEFAULT_H2V_COMPARISON_MW) & (df_h2v["modo_flex"] == "flexible")
     ].iloc[0]
 
     imp_limit_str = _fmt_int_pt(int(round(INTERCHANGE_IMPORT_LIMIT_MW)))
@@ -600,7 +622,7 @@ def write_final_consolidated_markdown_report(
 
     report_path = REPORTS_DIR / "relatorio_final_consolidado_ptc3567_grupo6.md"
 
-    c_nl_label = "`ResMLP Hurdle` (C1+C2)" if "ResMLP" in str(c_nl["arquitetura"]) else "`HistogramGBDT Hurdle`"
+    c_nl_label = "`ResMLP Hurdle` (C1+C2)" if c_nl["modelo_id"] == "resmlp" else "`HistogramGBDT Hurdle`"
 
     md_content = f"""# Relatório Técnico Consolidado Final — PTC3567 (Grupo 6)
 ## Impacto da Expansão de Data Centers e Demanda Elétrica sobre a Geração Eólica no Nordeste (2026–2035)
