@@ -1,7 +1,7 @@
 feature,corr_l_base_mw,corr_cf_eolica,corr_curtailment_mw
 l_base_mw_lag_1h,0.973,-0.015,-0.153
-l_base_mw_lag_24h,0.865,-0.031,-0.058
-l_base_mw_lag_168h,0.935,-0.01,-0.092
+l_base_mw_lag_24h,0.865,-0.031,-0.057
+l_base_mw_lag_168h,0.935,-0.01,-0.09
 cf_eolica_lag_1h,-0.052,0.984,0.425
 cf_eolica_lag_24h,-0.021,0.82,0.318
 month_sin,0.042,-0.592,-0.309
@@ -15,6 +15,6 @@ folga_escoamento_sin_mw,-0.325,-0.524,-0.708
 excesso_sobre_escoamento_mw,0.112,0.188,0.822
 despacho_total_est_excesso_mw,0.177,0.236,0.844
 interacao_solar_eolica_mw,0.278,0.09,0.685
-g_hidro_roll_mean_24h,0.298,-0.103,-0.34
-wind_speed_lag1_approx,-0.057,0.964,0.385
+g_hidro_roll_mean_24h,0.298,-0.103,-0.341
+wind_speed_lag1_approx,-0.058,0.964,0.385
 cf_lag1_squared,-0.036,0.959,0.46

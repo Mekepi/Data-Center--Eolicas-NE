@@ -1,6 +1,6 @@
-cenario_id,carga_dc_mw,carga_h2v_nominal_mw,carga_h2v_media_efetiva_mw,regime_operacional_h2v,prob_import_critica_pct,import_p95_mw,curtailment_restante_twh,curtailment_absorvido_total_twh,pressao_se_pecem_ii_mw,expansao_eolica_compensatoria_gw
-H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6),1596.8,0.0,0.0,Sem H2V (Isolamento de Data Centers),10.0,8439.5,10.91,3.93,1768.8,6.85
-"H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)",1596.8,1000.0,920.0,Baseload Inflexível (92% contínuo),14.0,9359.5,9.03,5.82,2458.8,11.24
-"H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)",1596.8,1000.0,730.7,Modulação Dinâmica (12% na calmaria / 100% no excedente),10.5,8559.5,8.87,5.97,2316.8,7.43
-"H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)",1596.8,2000.0,1840.0,Baseload Inflexível (92% contínuo),21.6,10279.5,7.4,7.44,3148.8,15.62
-"H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)",1596.8,2000.0,1461.3,Modulação Dinâmica (12% na calmaria / 100% no excedente),10.9,8679.5,7.15,7.69,2864.8,8.0
+codigo_cenario,modo_flex,cenario_id,carga_dc_mw,carga_h2v_nominal_mw,carga_h2v_media_efetiva_mw,regime_operacional_h2v,prob_import_critica_pct,import_p95_mw,curtailment_restante_twh,curtailment_absorvido_total_twh,pressao_se_pecem_ii_mw,expansao_eolica_compensatoria_gw
+H2V-01,none,H2V-01 · Somente Data Centers 24/7 (Escopo Puro Grupo 6),1596.8,0.0,0.0,Sem H2V (Isolamento de Data Centers),9.0,8116.1,11.54,4.06,1768.8,5.31
+H2V-02,inflexible,"H2V-02 · DC Central + H2V Pecém/Suape 1,0 GW (Inflexível 24/7)",1596.8,1000.0,920.0,Baseload Inflexível (92% contínuo),13.3,9036.1,9.58,6.02,2458.8,9.7
+H2V-03,flexible,"H2V-03 · DC Central + H2V Pecém/Suape 1,0 GW (Flexível / Demand-Response)",1596.8,1000.0,741.0,Modulação Dinâmica (12% na calmaria / 100% no excedente),9.5,8236.1,9.42,6.18,2324.6,5.89
+H2V-04,inflexible,"H2V-04 · DC Central + H2V Pecém/Suape 2,0 GW (Inflexível 24/7)",1596.8,2000.0,1840.0,Baseload Inflexível (92% contínuo),20.8,9956.1,7.88,7.72,3148.8,14.08
+H2V-05,flexible,"H2V-05 · DC Central + H2V Pecém/Suape 2,0 GW (Flexível / Sinergia Eólica)",1596.8,2000.0,1482.0,Modulação Dinâmica (12% na calmaria / 100% no excedente),9.9,8356.1,7.61,7.99,2880.3,6.46
